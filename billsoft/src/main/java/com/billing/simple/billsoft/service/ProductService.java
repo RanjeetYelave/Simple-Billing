@@ -5,6 +5,10 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import com.billing.simple.billsoft.dtos.SmartDiscoveryResponse;
+import com.billing.simple.billsoft.entities.InvoiceStatus;
+import org.springframework.data.domain.PageRequest;
+
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,7 +63,8 @@ public class ProductService {
 	}
 
 	public boolean isAllowNegativeStock(Long firmId) {
-		if (appConfigRepo == null) return false;
+		if (appConfigRepo == null)
+			return false;
 		Long targetFirmId = resolveFirmId(firmId);
 		String configKey = "INVENTORY_ALLOW_NEGATIVE_STOCK_" + (targetFirmId != null ? targetFirmId : 1L);
 		return appConfigRepo.findById(configKey)
@@ -91,11 +96,149 @@ public class ProductService {
 		return target;
 	}
 
+	private Long validateAndResolveFirmId(Long requestedFirmId) {
+		Long authoritative = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		if (authoritative != null && requestedFirmId != null && !authoritative.equals(requestedFirmId)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+		}
+		return authoritative != null ? authoritative : requestedFirmId;
+	}
+
+	private List<Long> parseFavoriteIds(String raw) {
+		if (raw == null || raw.isBlank()) return new ArrayList<>();
+		List<Long> result = new ArrayList<>();
+		String[] parts = raw.split("[,;\\s]+");
+		for (String p : parts) {
+			if (p.isBlank()) continue;
+			try {
+				long id = Long.parseLong(p.trim());
+				if (id > 0 && !result.contains(id)) result.add(id);
+			} catch (NumberFormatException ignored) {}
+		}
+		return result;
+	}
+
+	private String serializeFavoriteIds(List<Long> ids) {
+		if (ids == null || ids.isEmpty()) return "";
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < ids.size(); i++) {
+			if (i > 0) sb.append(",");
+			sb.append(ids.get(i));
+		}
+		return sb.toString();
+	}
+
+	public List<Long> getFavorites(Long requestedFirmId) {
+		Long fid = validateAndResolveFirmId(requestedFirmId);
+		if (fid == null || appConfigRepo == null) return Collections.emptyList();
+		String key = "QUICK_ADD_FAVORITES_" + fid;
+		return appConfigRepo.findById(key)
+				.map(AppConfig::getConfigValue)
+				.map(this::parseFavoriteIds)
+				.orElse(Collections.emptyList());
+	}
+
+	@Transactional
+	public List<Long> toggleFavorite(Long productId, Long requestedFirmId) {
+		Long fid = validateAndResolveFirmId(requestedFirmId);
+		if (fid == null || productId == null || appConfigRepo == null) return Collections.emptyList();
+
+		if (!repo.existsByIdAndFirmId(productId, fid)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product does not belong to active firm");
+		}
+
+		String key = "QUICK_ADD_FAVORITES_" + fid;
+		List<Long> current = new ArrayList<>(getFavorites(fid));
+		if (current.contains(productId)) {
+			current.remove(productId);
+		} else {
+			current.add(productId);
+		}
+		String serialized = serializeFavoriteIds(current);
+		appConfigRepo.save(new AppConfig(key, serialized));
+		return current;
+	}
+
+	@Transactional
+	public List<Long> updateFavorites(List<Long> favoriteIds, Long requestedFirmId) {
+		Long fid = validateAndResolveFirmId(requestedFirmId);
+		if (fid == null || appConfigRepo == null) return Collections.emptyList();
+
+		List<Long> valid = new ArrayList<>();
+		if (favoriteIds != null) {
+			for (Long pid : favoriteIds) {
+				if (pid != null && repo.existsByIdAndFirmId(pid, fid) && !valid.contains(pid)) {
+					valid.add(pid);
+				}
+			}
+		}
+		String key = "QUICK_ADD_FAVORITES_" + fid;
+		String serialized = serializeFavoriteIds(valid);
+		appConfigRepo.save(new AppConfig(key, serialized));
+		return valid;
+	}
+
+	public SmartDiscoveryResponse getSmartDiscovery(Long requestedFirmId, Integer periodDays) {
+		Long fid = validateAndResolveFirmId(requestedFirmId);
+		int days = (periodDays != null && periodDays > 0) ? periodDays : 90;
+		LocalDateTime since = LocalDateTime.now().minusDays(days);
+
+		List<InvoiceStatus> activeStatuses = List.of(
+				InvoiceStatus.PAID,
+				InvoiceStatus.UNPAID,
+				InvoiceStatus.FINAL,
+				InvoiceStatus.SENT,
+				InvoiceStatus.OVERDUE
+		);
+
+		Pageable topLimit = PageRequest.of(0, 100);
+		List<Object[]> freqRows = (fid != null)
+				? invoiceItemRepo.findFrequentlyUsedProductIdsByFirmId(fid, activeStatuses, since, topLimit)
+				: invoiceItemRepo.findFrequentlyUsedProductIdsAll(activeStatuses, since, topLimit);
+
+		List<SmartDiscoveryResponse.ProductUsageStat> freqStats = new ArrayList<>();
+		if (freqRows != null) {
+			for (Object[] row : freqRows) {
+				if (row == null || row.length < 2 || row[0] == null) continue;
+				Long pId = ((Number) row[0]).longValue();
+				Long count = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+				LocalDateTime lastDate = (row.length > 2 && row[2] instanceof LocalDateTime) ? (LocalDateTime) row[2] : null;
+				freqStats.add(new SmartDiscoveryResponse.ProductUsageStat(pId, count, lastDate));
+			}
+		}
+
+		List<Object[]> recentRows = (fid != null)
+				? invoiceItemRepo.findRecentlyUsedProductIdsByFirmId(fid, activeStatuses, topLimit)
+				: invoiceItemRepo.findRecentlyUsedProductIdsAll(activeStatuses, topLimit);
+
+		List<SmartDiscoveryResponse.ProductUsageStat> recentStats = new ArrayList<>();
+		if (recentRows != null) {
+			for (Object[] row : recentRows) {
+				if (row == null || row.length < 2 || row[0] == null) continue;
+				Long pId = ((Number) row[0]).longValue();
+				LocalDateTime lastDate = (row[1] instanceof LocalDateTime) ? (LocalDateTime) row[1] : null;
+				recentStats.add(new SmartDiscoveryResponse.ProductUsageStat(pId, 1L, lastDate));
+			}
+		}
+
+		List<Long> favorites = getFavorites(fid);
+
+		SmartDiscoveryResponse response = new SmartDiscoveryResponse();
+		response.setFirmId(fid);
+		response.setPeriodDays(days);
+		response.setFrequentlyUsed(freqStats);
+		response.setRecentlyUsed(recentStats);
+		response.setFavorites(favorites);
+		return response;
+	}
+
 	@Transactional
 	public Product create(Product product) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-		if (authoritativeFirmId != null && product.getFirmId() != null && !authoritativeFirmId.equals(product.getFirmId())) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product creation prohibited");
+		if (authoritativeFirmId != null && product.getFirmId() != null
+				&& !authoritativeFirmId.equals(product.getFirmId())) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm product creation prohibited");
 		}
 		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : product.getFirmId();
 		if (targetFirmId != null) {
@@ -148,11 +291,13 @@ public class ProductService {
 	public List<Product> createBulk(List<com.billing.simple.billsoft.dtos.ProductBulkRowDto> rows, Long clientFirmId) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm bulk product creation prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm bulk product creation prohibited");
 		}
 		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
 		if (targetFirmId == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required for bulk product creation");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Active firm context is required for bulk product creation");
 		}
 
 		if (rows == null || rows.isEmpty()) {
@@ -182,19 +327,23 @@ public class ProductService {
 				}
 				batchSkus.add(skuLower);
 				if (repo.existsByFirmIdAndSku(targetFirmId, sku)) {
-					throw new IllegalArgumentException("Row " + rowNum + ": Product with SKU '" + sku + "' already exists for this firm");
+					throw new IllegalArgumentException(
+							"Row " + rowNum + ": Product with SKU '" + sku + "' already exists for this firm");
 				}
 			}
 
-			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim() : null;
+			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim()
+					: null;
 			if (barcode != null) {
 				String barcodeLower = barcode.toLowerCase();
 				if (batchBarcodes.contains(barcodeLower)) {
-					throw new IllegalArgumentException("Row " + rowNum + ": Duplicate Barcode in batch: '" + barcode + "'");
+					throw new IllegalArgumentException(
+							"Row " + rowNum + ": Duplicate Barcode in batch: '" + barcode + "'");
 				}
 				batchBarcodes.add(barcodeLower);
 				if (repo.existsByFirmIdAndBarcode(targetFirmId, barcode)) {
-					throw new IllegalArgumentException("Row " + rowNum + ": Product with Barcode '" + barcode + "' already exists for this firm");
+					throw new IllegalArgumentException(
+							"Row " + rowNum + ": Product with Barcode '" + barcode + "' already exists for this firm");
 				}
 			}
 
@@ -224,11 +373,14 @@ public class ProductService {
 			}
 
 			String itemType = row.getItemType() != null && !row.getItemType().trim().isEmpty()
-					? row.getItemType().trim().toUpperCase() : "GOODS";
+					? row.getItemType().trim().toUpperCase()
+					: "GOODS";
 			String unit = row.getUnit() != null && !row.getUnit().trim().isEmpty()
-					? row.getUnit().trim() : "pcs";
+					? row.getUnit().trim()
+					: "pcs";
 			String category = row.getCategory() != null && !row.getCategory().trim().isEmpty()
-					? row.getCategory().trim() : null;
+					? row.getCategory().trim()
+					: null;
 
 			Product p = Product.builder()
 					.firmId(targetFirmId)
@@ -322,7 +474,8 @@ public class ProductService {
 	public List<Product> searchProducts(Long firmId, String query) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product search prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm product search prohibited");
 		}
 		Long targetFirmId = firmId != null ? firmId : authoritativeFirmId;
 		if (targetFirmId == null) {
@@ -334,15 +487,16 @@ public class ProductService {
 		return com.billing.simple.billsoft.util.FuzzySearchMatcher.filterAndSort(
 				list,
 				query,
-				p -> Arrays.asList(p.getName(), p.getCategory(), p.getSku(), p.getHsnCode(), p.getBarcode(), p.getDescription()),
-				50
-		);
+				p -> Arrays.asList(p.getName(), p.getCategory(), p.getSku(), p.getHsnCode(), p.getBarcode(),
+						p.getDescription()),
+				50);
 	}
 
 	public List<Product> getUnimportedProducts(Long firmId) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm unimported product access prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm unimported product access prohibited");
 		}
 		return getAll(firmId, false);
 	}
@@ -355,7 +509,8 @@ public class ProductService {
 		}
 		Page<Product> page;
 		if (search != null && !search.trim().isEmpty()) {
-			page = repo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseAndNameContainingIgnoreCase(targetFirmId, search.trim(), pageable);
+			page = repo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseAndNameContainingIgnoreCase(targetFirmId,
+					search.trim(), pageable);
 		} else {
 			page = repo.findByFirmIdAndInInventoryTrueAndIsArchivedFalse(targetFirmId, pageable);
 		}
@@ -371,11 +526,13 @@ public class ProductService {
 	public Product importToInventory(Long id, BigDecimal openingStock) {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (fid == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to import product to inventory");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Active firm context is required to import product to inventory");
 		}
 		Optional<Product> opt = repo.findByIdAndFirmIdForUpdate(id, fid);
 		if (opt.isEmpty()) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized for firm: " + fid);
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Product not found or unauthorized for firm: " + fid);
 		}
 		Product p = opt.get();
 		applyInventoryOnboarding(p, openingStock, "Initial opening stock recorded on import to inventory");
@@ -383,11 +540,15 @@ public class ProductService {
 	}
 
 	/**
-	 * Shared authoritative implementation for promoting a catalog product into inventory.
+	 * Shared authoritative implementation for promoting a catalog product into
+	 * inventory.
 	 * Invariant:
-	 * - inInventory: false -> true with openingStock > 0 creates INITIAL_STOCK movement and sets ledger balance.
-	 * - inInventory: false -> true with openingStock == 0 creates no stock movement.
-	 * - inInventory: true (already tracked) preserves existing inventory and never overwrites ledger balance.
+	 * - inInventory: false -> true with openingStock > 0 creates INITIAL_STOCK
+	 * movement and sets ledger balance.
+	 * - inInventory: false -> true with openingStock == 0 creates no stock
+	 * movement.
+	 * - inInventory: true (already tracked) preserves existing inventory and never
+	 * overwrites ledger balance.
 	 */
 	public StockMovement applyInventoryOnboarding(Product product, BigDecimal openingStock, String note) {
 		if (!Boolean.TRUE.equals(product.getInInventory())) {
@@ -449,7 +610,8 @@ public class ProductService {
 			fid = updated.getFirmId();
 		}
 		if (fid != null && updated.getFirmId() != null && !updated.getFirmId().equals(fid)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product update prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm product update prohibited");
 		}
 		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty())
@@ -520,18 +682,23 @@ public class ProductService {
 		String sku = updated.getSku() != null && !updated.getSku().trim().isEmpty() ? updated.getSku().trim() : null;
 		if (sku != null) {
 			Optional<Product> conflict = repo.findFirstByFirmIdAndSku(fid, sku);
-			if (conflict.isPresent() && !conflict.get().getId().equals(id) && (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
+			if (conflict.isPresent() && !conflict.get().getId().equals(id)
+					&& (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
 				throw new IllegalArgumentException("Product with SKU '" + sku + "' already exists for this firm");
 			}
 		}
 		existing.setSku(sku);
 
 		// Barcode uniqueness validation against active products
-		String barcode = updated.getBarcode() != null && !updated.getBarcode().trim().isEmpty() ? updated.getBarcode().trim() : null;
+		String barcode = updated.getBarcode() != null && !updated.getBarcode().trim().isEmpty()
+				? updated.getBarcode().trim()
+				: null;
 		if (barcode != null) {
 			Optional<Product> conflict = repo.findFirstByFirmIdAndBarcode(fid, barcode);
-			if (conflict.isPresent() && !conflict.get().getId().equals(id) && (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
-				throw new IllegalArgumentException("Product with Barcode '" + barcode + "' already exists for this firm");
+			if (conflict.isPresent() && !conflict.get().getId().equals(id)
+					&& (conflict.get().getIsArchived() == null || !conflict.get().getIsArchived())) {
+				throw new IllegalArgumentException(
+						"Product with Barcode '" + barcode + "' already exists for this firm");
 			}
 		}
 		existing.setBarcode(barcode);
@@ -548,7 +715,8 @@ public class ProductService {
 
 		// Inventory Onboarding (Shared authoritative logic)
 		if (Boolean.TRUE.equals(updated.getInInventory())) {
-			applyInventoryOnboarding(existing, updated.getStockQuantity(), "Initial opening stock recorded on product edit");
+			applyInventoryOnboarding(existing, updated.getStockQuantity(),
+					"Initial opening stock recorded on product edit");
 		}
 
 		return repo.save(existing);
@@ -558,11 +726,13 @@ public class ProductService {
 	public ProductBulkUpdateResponseDto updateBulk(List<ProductBulkUpdateItemDto> rows, Long clientFirmId) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm bulk product update prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm bulk product update prohibited");
 		}
 		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
 		if (targetFirmId == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required for bulk product update");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Active firm context is required for bulk product update");
 		}
 
 		if (rows == null || rows.isEmpty()) {
@@ -599,11 +769,13 @@ public class ProductService {
 				batchSkus.add(skuLower);
 			}
 
-			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim() : null;
+			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim()
+					: null;
 			if (barcode != null) {
 				String barcodeLower = barcode.toLowerCase();
 				if (batchBarcodes.contains(barcodeLower)) {
-					throw new IllegalArgumentException("Row " + rowNum + ": Duplicate Barcode in batch: '" + barcode + "'");
+					throw new IllegalArgumentException(
+							"Row " + rowNum + ": Duplicate Barcode in batch: '" + barcode + "'");
 				}
 				batchBarcodes.add(barcodeLower);
 			}
@@ -641,7 +813,8 @@ public class ProductService {
 			int rowNum = i + 1;
 			Product existing = productMap.get(row.getProductId());
 			if (existing == null) {
-				throw new IllegalArgumentException("Row " + rowNum + ": Product ID " + row.getProductId() + " not found");
+				throw new IllegalArgumentException(
+						"Row " + rowNum + ": Product ID " + row.getProductId() + " not found");
 			}
 
 			// Validate database SKU collision against other products outside the batch
@@ -649,7 +822,8 @@ public class ProductService {
 			if (sku != null) {
 				Optional<Product> conflict = repo.findFirstByFirmIdAndSku(targetFirmId, sku);
 				if (conflict.isPresent() && !conflict.get().getId().equals(existing.getId())) {
-					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName() + "'): SKU '" + sku + "' is already in use by another product");
+					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName() + "'): SKU '" + sku
+							+ "' is already in use by another product");
 				}
 				existing.setSku(sku);
 			} else if (row.getSku() != null) {
@@ -657,11 +831,13 @@ public class ProductService {
 			}
 
 			// Validate database Barcode collision against other products outside the batch
-			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim() : null;
+			String barcode = row.getBarcode() != null && !row.getBarcode().trim().isEmpty() ? row.getBarcode().trim()
+					: null;
 			if (barcode != null) {
 				Optional<Product> conflict = repo.findFirstByFirmIdAndBarcode(targetFirmId, barcode);
 				if (conflict.isPresent() && !conflict.get().getId().equals(existing.getId())) {
-					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName() + "'): Barcode '" + barcode + "' is already in use by another product");
+					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName() + "'): Barcode '"
+							+ barcode + "' is already in use by another product");
 				}
 				existing.setBarcode(barcode);
 			} else if (row.getBarcode() != null) {
@@ -671,7 +847,8 @@ public class ProductService {
 			// Validate Vendor
 			if (row.getPreferredPartyId() != null && row.getPreferredPartyId() > 0) {
 				if (partyRepo != null && !partyRepo.existsByIdAndFirmId(row.getPreferredPartyId(), targetFirmId)) {
-					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName() + "'): Preferred vendor does not exist for this firm");
+					throw new IllegalArgumentException("Row " + rowNum + " ('" + existing.getName()
+							+ "'): Preferred vendor does not exist for this firm");
 				}
 				existing.setPreferredPartyId(row.getPreferredPartyId());
 			} else if (row.getPreferredPartyId() != null && row.getPreferredPartyId() <= 0) {
@@ -711,9 +888,11 @@ public class ProductService {
 			}
 
 			// Inventory Onboarding (Shared authoritative logic)
-			boolean shouldTrack = Boolean.TRUE.equals(row.getTrackInInventory()) || Boolean.TRUE.equals(row.getInInventory());
+			boolean shouldTrack = Boolean.TRUE.equals(row.getTrackInInventory())
+					|| Boolean.TRUE.equals(row.getInInventory());
 			if (shouldTrack) {
-				applyInventoryOnboarding(existing, row.getOpeningStock(), "Initial opening stock recorded on bulk product edit");
+				applyInventoryOnboarding(existing, row.getOpeningStock(),
+						"Initial opening stock recorded on bulk product edit");
 			}
 		}
 
@@ -731,7 +910,8 @@ public class ProductService {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty()) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized: " + id);
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Product not found or unauthorized: " + id);
 		}
 		Product p = opt.get();
 		p.setIsArchived(true);
@@ -745,7 +925,8 @@ public class ProductService {
 		Long fid = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty()) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Product not found or unauthorized: " + id);
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Product not found or unauthorized: " + id);
 		}
 		Product p = opt.get();
 		Long targetFirmId = p.getFirmId();
@@ -754,7 +935,8 @@ public class ProductService {
 		if (p.getSku() != null && !p.getSku().trim().isEmpty()) {
 			String sku = p.getSku().trim();
 			if (repo.existsByFirmIdAndSkuAndIsArchivedFalse(targetFirmId, sku)) {
-				throw new IllegalStateException("Cannot restore product: an active product with SKU '" + sku + "' already exists");
+				throw new IllegalStateException(
+						"Cannot restore product: an active product with SKU '" + sku + "' already exists");
 			}
 		}
 
@@ -762,7 +944,8 @@ public class ProductService {
 		if (p.getBarcode() != null && !p.getBarcode().trim().isEmpty()) {
 			String barcode = p.getBarcode().trim();
 			if (repo.existsByFirmIdAndBarcodeAndIsArchivedFalse(targetFirmId, barcode)) {
-				throw new IllegalStateException("Cannot restore product: an active product with Barcode '" + barcode + "' already exists");
+				throw new IllegalStateException(
+						"Cannot restore product: an active product with Barcode '" + barcode + "' already exists");
 			}
 		}
 
@@ -836,8 +1019,7 @@ public class ProductService {
 						product.getId(),
 						product.getName(),
 						prevStock,
-						quantity
-				);
+						quantity);
 			}
 			newStock = prevStock.subtract(quantity);
 			change = quantity.negate();
@@ -850,8 +1032,7 @@ public class ProductService {
 						product.getId(),
 						product.getName(),
 						prevStock,
-						quantity
-				);
+						quantity);
 			}
 			newStock = quantity;
 			change = newStock.subtract(prevStock);
@@ -864,8 +1045,10 @@ public class ProductService {
 			}
 			if (notificationService != null) {
 				try {
-					notificationService.resolveByEventKey(product.getFirmId(), "inventory:stock:item:" + product.getId());
-				} catch (Exception ignored) { }
+					notificationService.resolveByEventKey(product.getFirmId(),
+							"inventory:stock:item:" + product.getId());
+				} catch (Exception ignored) {
+				}
 			}
 		}
 		Product saved = repo.save(product);
@@ -891,15 +1074,20 @@ public class ProductService {
 	/**
 	 * Programmatic stock ledger update for Invoices, Purchase Orders, and Returns.
 	 * Preserves ledger invariant: previousStock + actualChange = newStock.
-	 * In default strict mode (INVENTORY_ALLOW_NEGATIVE_STOCK = false), deductions exceeding
-	 * available stock throw InsufficientStockException to trigger transaction rollback.
-	 * In negative stock mode (INVENTORY_ALLOW_NEGATIVE_STOCK = true), full requested quantities
-	 * are deducted and a negative stock balance is recorded with a warning audit trail.
+	 * In default strict mode (INVENTORY_ALLOW_NEGATIVE_STOCK = false), deductions
+	 * exceeding
+	 * available stock throw InsufficientStockException to trigger transaction
+	 * rollback.
+	 * In negative stock mode (INVENTORY_ALLOW_NEGATIVE_STOCK = true), full
+	 * requested quantities
+	 * are deducted and a negative stock balance is recorded with a warning audit
+	 * trail.
 	 */
 	@Transactional
 	public BigDecimal recordStockMovement(Long productId, Long firmId, String movementType, BigDecimal quantityChange,
 			String referenceType, String referenceId, String note) {
-		return recordStockMovement(productId, firmId, movementType, quantityChange, referenceType, referenceId, note, false);
+		return recordStockMovement(productId, firmId, movementType, quantityChange, referenceType, referenceId, note,
+				false);
 	}
 
 	@Transactional
@@ -909,7 +1097,8 @@ public class ProductService {
 			return BigDecimal.ZERO;
 		}
 
-		Long targetFirmId = (firmId != null) ? firmId : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+		Long targetFirmId = (firmId != null) ? firmId
+				: com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		Optional<Product> opt = (targetFirmId != null)
 				? repo.findByIdAndFirmIdForUpdate(productId, targetFirmId)
 				: repo.findByIdForUpdate(productId);
@@ -950,10 +1139,10 @@ public class ProductService {
 							product.getId(),
 							product.getName(),
 							prevStock,
-							requestedDeduction
-					);
+							requestedDeduction);
 				}
-				// Negative stock mode: deduct full requested quantity, resulting in negative stock balance
+				// Negative stock mode: deduct full requested quantity, resulting in negative
+				// stock balance
 				actualChange = quantityChange;
 				newStock = prevStock.subtract(requestedDeduction);
 				BigDecimal shortage = requestedDeduction.subtract(prevStock);
@@ -980,7 +1169,8 @@ public class ProductService {
 			if (notificationService != null) {
 				try {
 					notificationService.resolveByEventKey(targetFirmId, "inventory:stock:item:" + product.getId());
-				} catch (Exception ignored) { }
+				} catch (Exception ignored) {
+				}
 			}
 		}
 		repo.save(product);
@@ -1106,11 +1296,13 @@ public class ProductService {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
 		if (targetFirmId == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to export products");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Active firm context is required to export products");
 		}
 		List<Product> products = repo.findByFirmIdAndIsArchivedFalseOrderByNameAsc(targetFirmId);
 		StringBuilder csv = new StringBuilder();
-		csv.append("Product Name,HSN/SAC Code,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Stock Quantity,Min Stock Level,Unit,Description,Track in Inventory,SKU\n");
+		csv.append(
+				"Product Name,HSN/SAC Code,Barcode,Category,Item Type,Selling Price,Cost Price,GST %,Stock Quantity,Min Stock Level,Unit,Description,Track in Inventory,SKU\n");
 		for (Product p : products) {
 			csv.append(escapeCsv(p.getName())).append(",");
 			csv.append(escapeCsv(p.getHsnCode() != null ? p.getHsnCode() : "")).append(",");
@@ -1118,10 +1310,14 @@ public class ProductService {
 			csv.append(escapeCsv(p.getCategory() != null ? p.getCategory() : "")).append(",");
 			csv.append(escapeCsv(p.getItemType() != null ? p.getItemType() : "GOODS")).append(",");
 			csv.append(p.getPrice() != null ? p.getPrice().stripTrailingZeros().toPlainString() : "0").append(",");
-			csv.append(p.getCostPrice() != null ? p.getCostPrice().stripTrailingZeros().toPlainString() : "").append(",");
-			csv.append(p.getGstPercentage() != null ? p.getGstPercentage().stripTrailingZeros().toPlainString() : "0").append(",");
-			csv.append(p.getStockQuantity() != null ? p.getStockQuantity().stripTrailingZeros().toPlainString() : "0").append(",");
-			csv.append(p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "5").append(",");
+			csv.append(p.getCostPrice() != null ? p.getCostPrice().stripTrailingZeros().toPlainString() : "")
+					.append(",");
+			csv.append(p.getGstPercentage() != null ? p.getGstPercentage().stripTrailingZeros().toPlainString() : "0")
+					.append(",");
+			csv.append(p.getStockQuantity() != null ? p.getStockQuantity().stripTrailingZeros().toPlainString() : "0")
+					.append(",");
+			csv.append(p.getMinStockLevel() != null ? p.getMinStockLevel().stripTrailingZeros().toPlainString() : "5")
+					.append(",");
 			csv.append(escapeCsv(p.getUnit() != null ? p.getUnit() : "pcs")).append(",");
 			csv.append(escapeCsv(p.getDescription() != null ? p.getDescription() : "")).append(",");
 			csv.append(Boolean.FALSE.equals(p.getInInventory()) ? "No" : "Yes").append(",");
@@ -1144,11 +1340,13 @@ public class ProductService {
 	@Transactional(rollbackFor = Exception.class)
 	public ProductImportResponseDto importProductsFromFile(byte[] bytes, String filename, Long clientFirmId) {
 		if (bytes == null || bytes.length == 0) {
-			throw new IllegalArgumentException("Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
+			throw new IllegalArgumentException(
+					"Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
 		}
 
 		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isLegacyXls(bytes, filename)) {
-			throw new IllegalArgumentException("Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
+			throw new IllegalArgumentException(
+					"Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
 		}
 
 		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isZipOrXlsx(bytes, filename)) {
@@ -1161,9 +1359,11 @@ public class ProductService {
 			}
 		}
 
-		// Detect corrupted/binary unsupported formats (e.g. PDF, image, binary executables)
+		// Detect corrupted/binary unsupported formats (e.g. PDF, image, binary
+		// executables)
 		if (isBinaryNonText(bytes)) {
-			throw new IllegalArgumentException("Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
+			throw new IllegalArgumentException(
+					"Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
 		}
 
 		String csvText = com.billing.simple.billsoft.util.ProductBulkImportUtils.cleanUtf8String(bytes);
@@ -1209,14 +1409,17 @@ public class ProductService {
 
 	public ProductImportResponseDto previewProductsFromFile(byte[] bytes, String filename, Long clientFirmId) {
 		if (bytes == null || bytes.length == 0) {
-			throw new IllegalArgumentException("Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
+			throw new IllegalArgumentException(
+					"Uploaded file is empty. Please provide a CSV or Excel file containing product data.");
 		}
 		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isLegacyXls(bytes, filename)) {
-			throw new IllegalArgumentException("Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
+			throw new IllegalArgumentException(
+					"Legacy Excel 97-2003 (.xls) format is not supported. Please save the workbook as Excel (.xlsx) or CSV (.csv) and re-upload.");
 		}
 		if (com.billing.simple.billsoft.util.ProductBulkImportUtils.isZipOrXlsx(bytes, filename)) {
 			try {
-				List<List<String>> parsedLines = com.billing.simple.billsoft.util.ProductBulkImportUtils.parseXlsx(bytes);
+				List<List<String>> parsedLines = com.billing.simple.billsoft.util.ProductBulkImportUtils
+						.parseXlsx(bytes);
 				return processProductsTable(parsedLines, clientFirmId, true);
 			} catch (IllegalArgumentException e) {
 				throw e;
@@ -1225,7 +1428,8 @@ public class ProductService {
 			}
 		}
 		if (isBinaryNonText(bytes)) {
-			throw new IllegalArgumentException("Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
+			throw new IllegalArgumentException(
+					"Unsupported file format. Please upload a valid CSV (.csv) or Excel (.xlsx) file.");
 		}
 		String csvText = com.billing.simple.billsoft.util.ProductBulkImportUtils.cleanUtf8String(bytes);
 		return previewProductsFromCsv(csvText, clientFirmId);
@@ -1246,8 +1450,7 @@ public class ProductService {
 			"dozen", "ft", "feet", "nos", "set", "sets",
 			"hours", "hrs", "days", "month", "mon",
 			"roll", "rolls", "bundle", "bundles", "can", "drum",
-			"bag", "bags", "pair", "pairs", "sqft", "sqm"
-	);
+			"bag", "bags", "pair", "pairs", "sqft", "sqm");
 
 	private static String normalizeUnit(String rawUnit) {
 		if (rawUnit == null || rawUnit.trim().isEmpty()) {
@@ -1294,13 +1497,15 @@ public class ProductService {
 	}
 
 	private static boolean isSupportedUnit(String unit) {
-		if (unit == null || unit.trim().isEmpty()) return true;
+		if (unit == null || unit.trim().isEmpty())
+			return true;
 		return SUPPORTED_UNITS.contains(unit.trim().toLowerCase());
 	}
 
 	private static class ParseResult<T> {
 		final T value;
 		final boolean hasError;
+
 		ParseResult(T value, boolean hasError) {
 			this.value = value;
 			this.hasError = hasError;
@@ -1319,14 +1524,17 @@ public class ProductService {
 		}
 	}
 
-	private ProductImportResponseDto processProductsTable(List<List<String>> parsedLines, Long clientFirmId, boolean isPreview) {
+	private ProductImportResponseDto processProductsTable(List<List<String>> parsedLines, Long clientFirmId,
+			boolean isPreview) {
 		Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
 		if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product import prohibited");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Cross-firm product import prohibited");
 		}
 		Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
 		if (targetFirmId == null) {
-			throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required to import products");
+			throw new com.billing.simple.billsoft.security.TenantSecurityException(
+					"Active firm context is required to import products");
 		}
 		if (parsedLines == null || parsedLines.isEmpty()) {
 			throw new IllegalArgumentException("No data rows found in uploaded file");
@@ -1384,7 +1592,8 @@ public class ProductService {
 			sku = (sku != null && !sku.trim().isEmpty()) ? sku.trim() : null;
 
 			if (legacySkuWithoutHsn && sku != null) {
-				warnings.add("Row " + rowNum + " ('" + (name != null ? name.trim() : "Unknown") + "'): Preserved legacy SKU '" + sku + "' without automatic assignment as HSN/SAC code.");
+				warnings.add("Row " + rowNum + " ('" + (name != null ? name.trim() : "Unknown")
+						+ "'): Preserved legacy SKU '" + sku + "' without automatic assignment as HSN/SAC code.");
 			}
 
 			String barcode = getColVal(cols, colMap, "barcode");
@@ -1412,7 +1621,8 @@ public class ProductService {
 				} else {
 					batchBarcodes.add(barcodeLower);
 					if (repo.existsByFirmIdAndBarcode(targetFirmId, barcode)) {
-						errors.add("Row " + rowNum + ": Product with Barcode '" + barcode + "' already exists for this firm");
+						errors.add("Row " + rowNum + ": Product with Barcode '" + barcode
+								+ "' already exists for this firm");
 						rowHasError = true;
 					}
 				}
@@ -1421,7 +1631,8 @@ public class ProductService {
 			if (sku == null && barcode == null && name != null && !name.trim().isEmpty()) {
 				String nameLower = name.trim().toLowerCase();
 				if (batchNamesWithoutIdentifiers.contains(nameLower)) {
-					errors.add("Row " + rowNum + ": Duplicate product name in batch: '" + name.trim() + "' (please assign unique SKUs or distinct names)");
+					errors.add("Row " + rowNum + ": Duplicate product name in batch: '" + name.trim()
+							+ "' (please assign unique SKUs or distinct names)");
 					rowHasError = true;
 				} else {
 					batchNamesWithoutIdentifiers.add(nameLower);
@@ -1436,7 +1647,8 @@ public class ProductService {
 			if (rawItemType != null && !rawItemType.trim().isEmpty()) {
 				String it = rawItemType.trim().toUpperCase();
 				if (!"GOODS".equals(it) && !"SERVICE".equals(it)) {
-					errors.add("Row " + rowNum + ": Invalid Item Type '" + rawItemType.trim() + "'. Must be 'GOODS' or 'SERVICE'");
+					errors.add("Row " + rowNum + ": Invalid Item Type '" + rawItemType.trim()
+							+ "'. Must be 'GOODS' or 'SERVICE'");
 					rowHasError = true;
 				} else {
 					itemType = it;
@@ -1445,7 +1657,8 @@ public class ProductService {
 
 			String rawUnit = getColVal(cols, colMap, "unit");
 			if (rawUnit != null && !rawUnit.trim().isEmpty() && !isSupportedUnit(rawUnit)) {
-				errors.add("Row " + rowNum + ": Unknown or unsupported unit '" + rawUnit.trim() + "'. Supported units: pcs, kg, g, litre, ml, m, cm, box, dozen, ft, nos, set, hours, days");
+				errors.add("Row " + rowNum + ": Unknown or unsupported unit '" + rawUnit.trim()
+						+ "'. Supported units: pcs, kg, g, litre, ml, m, cm, box, dozen, ft, nos, set, hours, days");
 				rowHasError = true;
 			}
 			String unit = normalizeUnit(rawUnit);
@@ -1457,7 +1670,8 @@ public class ProductService {
 			ParseResult<BigDecimal> priceRes = parseNumeric(rawPrice, BigDecimal.ZERO);
 			BigDecimal price = priceRes.value;
 			if (priceRes.hasError) {
-				errors.add("Row " + rowNum + ": Invalid selling price '" + rawPrice.trim() + "'. Must be a valid numeric amount");
+				errors.add("Row " + rowNum + ": Invalid selling price '" + rawPrice.trim()
+						+ "'. Must be a valid numeric amount");
 				rowHasError = true;
 			} else if (price.compareTo(BigDecimal.ZERO) < 0) {
 				errors.add("Row " + rowNum + ": Selling price cannot be negative");
@@ -1468,7 +1682,8 @@ public class ProductService {
 			ParseResult<BigDecimal> costRes = parseNumeric(rawCostPrice, null);
 			BigDecimal costPrice = costRes.value;
 			if (costRes.hasError) {
-				errors.add("Row " + rowNum + ": Invalid cost price '" + rawCostPrice.trim() + "'. Must be a valid numeric amount");
+				errors.add("Row " + rowNum + ": Invalid cost price '" + rawCostPrice.trim()
+						+ "'. Must be a valid numeric amount");
 				rowHasError = true;
 			} else if (costPrice != null && costPrice.compareTo(BigDecimal.ZERO) < 0) {
 				errors.add("Row " + rowNum + ": Cost price cannot be negative");
@@ -1479,7 +1694,8 @@ public class ProductService {
 			ParseResult<BigDecimal> gstRes = parseNumeric(rawGst, BigDecimal.ZERO);
 			BigDecimal gst = gstRes.value;
 			if (gstRes.hasError) {
-				errors.add("Row " + rowNum + ": Invalid GST percentage '" + rawGst.trim() + "'. Must be a valid numeric percentage between 0 and 100");
+				errors.add("Row " + rowNum + ": Invalid GST percentage '" + rawGst.trim()
+						+ "'. Must be a valid numeric percentage between 0 and 100");
 				rowHasError = true;
 			} else if (gst.compareTo(BigDecimal.ZERO) < 0 || gst.compareTo(new BigDecimal("100.00")) > 0) {
 				errors.add("Row " + rowNum + ": GST percentage must be between 0 and 100");
@@ -1490,7 +1706,8 @@ public class ProductService {
 			ParseResult<BigDecimal> initStockRes = parseNumeric(rawInitStock, BigDecimal.ZERO);
 			BigDecimal initStock = initStockRes.value;
 			if (initStockRes.hasError) {
-				errors.add("Row " + rowNum + ": Invalid initial stock quantity '" + rawInitStock.trim() + "'. Must be a valid numeric quantity");
+				errors.add("Row " + rowNum + ": Invalid initial stock quantity '" + rawInitStock.trim()
+						+ "'. Must be a valid numeric quantity");
 				rowHasError = true;
 			} else if (initStock.compareTo(BigDecimal.ZERO) < 0) {
 				errors.add("Row " + rowNum + ": Initial stock cannot be negative");
@@ -1501,7 +1718,8 @@ public class ProductService {
 			ParseResult<BigDecimal> minStockRes = parseNumeric(rawMinStock, new BigDecimal("5.000"));
 			BigDecimal minStock = minStockRes.value;
 			if (minStockRes.hasError) {
-				errors.add("Row " + rowNum + ": Invalid minimum stock level '" + rawMinStock.trim() + "'. Must be a valid numeric quantity");
+				errors.add("Row " + rowNum + ": Invalid minimum stock level '" + rawMinStock.trim()
+						+ "'. Must be a valid numeric quantity");
 				rowHasError = true;
 			} else if (minStock.compareTo(BigDecimal.ZERO) < 0) {
 				errors.add("Row " + rowNum + ": Minimum stock level cannot be negative");
@@ -1509,7 +1727,8 @@ public class ProductService {
 			}
 
 			String trackInvStr = getColVal(cols, colMap, "trackininventory");
-			boolean inInventory = trackInvStr == null || !("no".equalsIgnoreCase(trackInvStr.trim()) || "false".equalsIgnoreCase(trackInvStr.trim()));
+			boolean inInventory = trackInvStr == null
+					|| !("no".equalsIgnoreCase(trackInvStr.trim()) || "false".equalsIgnoreCase(trackInvStr.trim()));
 
 			if (!rowHasError) {
 				ProductBulkRowDto rowDto = ProductBulkRowDto.builder()
@@ -1566,7 +1785,8 @@ public class ProductService {
 		}
 
 		if (!errors.isEmpty()) {
-			throw new IllegalArgumentException("Import failed with " + errors.size() + " validation error(s):\n" + String.join("\n", errors));
+			throw new IllegalArgumentException(
+					"Import failed with " + errors.size() + " validation error(s):\n" + String.join("\n", errors));
 		}
 
 		if (bulkRows.isEmpty()) {
@@ -1592,7 +1812,8 @@ public class ProductService {
 					|| norm.equals("product") || norm.equals("item")
 					|| norm.equals("hsnsaccode") || norm.equals("hsncode") || norm.equals("hsn")
 					|| norm.equals("sac") || norm.equals("saccode")
-					|| norm.equals("sku") || norm.equals("price") || norm.equals("sellingprice") || norm.equals("rate")) {
+					|| norm.equals("sku") || norm.equals("price") || norm.equals("sellingprice")
+					|| norm.equals("rate")) {
 				return true;
 			}
 		}
@@ -1600,7 +1821,8 @@ public class ProductService {
 	}
 
 	private String normalizeHeader(String h) {
-		if (h == null) return "";
+		if (h == null)
+			return "";
 		return h.toLowerCase().replaceAll("[^a-z0-9]", "");
 	}
 
@@ -1608,27 +1830,37 @@ public class ProductService {
 		Map<String, Integer> map = new HashMap<>();
 		for (int i = 0; i < headers.size(); i++) {
 			String norm = normalizeHeader(headers.get(i));
-			if (norm.equals("name") || norm.equals("productname") || norm.equals("itemname") || norm.equals("product") || norm.equals("item") || norm.equals("title") || norm.equals("itemdescription") || norm.equals("descriptionandsku")) {
+			if (norm.equals("name") || norm.equals("productname") || norm.equals("itemname") || norm.equals("product")
+					|| norm.equals("item") || norm.equals("title") || norm.equals("itemdescription")
+					|| norm.equals("descriptionandsku")) {
 				map.putIfAbsent("name", i);
-			} else if (norm.equals("hsnsaccode") || norm.equals("hsnsac") || norm.equals("hsncode") || norm.equals("saccode") || norm.equals("hsn") || norm.equals("sac") || norm.equals("hsnsaccodes") || norm.equals("hsntaxcode")) {
+			} else if (norm.equals("hsnsaccode") || norm.equals("hsnsac") || norm.equals("hsncode")
+					|| norm.equals("saccode") || norm.equals("hsn") || norm.equals("sac") || norm.equals("hsnsaccodes")
+					|| norm.equals("hsntaxcode")) {
 				map.putIfAbsent("hsn", i);
 			} else if (norm.equals("sku") || norm.equals("skucode") || norm.equals("itemcode")) {
 				map.putIfAbsent("sku", i);
-			} else if (norm.equals("barcode") || norm.equals("barcodenumber") || norm.equals("upc") || norm.equals("ean")) {
+			} else if (norm.equals("barcode") || norm.equals("barcodenumber") || norm.equals("upc")
+					|| norm.equals("ean")) {
 				map.putIfAbsent("barcode", i);
 			} else if (norm.equals("category") || norm.equals("group") || norm.equals("productcategory")) {
 				map.putIfAbsent("category", i);
 			} else if (norm.equals("itemtype") || norm.equals("type")) {
 				map.putIfAbsent("itemtype", i);
-			} else if (norm.equals("sellingprice") || norm.equals("price") || norm.equals("rate") || norm.equals("baseprice") || norm.equals("unitprice") || norm.equals("mrp")) {
+			} else if (norm.equals("sellingprice") || norm.equals("price") || norm.equals("rate")
+					|| norm.equals("baseprice") || norm.equals("unitprice") || norm.equals("mrp")) {
 				map.putIfAbsent("price", i);
-			} else if (norm.equals("costprice") || norm.equals("purchaseprice") || norm.equals("cost") || norm.equals("buyprice")) {
+			} else if (norm.equals("costprice") || norm.equals("purchaseprice") || norm.equals("cost")
+					|| norm.equals("buyprice")) {
 				map.putIfAbsent("costprice", i);
-			} else if (norm.equals("gst") || norm.equals("gstpercent") || norm.equals("gstpercentage") || norm.equals("tax") || norm.equals("taxpercent") || norm.equals("taxrate")) {
+			} else if (norm.equals("gst") || norm.equals("gstpercent") || norm.equals("gstpercentage")
+					|| norm.equals("tax") || norm.equals("taxpercent") || norm.equals("taxrate")) {
 				map.putIfAbsent("gst", i);
-			} else if (norm.equals("initialstock") || norm.equals("openingstock") || norm.equals("stockquantity") || norm.equals("stock") || norm.equals("quantity") || norm.equals("qty")) {
+			} else if (norm.equals("initialstock") || norm.equals("openingstock") || norm.equals("stockquantity")
+					|| norm.equals("stock") || norm.equals("quantity") || norm.equals("qty")) {
 				map.putIfAbsent("initialstock", i);
-			} else if (norm.equals("minstocklevel") || norm.equals("minstock") || norm.equals("minimumstock") || norm.equals("alertstock")) {
+			} else if (norm.equals("minstocklevel") || norm.equals("minstock") || norm.equals("minimumstock")
+					|| norm.equals("alertstock")) {
 				map.putIfAbsent("minstock", i);
 			} else if (norm.equals("unit") || norm.equals("uom") || norm.equals("unitofmeasure")) {
 				map.putIfAbsent("unit", i);
@@ -1667,7 +1899,8 @@ public class ProductService {
 	}
 
 	private BigDecimal parseDecimal(String str, BigDecimal defaultVal) {
-		if (str == null || str.trim().isEmpty()) return defaultVal;
+		if (str == null || str.trim().isEmpty())
+			return defaultVal;
 		try {
 			return new BigDecimal(str.trim().replaceAll("[^0-9.-]", ""));
 		} catch (Exception e) {
@@ -1676,7 +1909,8 @@ public class ProductService {
 	}
 
 	private String escapeCsv(String val) {
-		if (val == null) return "";
+		if (val == null)
+			return "";
 		if (val.contains(",") || val.contains("\"") || val.contains("\n") || val.contains("\r")) {
 			return "\"" + val.replace("\"", "\"\"") + "\"";
 		}
@@ -1691,8 +1925,10 @@ public class ProductService {
 	public Product snoozeStockAlert(Long productId, Long requestedFirmId, int days) {
 		Long firmId = resolveFirmId(requestedFirmId);
 		Product p = (firmId != null)
-				? repo.findByIdAndFirmId(productId, firmId).orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId))
-				: repo.findById(productId).orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId));
+				? repo.findByIdAndFirmId(productId, firmId)
+						.orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId))
+				: repo.findById(productId)
+						.orElseThrow(() -> new IllegalArgumentException("Product not found with id " + productId));
 		int effectiveDays = days > 0 ? days : 7;
 		LocalDateTime expiry = LocalDateTime.now().plusDays(effectiveDays);
 		p.setStockAlertSnoozedUntil(expiry);
@@ -1701,8 +1937,10 @@ public class ProductService {
 
 		if (notificationService != null) {
 			try {
-				notificationService.resolveByEventKey(p.getFirmId(), "inventory:stock:item:" + p.getId(), NotificationStatus.SNOOZED);
-			} catch (Exception ignored) { }
+				notificationService.resolveByEventKey(p.getFirmId(), "inventory:stock:item:" + p.getId(),
+						NotificationStatus.SNOOZED);
+			} catch (Exception ignored) {
+			}
 		}
 		return saved;
 	}

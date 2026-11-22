@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.billing.simple.billsoft.dtos.SmartDiscoveryResponse;
 import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.entities.StockMovement;
 import com.billing.simple.billsoft.service.ProductService;
@@ -190,6 +191,32 @@ public class ProductController {
 	@GetMapping("/categories")
 	public ResponseEntity<List<String>> getCategories(@RequestParam(required = false) Long firmId) {
 		return ResponseEntity.ok(service.getCategories(firmId));
+	}
+
+	@GetMapping("/smart-discovery")
+	public ResponseEntity<SmartDiscoveryResponse> getSmartDiscovery(
+			@RequestParam(required = false) Long firmId,
+			@RequestParam(required = false, defaultValue = "90") Integer days) {
+		return ResponseEntity.ok(service.getSmartDiscovery(firmId, days));
+	}
+
+	@GetMapping("/favorites")
+	public ResponseEntity<List<Long>> getFavorites(@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.getFavorites(firmId));
+	}
+
+	@PostMapping("/favorites/{productId}/toggle")
+	public ResponseEntity<List<Long>> toggleFavorite(
+			@PathVariable Long productId,
+			@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.toggleFavorite(productId, firmId));
+	}
+
+	@PostMapping("/favorites")
+	public ResponseEntity<List<Long>> updateFavorites(
+			@RequestBody List<Long> favoriteIds,
+			@RequestParam(required = false) Long firmId) {
+		return ResponseEntity.ok(service.updateFavorites(favoriteIds, firmId));
 	}
 
 	@GetMapping("/movements")

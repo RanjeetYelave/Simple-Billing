@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -26,6 +27,54 @@ public interface InvoiceItemRepository extends JpaRepository<InvoiceItem, Long> 
            "GROUP BY item.product.id, item.product.name " +
            "ORDER BY SUM(item.qty) DESC")
     List<Object[]> findTopProductsAll(@Param("statuses") List<InvoiceStatus> statuses, Pageable pageable);
+
+    @Query("SELECT item.product.id, COUNT(DISTINCT item.invoice.id), MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) " +
+           "FROM InvoiceItem item " +
+           "WHERE item.invoice.firmId = :firmId " +
+           "  AND item.invoice.status IN :statuses " +
+           "  AND COALESCE(item.invoice.invoiceDate, item.invoice.createdAt) >= :since " +
+           "  AND item.product IS NOT NULL " +
+           "GROUP BY item.product.id " +
+           "ORDER BY COUNT(DISTINCT item.invoice.id) DESC, MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) DESC")
+    List<Object[]> findFrequentlyUsedProductIdsByFirmId(
+            @Param("firmId") Long firmId,
+            @Param("statuses") List<InvoiceStatus> statuses,
+            @Param("since") LocalDateTime since,
+            Pageable pageable);
+
+    @Query("SELECT item.product.id, COUNT(DISTINCT item.invoice.id), MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) " +
+           "FROM InvoiceItem item " +
+           "WHERE item.invoice.status IN :statuses " +
+           "  AND COALESCE(item.invoice.invoiceDate, item.invoice.createdAt) >= :since " +
+           "  AND item.product IS NOT NULL " +
+           "GROUP BY item.product.id " +
+           "ORDER BY COUNT(DISTINCT item.invoice.id) DESC, MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) DESC")
+    List<Object[]> findFrequentlyUsedProductIdsAll(
+            @Param("statuses") List<InvoiceStatus> statuses,
+            @Param("since") LocalDateTime since,
+            Pageable pageable);
+
+    @Query("SELECT item.product.id, MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) " +
+           "FROM InvoiceItem item " +
+           "WHERE item.invoice.firmId = :firmId " +
+           "  AND item.invoice.status IN :statuses " +
+           "  AND item.product IS NOT NULL " +
+           "GROUP BY item.product.id " +
+           "ORDER BY MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) DESC")
+    List<Object[]> findRecentlyUsedProductIdsByFirmId(
+            @Param("firmId") Long firmId,
+            @Param("statuses") List<InvoiceStatus> statuses,
+            Pageable pageable);
+
+    @Query("SELECT item.product.id, MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) " +
+           "FROM InvoiceItem item " +
+           "WHERE item.invoice.status IN :statuses " +
+           "  AND item.product IS NOT NULL " +
+           "GROUP BY item.product.id " +
+           "ORDER BY MAX(COALESCE(item.invoice.invoiceDate, item.invoice.createdAt)) DESC")
+    List<Object[]> findRecentlyUsedProductIdsAll(
+            @Param("statuses") List<InvoiceStatus> statuses,
+            Pageable pageable);
 
     List<InvoiceItem> findByInvoice_IdAndInvoice_FirmId(Long invoiceId, Long firmId);
 

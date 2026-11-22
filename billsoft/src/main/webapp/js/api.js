@@ -473,6 +473,33 @@ const API = {
       const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
       return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/categories'), { headers }));
     },
+    getSmartDiscovery: (days = 90, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/smart-discovery', { days, ...(fid ? { firmId: fid } : {}) }), { headers }));
+    },
+    getFavorites: (firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/favorites', fid ? { firmId: fid } : {}), { headers }));
+    },
+    toggleFavorite: (productId, firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs(`/api/products/favorites/${productId}/toggle`, fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers
+      }));
+    },
+    updateFavorites: (favoriteIds = [], firmIdOverride) => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/products/favorites', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers,
+        body: favoriteIds
+      }));
+    },
     listUnimported: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/products/unimported'))),
     importToInventory: (id) => API._ensureFirmReady().then(() => API._json(`/api/products/${id}/import-to-inventory`, { method: 'POST' })),
     createBulk: (rows, firmIdOverride) => {

@@ -12365,6 +12365,403 @@
       };
     })();
 
+    // ─── RUPEECRM PRODUCT INTELLIGENCE & FAMILY GROUPING ENGINE ───
+    const RupeeProductIntelligence = (() => {
+      const SIZE_METRIC_REGEX = /\b(\d+(?:\.\d+)?)\s*(mm|cm|m|mtr|meter|meters|inch|inches|in|ft|feet)\b/i;
+      const SIZE_COMPOUND_REGEX = /\b(\d+(?:\.\d+)?)\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?)(?:\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m|inch|in)?\b/i;
+      const SIZE_FRACTION_REGEX = /(?:(\d+)\s+)?(\d+)\/(\d+)\s*(?:inch|inches|"|'')?/i;
+      const SIZE_WIRE_REGEX = /\b(\d+(?:\.\d+)?)\s*(?:sq\s*mm|sqmm)\b/i;
+      const SIZE_THREAD_REGEX = /\bM(\d+(?:\.\d+)?)\b/i;
+      const SIZE_WEIGHT_REGEX = /\b(\d+(?:\.\d+)?)\s*(kg|gm|g|ltr|liter|litre|ml)\b/i;
+
+      const SPEC_LENGTH_REGEX = /\b(short|long|regular|heavy|light|medium|std|standard|half|full)\b/i;
+      const SPEC_RATING_REGEX = /\b(sch\s*\d+|schedule\s*\d+|pn\s*\d+|class\s*\d+)\b/i;
+      const SPEC_COLOR_REGEX = /\b(red|blue|black|white|yellow|green|grey|gray|orange)\b/i;
+
+      function parseFraction(wholeStr, numStr, denomStr) {
+        const whole = wholeStr ? parseFloat(wholeStr) : 0;
+        const num = parseFloat(numStr);
+        const denom = parseFloat(denomStr);
+        if (isNaN(num) || isNaN(denom) || denom === 0) return null;
+        return whole + (num / denom);
+      }
+
+      function extractAttributes(productName) {
+        if (!productName || typeof productName !== 'string') {
+          return { stem: '', size: null, specs: [], variationLabel: '' };
+        }
+
+        let name = productName.trim();
+        let sizeObj = null;
+        const specs = [];
+
+        // 1. Compound dimension first (e.g. 20 x 15 mm, 25x20)
+        const compMatch = name.match(SIZE_COMPOUND_REGEX);
+        if (compMatch) {
+          const n1 = parseFloat(compMatch[1]);
+          const n2 = parseFloat(compMatch[2]);
+          const n3 = compMatch[3] ? parseFloat(compMatch[3]) : null;
+          const unit = (compMatch[4] || 'mm').toLowerCase();
+          sizeObj = {
+            raw: compMatch[0].trim(),
+            num: n1,
+            num2: n2,
+            num3: n3,
+            unit: unit,
+            isCompound: true
+          };
+          name = name.replace(compMatch[0], ' ');
+        } else {
+          // 2. Fractional inches (e.g. 1 1/2", 3/4 inch, 1/2")
+          const fracMatch = name.match(SIZE_FRACTION_REGEX);
+          if (fracMatch) {
+            const fracVal = parseFraction(fracMatch[1], fracMatch[2], fracMatch[3]);
+            if (fracVal !== null) {
+              sizeObj = {
+                raw: fracMatch[0].trim(),
+                num: fracVal,
+                unit: 'inch',
+                isFraction: true
+              };
+              name = name.replace(fracMatch[0], ' ');
+            }
+          }
+        }
+
+        // 3. Metric sizes if not yet matched (e.g. 15 mm, 20mm)
+        if (!sizeObj) {
+          const metricMatch = name.match(SIZE_METRIC_REGEX);
+          if (metricMatch) {
+            sizeObj = {
+              raw: metricMatch[0].trim(),
+              num: parseFloat(metricMatch[1]),
+              unit: metricMatch[2].toLowerCase()
+            };
+            name = name.replace(metricMatch[0], ' ');
+          }
+        }
+
+        // 4. Wire size (e.g. 1.5 sq mm)
+        if (!sizeObj) {
+          const wireMatch = name.match(SIZE_WIRE_REGEX);
+          if (wireMatch) {
+            sizeObj = {
+              raw: wireMatch[0].trim(),
+              num: parseFloat(wireMatch[1]),
+              unit: 'sq mm'
+            };
+            name = name.replace(wireMatch[0], ' ');
+          }
+        }
+
+        // 5. Thread (e.g. M8, M10)
+        if (!sizeObj) {
+          const threadMatch = name.match(SIZE_THREAD_REGEX);
+          if (threadMatch) {
+            sizeObj = {
+              raw: threadMatch[0].trim(),
+              num: parseFloat(threadMatch[1]),
+              unit: 'M'
+            };
+            name = name.replace(threadMatch[0], ' ');
+          }
+        }
+
+        // 6. Weight / Volume (e.g. 500 g, 1 L)
+        if (!sizeObj) {
+          const weightMatch = name.match(SIZE_WEIGHT_REGEX);
+          if (weightMatch) {
+            sizeObj = {
+              raw: weightMatch[0].trim(),
+              num: parseFloat(weightMatch[1]),
+              unit: weightMatch[2].toLowerCase()
+            };
+            name = name.replace(weightMatch[0], ' ');
+          }
+        }
+
+        // Extract spec tokens (Length, Schedule, Color)
+        const lengthMatch = name.match(SPEC_LENGTH_REGEX);
+        if (lengthMatch) {
+          specs.push(lengthMatch[0]);
+          name = name.replace(lengthMatch[0], ' ');
+        }
+
+        const ratingMatch = name.match(SPEC_RATING_REGEX);
+        if (ratingMatch) {
+          specs.push(ratingMatch[0]);
+          name = name.replace(ratingMatch[0], ' ');
+        }
+
+        const colorMatch = name.match(SPEC_COLOR_REGEX);
+        if (colorMatch) {
+          specs.push(colorMatch[0]);
+          name = name.replace(colorMatch[0], ' ');
+        }
+
+        // Clean up normalized stem
+        let stem = name
+          .replace(/[-–—/\\,]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (stem.length < 3) {
+          stem = productName.trim();
+        }
+
+        // Build concise variation label
+        const varParts = [];
+        specs.forEach(s => varParts.push(s.charAt(0).toUpperCase() + s.slice(1)));
+        if (sizeObj && sizeObj.raw) {
+          varParts.push(sizeObj.raw);
+        }
+        const variationLabel = varParts.length > 0 ? varParts.join(' ') : productName.trim();
+
+        return {
+          stem,
+          size: sizeObj,
+          specs,
+          variationLabel
+        };
+      }
+
+      function naturalCompareSize(pA, pB) {
+        const attrA = pA._intelAttr || extractAttributes(pA.name);
+        const attrB = pB._intelAttr || extractAttributes(pB.name);
+
+        const sA = attrA.size;
+        const sB = attrB.size;
+
+        if (sA && sB) {
+          if (sA.num !== sB.num) {
+            return sA.num - sB.num;
+          }
+          if (sA.num2 !== undefined && sB.num2 !== undefined && sA.num2 !== sB.num2) {
+            return sA.num2 - sB.num2;
+          }
+          return (attrA.variationLabel || '').localeCompare(attrB.variationLabel || '');
+        }
+
+        if (sA && !sB) return -1;
+        if (!sA && sB) return 1;
+
+        return (pA.name || '').localeCompare(pB.name || '');
+      }
+
+      function buildProductFamilies(products, options = {}) {
+        if (!products || !Array.isArray(products) || products.length === 0) return [];
+
+        const {
+          searchQuery = '',
+          selectedCategory = 'All',
+          favoritesSet = new Set(),
+          frequentlyUsedMap = {},
+          recentlyUsedMap = {},
+          sortBy = 'DEFAULT',
+          resolvePrice = () => 0
+        } = options;
+
+        let filtered = products;
+        if (selectedCategory && selectedCategory !== 'All') {
+          const catLower = selectedCategory.trim().toLowerCase();
+          filtered = filtered.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+        }
+
+        const q = (searchQuery || '').trim();
+        if (q) {
+          filtered = filtered.filter(p => matchesSearch(p, q));
+        }
+
+        const annotated = filtered.map(p => {
+          const attr = extractAttributes(p.name);
+          return {
+            ...p,
+            _intelAttr: attr
+          };
+        });
+
+        const groups = {};
+        annotated.forEach(p => {
+          const cat = (p.category || '').trim().toLowerCase();
+          const stem = p._intelAttr.stem.toLowerCase();
+          const groupKey = `${cat}:::${stem}`;
+
+          if (!groups[groupKey]) {
+            groups[groupKey] = {
+              groupKey,
+              catOriginal: p.category || '',
+              stemOriginal: p._intelAttr.stem,
+              products: []
+            };
+          }
+          groups[groupKey].products.push(p);
+        });
+
+        const resultItems = [];
+
+        Object.values(groups).forEach(g => {
+          const distinctVars = new Set(g.products.map(p => p._intelAttr.variationLabel.toLowerCase()));
+
+          if (g.products.length >= 2 && distinctVars.size >= 2) {
+            const sortedVars = [...g.products].sort(naturalCompareSize);
+
+            const prices = sortedVars.map(p => resolvePrice(p)).filter(pr => pr !== null && !isNaN(pr));
+            const minPr = prices.length > 0 ? Math.min(...prices) : 0;
+            const maxPr = prices.length > 0 ? Math.max(...prices) : 0;
+
+            const distinctSizes = Array.from(new Set(sortedVars.map(p => p._intelAttr.size ? p._intelAttr.size.raw : p._intelAttr.variationLabel).filter(Boolean)));
+            const sizesSummary = distinctSizes.slice(0, 4).join(', ') + (distinctSizes.length > 4 ? '...' : '');
+
+            let maxFreq = 0;
+            let latestDate = null;
+            sortedVars.forEach(p => {
+              const pid = String(p.rawId || p.id || '');
+              const freq = frequentlyUsedMap[pid] || 0;
+              if (freq > maxFreq) maxFreq = freq;
+              const rec = recentlyUsedMap[pid];
+              if (rec && (!latestDate || rec > latestDate)) latestDate = rec;
+            });
+
+            resultItems.push({
+              isFamily: true,
+              familyKey: g.groupKey,
+              familyName: g.stemOriginal,
+              category: g.catOriginal,
+              variations: sortedVars,
+              minPrice: minPr,
+              maxPrice: maxPr,
+              sizesSummary,
+              frequencyScore: maxFreq,
+              latestDate,
+              representativeProduct: sortedVars[0]
+            });
+          } else {
+            g.products.forEach(p => {
+              const pid = String(p.rawId || p.id || '');
+              resultItems.push({
+                isFamily: false,
+                product: p,
+                frequencyScore: frequentlyUsedMap[pid] || 0,
+                latestDate: recentlyUsedMap[pid] || null
+              });
+            });
+          }
+        });
+
+        applySorting(resultItems, sortBy, resolvePrice);
+
+        return resultItems;
+      }
+
+      function applySorting(items, sortBy, resolvePrice) {
+        if (!sortBy || sortBy === 'DEFAULT') return;
+
+        items.sort((a, b) => {
+          const prodA = a.isFamily ? a.representativeProduct : a.product;
+          const prodB = b.isFamily ? b.representativeProduct : b.product;
+          const nameA = a.isFamily ? a.familyName : (prodA.name || '');
+          const nameB = b.isFamily ? b.familyName : (prodB.name || '');
+
+          if (sortBy === 'FREQ') {
+            const fA = a.frequencyScore || 0;
+            const fB = b.frequencyScore || 0;
+            if (fB !== fA) return fB - fA;
+            return nameA.localeCompare(nameB);
+          }
+
+          if (sortBy === 'RECENT') {
+            const rA = a.latestDate ? new Date(a.latestDate).getTime() : 0;
+            const rB = b.latestDate ? new Date(b.latestDate).getTime() : 0;
+            if (rB !== rA) return rB - rA;
+            return nameA.localeCompare(nameB);
+          }
+
+          if (sortBy === 'FAMILY') {
+            return nameA.localeCompare(nameB);
+          }
+
+          if (sortBy === 'SIZE') {
+            return naturalCompareSize(prodA, prodB);
+          }
+
+          if (sortBy === 'NAME_ASC') {
+            return nameA.localeCompare(nameB);
+          }
+
+          if (sortBy === 'NAME_DESC') {
+            return nameB.localeCompare(nameA);
+          }
+
+          if (sortBy === 'PRICE_ASC') {
+            const pA = a.isFamily ? a.minPrice : resolvePrice(prodA);
+            const pB = b.isFamily ? b.minPrice : resolvePrice(prodB);
+            return pA - pB;
+          }
+
+          if (sortBy === 'PRICE_DESC') {
+            const pA = a.isFamily ? a.maxPrice : resolvePrice(prodA);
+            const pB = b.isFamily ? b.maxPrice : resolvePrice(prodB);
+            return pB - pA;
+          }
+
+          if (sortBy === 'IN_STOCK') {
+            const stA = a.isFamily ? a.variations.some(v => (v.stockQuantity || 0) > 0) : ((prodA.stockQuantity || 0) > 0);
+            const stB = b.isFamily ? b.variations.some(v => (v.stockQuantity || 0) > 0) : ((prodB.stockQuantity || 0) > 0);
+            if (stA !== stB) return stB ? 1 : -1;
+            return nameA.localeCompare(nameB);
+          }
+
+          return 0;
+        });
+      }
+
+      function matchesSearch(prod, query) {
+        if (!query) return true;
+        const q = query.trim().toLowerCase();
+        const compactQ = q.replace(/[\s\-_]/g, '');
+
+        const name = (prod.name || '').toLowerCase();
+        const compactName = name.replace(/[\s\-_]/g, '');
+        if (name.includes(q) || compactName.includes(compactQ)) return true;
+
+        if (prod.sku && prod.sku.toLowerCase().includes(q)) return true;
+        if (prod.barcode && prod.barcode.toLowerCase().includes(q)) return true;
+        if (prod.category && prod.category.toLowerCase().includes(q)) return true;
+        if (prod.hsnCode && prod.hsnCode.toLowerCase().includes(q)) return true;
+
+        const attr = prod._intelAttr || extractAttributes(prod.name);
+        if (attr.size && (attr.size.raw.toLowerCase().includes(q) || String(attr.size.num) === q)) return true;
+        if (attr.variationLabel && attr.variationLabel.toLowerCase().includes(q)) return true;
+
+        const tokens = q.split(/\s+/).filter(Boolean);
+        if (tokens.length > 1) {
+          const allMatch = tokens.every(tok =>
+            name.includes(tok) ||
+            (prod.category && prod.category.toLowerCase().includes(tok)) ||
+            (attr.size && attr.size.raw.toLowerCase().includes(tok))
+          );
+          if (allMatch) return true;
+        }
+
+        return false;
+      }
+
+      return {
+        extractAttributes,
+        naturalCompareSize,
+        buildProductFamilies,
+        matchesSearch,
+        applySorting
+      };
+    })();
+
+    if (typeof window !== 'undefined') {
+      window.RupeeProductIntelligence = RupeeProductIntelligence;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports = RupeeProductIntelligence;
+    }
+
     // ─── REUSABLE QUICK ADD ITEMS POS WORKSPACE MODAL ───
     function QuickAddItemsModal({
       isOpen,
@@ -12391,6 +12788,29 @@
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [containerWidth, setContainerWidth] = useState(700);
 
+      // Dual-Mode & Smart Discovery States
+      const [browsingMode, setBrowsingMode] = useState(() => {
+        try {
+          return localStorage.getItem('rcrm_qa_browsing_mode') || 'smart';
+        } catch (e) {
+          return 'smart';
+        }
+      });
+      const [smartSection, setSmartSection] = useState('all'); // 'all' | 'frequently' | 'favorites' | 'recent'
+      const [smartSort, setSmartSort] = useState('FREQ');
+      const [regularSort, setRegularSort] = useState('DEFAULT');
+      const [favoritesSet, setFavoritesSet] = useState(() => {
+        try {
+          const fid = activeFirmId ? String(activeFirmId) : (API.firmId ? String(API.firmId) : '1');
+          const saved = localStorage.getItem('billsoft_qa_favorites_' + fid);
+          return new Set(saved ? JSON.parse(saved).map(Number) : []);
+        } catch (e) {
+          return new Set();
+        }
+      });
+      const [smartDiscovery, setSmartDiscovery] = useState({ frequentlyUsed: [], recentlyUsed: [], periodDays: 90 });
+      const [expandedFamilies, setExpandedFamilies] = useState({});
+
       // Sound and Animation States
       const [soundEnabled, setSoundEnabled] = useState(() => !QuickAddAudio.isMuted());
       const [justAddedPid, setJustAddedPid] = useState(null);
@@ -12408,7 +12828,15 @@
         QuickAddAudio.setMuted(!next);
       };
 
-      // Load products, categories, and effective pricing
+      const handleSwitchMode = (mode) => {
+        if (mode === browsingMode) return;
+        setBrowsingMode(mode);
+        try {
+          localStorage.setItem('rcrm_qa_browsing_mode', mode);
+        } catch (e) {}
+      };
+
+      // Load products, categories, effective pricing, smart discovery, and favorites
       useEffect(() => {
         let isMounted = true;
         const promises = [];
@@ -12427,12 +12855,29 @@
           promises.push(Promise.resolve({ effectivePrices: existingEffectivePriceMap || {} }));
         }
 
+        // Fetch smart discovery and favorites in parallel
+        if (typeof API.products.getSmartDiscovery === 'function') {
+          API.products.getSmartDiscovery(90, targetFid).then(res => {
+            if (!isMounted || !res) return;
+            setSmartDiscovery({
+              frequentlyUsed: res.frequentlyUsed || [],
+              recentlyUsed: res.recentlyUsed || [],
+              periodDays: res.periodDays || 90
+            });
+            if (res.favorites && Array.isArray(res.favorites)) {
+              setFavoritesSet(new Set(res.favorites.map(Number)));
+              try {
+                localStorage.setItem('billsoft_qa_favorites_' + targetFid, JSON.stringify(res.favorites));
+              } catch (e) {}
+            }
+          }).catch(() => {});
+        }
+
         Promise.all(promises).then(([prods, cats, priceRes]) => {
           if (!isMounted) return;
           const loadedProds = (prods || []).filter(p => p && (!p.isArchived || p.isArchived === false));
           setProducts(loadedProds);
 
-          // Extract distinct non-empty categories from products and merge with API categories
           const fromProds = Array.from(new Set(loadedProds.map(p => (p.category || '').trim()).filter(Boolean)));
           const mergedCats = Array.from(new Set([...(cats || []).map(c => (c || '').trim()).filter(Boolean), ...fromProds])).sort((a, b) => a.localeCompare(b));
           setCategories(mergedCats);
@@ -12477,7 +12922,7 @@
         }, 100);
       }, []);
 
-      // Authoritative effective selling price resolution (never uses cost price)
+      // Authoritative effective selling price resolution
       const resolvePrice = useCallback((prod) => {
         if (!prod) return 0;
         const pid = String(prod.rawId || prod.id || '');
@@ -12494,40 +12939,71 @@
 
       // Dynamic calculation of visible vs overflow category chips
       const { visibleChips, overflowChips } = useMemo(() => {
-        // Reserve 95px for 'More ▾' button and 60px for 'All'
         const avail = Math.max(120, containerWidth - 110);
-        // Estimate ~85px average chip width
         const maxFit = Math.max(2, Math.floor(avail / 85));
         const vis = categories.slice(0, maxFit);
         const over = categories.slice(maxFit);
         return { visibleChips: vis, overflowChips: over };
       }, [categories, containerWidth]);
 
-      // Product filtering based on search and category
-      const displayedProducts = useMemo(() => {
-        const q = (searchQuery || '').trim();
-        if (q) {
-          if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.fuzzyFilterAndSort === 'function') {
-            return BillsoftUtils.fuzzyFilterAndSort(products, q, p => [
-              p.name, p.category, p.sku, p.barcode, p.hsnCode
-            ]);
+      // Maps for frequency counts and recent usage
+      const frequentlyUsedMap = useMemo(() => {
+        const map = {};
+        (smartDiscovery.frequentlyUsed || []).forEach(stat => {
+          if (stat && stat.productId) {
+            map[String(stat.productId)] = stat.distinctInvoiceCount || 0;
           }
-          const lower = q.toLowerCase();
-          return products.filter(p =>
-            (p.name && p.name.toLowerCase().includes(lower)) ||
-            (p.sku && p.sku.toLowerCase().includes(lower)) ||
-            (p.barcode && p.barcode.toLowerCase().includes(lower)) ||
-            (p.category && p.category.toLowerCase().includes(lower))
-          );
-        }
+        });
+        return map;
+      }, [smartDiscovery.frequentlyUsed]);
 
-        if (selectedCategory === 'All') {
-          return products;
-        }
-        return products.filter(p => (p.category || '').trim().toLowerCase() === selectedCategory.trim().toLowerCase());
-      }, [products, searchQuery, selectedCategory]);
+      const recentlyUsedMap = useMemo(() => {
+        const map = {};
+        (smartDiscovery.recentlyUsed || []).forEach(stat => {
+          if (stat && stat.productId) {
+            map[String(stat.productId)] = stat.lastInvoicedAt || null;
+          }
+        });
+        return map;
+      }, [smartDiscovery.recentlyUsed]);
 
-      // Map of selected quantities for instant badge rendering in product grid
+      // Favorite toggle action
+      const handleToggleFavorite = (prod, e) => {
+        if (e) e.stopPropagation();
+        const pid = Number(prod.rawId || prod.id);
+        if (!pid) return;
+
+        setFavoritesSet(prev => {
+          const next = new Set(prev);
+          if (next.has(pid)) {
+            next.delete(pid);
+          } else {
+            next.add(pid);
+            QuickAddAudio.play('add');
+          }
+          try {
+            localStorage.setItem('billsoft_qa_favorites_' + targetFid, JSON.stringify(Array.from(next)));
+          } catch (e) {}
+          return next;
+        });
+
+        if (typeof API.products.toggleFavorite === 'function') {
+          API.products.toggleFavorite(pid, targetFid).catch(err => {
+            console.warn('Favorite toggle sync warning:', err);
+          });
+        }
+      };
+
+      // Toggle expanded family state
+      const handleToggleFamilyExpand = (familyKey, e) => {
+        if (e) e.stopPropagation();
+        setExpandedFamilies(prev => ({
+          ...prev,
+          [familyKey]: !prev[familyKey]
+        }));
+      };
+
+      // Map of selected quantities for instant badge rendering across cards and variation pills
       const selectedMap = useMemo(() => {
         const map = {};
         selectedItems.forEach(it => {
@@ -12627,6 +13103,90 @@
         return { subtotal: sub, totalQty: qtyCount };
       }, [selectedItems]);
 
+      // Counts for Smart View navigation badges
+      const smartTabCounts = useMemo(() => {
+        const freqCount = products.filter(p => (frequentlyUsedMap[String(p.rawId || p.id)] || 0) > 0).length;
+        const favCount = products.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id))).length;
+        const recCount = products.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)])).length;
+        return {
+          frequently: freqCount,
+          favorites: favCount,
+          recent: recCount,
+          all: products.length
+        };
+      }, [products, frequentlyUsedMap, favoritesSet, recentlyUsedMap]);
+
+      // Smart View Display Items (Grouped Families & Standalone)
+      const smartDisplayItems = useMemo(() => {
+        let baseList = products;
+        if (smartSection === 'frequently') {
+          baseList = products.filter(p => (frequentlyUsedMap[String(p.rawId || p.id)] || 0) > 0);
+        } else if (smartSection === 'favorites') {
+          baseList = products.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id)));
+        } else if (smartSection === 'recent') {
+          baseList = products.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)]));
+        }
+
+        return RupeeProductIntelligence.buildProductFamilies(baseList, {
+          searchQuery,
+          selectedCategory: (smartSection === 'all' || !smartSection) ? selectedCategory : 'All',
+          favoritesSet,
+          frequentlyUsedMap,
+          recentlyUsedMap,
+          sortBy: smartSort,
+          resolvePrice
+        });
+      }, [products, smartSection, selectedCategory, searchQuery, favoritesSet, frequentlyUsedMap, recentlyUsedMap, smartSort, resolvePrice]);
+
+      // Regular View Display Products (Standard flat catalog with optional sorting)
+      const regularDisplayProducts = useMemo(() => {
+        let list = products;
+        const q = (searchQuery || '').trim();
+        if (q) {
+          const lower = q.toLowerCase();
+          list = products.filter(p =>
+            (p.name && p.name.toLowerCase().includes(lower)) ||
+            (p.sku && p.sku.toLowerCase().includes(lower)) ||
+            (p.barcode && p.barcode.toLowerCase().includes(lower)) ||
+            (p.category && p.category.toLowerCase().includes(lower)) ||
+            RupeeProductIntelligence.matchesSearch(p, q)
+          );
+        } else if (selectedCategory && selectedCategory !== 'All') {
+          const catLower = selectedCategory.trim().toLowerCase();
+          list = products.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+        }
+
+        if (regularSort && regularSort !== 'DEFAULT') {
+          const sorted = [...list];
+          if (regularSort === 'NAME_ASC') {
+            sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          } else if (regularSort === 'NAME_DESC') {
+            sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+          } else if (regularSort === 'PRICE_ASC') {
+            sorted.sort((a, b) => resolvePrice(a) - resolvePrice(b));
+          } else if (regularSort === 'PRICE_DESC') {
+            sorted.sort((a, b) => resolvePrice(b) - resolvePrice(a));
+          } else if (regularSort === 'SIZE') {
+            sorted.sort(RupeeProductIntelligence.naturalCompareSize);
+          } else if (regularSort === 'FREQ') {
+            sorted.sort((a, b) => (frequentlyUsedMap[String(b.rawId || b.id)] || 0) - (frequentlyUsedMap[String(a.rawId || a.id)] || 0));
+          } else if (regularSort === 'RECENT') {
+            sorted.sort((a, b) => {
+              const tA = recentlyUsedMap[String(a.rawId || a.id)] ? new Date(recentlyUsedMap[String(a.rawId || a.id)]).getTime() : 0;
+              const tB = recentlyUsedMap[String(b.rawId || b.id)] ? new Date(recentlyUsedMap[String(b.rawId || b.id)]).getTime() : 0;
+              return tB - tA;
+            });
+          }
+          return sorted;
+        }
+        return list;
+      }, [products, searchQuery, selectedCategory, regularSort, resolvePrice, frequentlyUsedMap, recentlyUsedMap]);
+
+      // Backward-compatible displayedProducts alias for external assertions
+      const displayedProducts = browsingMode === 'smart'
+        ? smartDisplayItems.map(it => it.isFamily ? it.representativeProduct : it.product)
+        : regularDisplayProducts;
+
       // Safe Close / Cancel handling
       const handleRequestClose = () => {
         if (selectedItems.length > 0) {
@@ -12689,7 +13249,6 @@
 
         setTimeout(() => {
           if (source === 'home') {
-            // Home Screen: Open a new unsaved invoice draft populated with all selected products
             if (typeof BillsoftSearchEngine !== 'undefined' && BillsoftSearchEngine.dispatchNavigate) {
               BillsoftSearchEngine.dispatchNavigate({
                 page: 'invoices',
@@ -12705,7 +13264,6 @@
             if (onFinish) onFinish(convertedItems);
             onClose();
           } else {
-            // Invoice Screen: Transfer selected items directly to the existing invoice draft
             if (onFinish) onFinish(convertedItems);
             onClose();
           }
@@ -12756,8 +13314,53 @@
           // ── Body (Two-Panel Layout) ──
           React.createElement('div', { className: 'rcrm-qa-body' },
 
-            // ── LEFT PANEL: Search, Category Bar & Product Grid ──
+            // ── LEFT PANEL: Mode Switcher, Search, Navigation Bar & Product Grid ──
             React.createElement('div', { className: 'rcrm-qa-left' },
+
+              // Top Toolbar: Mode Switcher & Sort Selector
+              React.createElement('div', { className: 'rcrm-qa-mode-toolbar' },
+                React.createElement('div', { className: 'rcrm-qa-mode-segmented' },
+                  React.createElement('button', {
+                    type: 'button',
+                    className: `rcrm-qa-mode-tab ${browsingMode === 'regular' ? 'active' : ''}`,
+                    onClick: () => handleSwitchMode('regular'),
+                    title: 'Regular View — standard catalog browsing'
+                  }, '📋 Regular View'),
+                  React.createElement('button', {
+                    type: 'button',
+                    className: `rcrm-qa-mode-tab ${browsingMode === 'smart' ? 'active' : ''}`,
+                    onClick: () => handleSwitchMode('smart'),
+                    title: 'Smart View — intelligent discovery and product families'
+                  }, '⚡ Smart View')
+                ),
+                React.createElement('select', {
+                  className: 'rcrm-qa-sort-select',
+                  value: browsingMode === 'smart' ? smartSort : regularSort,
+                  onChange: e => browsingMode === 'smart' ? setSmartSort(e.target.value) : setRegularSort(e.target.value),
+                  title: 'Sort products'
+                },
+                  browsingMode === 'smart' ? [
+                    React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
+                    React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold'),
+                    React.createElement('option', { key: 'FAMILY', value: 'FAMILY' }, 'Sort: Product Family'),
+                    React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
+                    React.createElement('option', { key: 'NAME_ASC', value: 'NAME_ASC' }, 'Sort: Product Name A–Z'),
+                    React.createElement('option', { key: 'NAME_DESC', value: 'NAME_DESC' }, 'Sort: Product Name Z–A'),
+                    React.createElement('option', { key: 'PRICE_ASC', value: 'PRICE_ASC' }, 'Sort: Price: Low to High'),
+                    React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
+                    React.createElement('option', { key: 'IN_STOCK', value: 'IN_STOCK' }, 'Sort: In-stock Products First')
+                  ] : [
+                    React.createElement('option', { key: 'DEFAULT', value: 'DEFAULT' }, 'Sort: Default Order'),
+                    React.createElement('option', { key: 'NAME_ASC', value: 'NAME_ASC' }, 'Sort: Product Name A–Z'),
+                    React.createElement('option', { key: 'NAME_DESC', value: 'NAME_DESC' }, 'Sort: Product Name Z–A'),
+                    React.createElement('option', { key: 'PRICE_ASC', value: 'PRICE_ASC' }, 'Sort: Price: Low to High'),
+                    React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
+                    React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
+                    React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
+                    React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold')
+                  ]
+                )
+              ),
 
               // Search Bar
               React.createElement('div', { className: 'rcrm-qa-search-box' },
@@ -12766,7 +13369,9 @@
                   ref: searchInputRef,
                   type: 'text',
                   className: 'rcrm-qa-search-input',
-                  placeholder: 'Search across all categories by product name, SKU, or barcode...',
+                  placeholder: browsingMode === 'smart'
+                    ? 'Search by name, SKU, barcode, size (e.g. 25 mm), or specifications...'
+                    : 'Search across all categories by product name, SKU, or barcode...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 }),
@@ -12777,20 +13382,54 @@
                 }, '✕')
               ),
 
-              // Horizontal Category Navigation
-              React.createElement('div', {
+              // Smart View 4-Tab Navigation
+              browsingMode === 'smart' && React.createElement('div', { className: 'rcrm-qa-smart-nav' },
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'frequently' ? 'active' : ''}`,
+                  onClick: () => setSmartSection('frequently')
+                },
+                  React.createElement('span', null, '🔥 Frequently Used'),
+                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.frequently}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'favorites' ? 'active' : ''}`,
+                  onClick: () => setSmartSection('favorites')
+                },
+                  React.createElement('span', null, '⭐ Favorites'),
+                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.favorites}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'recent' ? 'active' : ''}`,
+                  onClick: () => setSmartSection('recent')
+                },
+                  React.createElement('span', null, '🕒 Recently Used'),
+                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.recent}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'all' ? 'active' : ''}`,
+                  onClick: () => setSmartSection('all')
+                },
+                  React.createElement('span', null, '📦 All Products'),
+                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.all}`)
+                )
+              ),
+
+              // Horizontal Category Navigation (Regular View OR Smart View All Products)
+              (browsingMode === 'regular' || smartSection === 'all' || searchQuery) && React.createElement('div', {
                 ref: catStripRef,
                 className: 'rcrm-qa-cat-nav-wrapper'
               },
                 React.createElement('div', { className: 'rcrm-qa-cat-strip' },
-                  // "All" chip is always first
                   React.createElement('button', {
                     type: 'button',
                     className: `rcrm-qa-cat-chip ${selectedCategory === 'All' ? 'active' : ''}`,
                     onClick: () => { setSelectedCategory('All'); setIsMoreOpen(false); }
                   }, 'All'),
 
-                  // Visible category chips
                   visibleChips.map(cat => React.createElement('button', {
                     key: cat,
                     type: 'button',
@@ -12798,7 +13437,6 @@
                     onClick: () => { setSelectedCategory(cat); setIsMoreOpen(false); }
                   }, cat)),
 
-                  // "More ▾" button for overflow categories
                   overflowChips.length > 0 && React.createElement('button', {
                     type: 'button',
                     className: `rcrm-qa-more-btn ${overflowChips.includes(selectedCategory) ? 'active' : ''}`,
@@ -12809,7 +13447,6 @@
                   )
                 ),
 
-                // More Categories Dropdown
                 isMoreOpen && React.createElement('div', { className: 'rcrm-qa-more-dropdown' },
                   React.createElement('div', { className: 'rcrm-qa-more-search' },
                     React.createElement('input', {
@@ -12842,68 +13479,251 @@
                 )
               ),
 
-              // Product Grid
+              // Product Display Grid
               loading ? (
                 React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } },
                   'Loading product catalog...'
                 )
-              ) : displayedProducts.length === 0 ? (
-                React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 0' } },
-                  React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
-                  React.createElement('p', { style: { margin: 0, fontWeight: 600 } },
-                    searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`
-                  ),
-                  searchQuery && React.createElement('button', {
-                    className: 'btn btn-outline btn-sm',
-                    style: { marginTop: 12 },
-                    onClick: () => setSearchQuery('')
-                  }, 'Clear Search')
+              ) : browsingMode === 'smart' ? (
+                // ── SMART VIEW RENDERING ──
+                smartDisplayItems.length === 0 ? (
+                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 16px', textAlign: 'center' } },
+                    React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } },
+                      smartSection === 'favorites' ? '⭐' : (smartSection === 'frequently' ? '🔥' : (smartSection === 'recent' ? '🕒' : '📦'))
+                    ),
+                    React.createElement('h4', { style: { margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text, #1e293b)' } },
+                      smartSection === 'favorites'
+                        ? 'No favorite products yet'
+                        : (smartSection === 'frequently'
+                          ? 'No frequently used products yet'
+                          : (smartSection === 'recent'
+                            ? 'No recent invoice activity'
+                            : (searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`)))
+                    ),
+                    React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', maxWidth: 360 } },
+                      smartSection === 'favorites'
+                        ? 'Click the star icon (★) on any product to bookmark it for instant one-click access.'
+                        : (smartSection === 'frequently'
+                          ? 'Products commonly included in your finalized invoices over the last 90 days will automatically rank here.'
+                          : (smartSection === 'recent'
+                            ? 'Products from your recent invoices will be listed here for quick reordering.'
+                            : 'Try adjusting your search terms or selecting another category.'))
+                    ),
+                    (smartSection !== 'all' || searchQuery) && React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-outline btn-sm',
+                      style: { marginTop: 14 },
+                      onClick: () => { setSmartSection('all'); setSearchQuery(''); setSelectedCategory('All'); }
+                    }, '📦 Browse All Products')
+                  )
+                ) : (
+                  React.createElement('div', { className: 'rcrm-qa-product-grid' },
+                    smartDisplayItems.map(item => {
+                      if (item.isFamily) {
+                        const isExpanded = Boolean(expandedFamilies[item.familyKey]);
+                        let familySelQty = 0;
+                        item.variations.forEach(v => {
+                          const vid = String(v.rawId || v.id || '');
+                          if (selectedMap[vid] && selectedMap[vid].quantity > 0) {
+                            familySelQty += selectedMap[vid].quantity;
+                          }
+                        });
+
+                        return React.createElement('div', {
+                          key: item.familyKey,
+                          className: `rcrm-qa-family-card ${familySelQty > 0 ? 'has-selected' : ''}`
+                        },
+                          // Header: Family Name & Variations Count
+                          React.createElement('div', { className: 'rcrm-qa-family-header' },
+                            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 } },
+                              React.createElement('div', { className: 'rcrm-qa-family-title' }, item.familyName),
+                              item.category && React.createElement('span', { className: 'rcrm-qa-product-cat' }, item.category)
+                            ),
+                            React.createElement('button', {
+                              type: 'button',
+                              className: 'rcrm-qa-family-badge',
+                              style: { cursor: 'pointer', border: 'none' },
+                              onClick: (e) => handleToggleFamilyExpand(item.familyKey, e),
+                              title: isExpanded ? 'Collapse variations' : 'Expand all variations'
+                            }, `${item.variations.length} vars ${isExpanded ? '▴' : '▾'}`)
+                          ),
+
+                          // Price Range & Available Sizes
+                          React.createElement('div', { className: 'rcrm-qa-family-meta' },
+                            React.createElement('span', { className: 'rcrm-qa-product-price' },
+                              item.minPrice === item.maxPrice
+                                ? BillsoftUtils.formatCurrency(item.minPrice)
+                                : `${BillsoftUtils.formatCurrency(item.minPrice)} – ${BillsoftUtils.formatCurrency(item.maxPrice)}`
+                            ),
+                            familySelQty > 0 && React.createElement('span', {
+                              className: 'badge badge-primary',
+                              style: { fontSize: '0.68rem', padding: '1px 5px' }
+                            }, `✓ ${familySelQty} in cart`)
+                          ),
+
+                          item.sizesSummary && React.createElement('div', {
+                            style: { fontSize: '0.68rem', color: 'var(--text-secondary, #64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                          }, item.sizesSummary),
+
+                          // Quick Direct Variation Pills
+                          React.createElement('div', { className: 'rcrm-qa-family-pills' },
+                            item.variations.slice(0, 4).map(v => {
+                              const vid = String(v.rawId || v.id || '');
+                              const vSel = selectedMap[vid];
+                              const vLabel = v._intelAttr ? v._intelAttr.variationLabel : (v.name || 'var');
+                              const vPrice = resolvePrice(v);
+
+                              return React.createElement('button', {
+                                key: vid,
+                                type: 'button',
+                                className: `rcrm-qa-variation-pill ${vSel ? 'selected' : ''}`,
+                                onClick: (e) => { e.stopPropagation(); handleProductClick(v); },
+                                title: `Add ${v.name} (${vPrice ? BillsoftUtils.formatCurrency(vPrice) : 'Free'})`
+                              },
+                                React.createElement('span', null, vLabel),
+                                vSel && React.createElement('span', { style: { fontWeight: 800 } }, `✓${vSel.quantity}`)
+                              );
+                            })
+                          ),
+
+                          // Expand / Collapse action
+                          React.createElement('button', {
+                            type: 'button',
+                            className: 'rcrm-qa-family-toggle-btn',
+                            onClick: (e) => handleToggleFamilyExpand(item.familyKey, e)
+                          }, isExpanded ? '▴ Collapse variations' : `▾ Show all ${item.variations.length} variations`),
+
+                          // Expanded Variations Grid
+                          isExpanded && React.createElement('div', { className: 'rcrm-qa-family-expanded-grid' },
+                            item.variations.map(v => {
+                              const vid = String(v.rawId || v.id || '');
+                              const vSel = selectedMap[vid];
+                              const isVSel = Boolean(vSel && vSel.quantity > 0);
+                              const vPrice = resolvePrice(v);
+                              const vStock = (v.stockQuantity != null) ? Number(v.stockQuantity) : null;
+                              const isVJustAdded = (justAddedPid === vid);
+                              const vLabel = v._intelAttr ? v._intelAttr.variationLabel : v.name;
+
+                              return React.createElement('div', {
+                                key: vid,
+                                className: `rcrm-qa-product-card ${isVSel ? 'selected' : ''} ${isVJustAdded ? 'just-added' : ''}`,
+                                style: { minHeight: 70, padding: 8 },
+                                onClick: () => handleProductClick(v),
+                                title: `Add ${v.name} (${vPrice ? BillsoftUtils.formatCurrency(vPrice) : 'Free'})`
+                              },
+                                isVSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${vSel.quantity}`),
+                                React.createElement('div', { className: 'rcrm-qa-product-name', style: { fontSize: '0.78rem' } }, vLabel),
+                                React.createElement('div', { className: 'rcrm-qa-product-meta' },
+                                  React.createElement('span', { className: 'rcrm-qa-product-price', style: { fontSize: '0.82rem' } }, BillsoftUtils.formatCurrency(vPrice)),
+                                  vStock !== null && React.createElement('span', {
+                                    className: 'rcrm-qa-product-stock',
+                                    style: { color: vStock <= 0 ? '#ef4444' : 'inherit', fontSize: '0.65rem' }
+                                  }, vStock <= 0 ? 'Out' : `${vStock}`)
+                                )
+                              );
+                            })
+                          )
+                        );
+                      } else {
+                        // Standalone Product Card in Smart View
+                        const p = item.product;
+                        const pid = String(p.rawId || p.id || '');
+                        const sel = selectedMap[pid];
+                        const isSel = Boolean(sel && sel.quantity > 0);
+                        const sellingPrice = resolvePrice(p);
+                        const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
+                        const isJustAdded = (justAddedPid === pid);
+                        const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
+
+                        return React.createElement('div', {
+                          key: pid,
+                          className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
+                          onClick: () => handleProductClick(p),
+                          title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
+                        },
+                          isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 } },
+                            React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
+                            React.createElement('button', {
+                              type: 'button',
+                              className: `rcrm-qa-star-btn ${isFav ? 'active' : ''}`,
+                              onClick: (e) => handleToggleFavorite(p, e),
+                              title: isFav ? 'Remove from favorites' : 'Add to favorites'
+                            }, isFav ? '★' : '☆')
+                          ),
+                          p.category && React.createElement('span', { className: 'rcrm-qa-product-cat' }, p.category),
+                          React.createElement('div', { className: 'rcrm-qa-product-meta' },
+                            React.createElement('div', { className: 'rcrm-qa-product-price' }, BillsoftUtils.formatCurrency(sellingPrice)),
+                            curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
+                              className: 'rcrm-qa-product-stock',
+                              style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
+                            }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
+                          )
+                        );
+                      }
+                    })
+                  )
                 )
               ) : (
-                React.createElement('div', { className: 'rcrm-qa-product-grid' },
-                  displayedProducts.map(p => {
-                    const pid = String(p.rawId || p.id || '');
-                    const sel = selectedMap[pid];
-                    const isSel = Boolean(sel && sel.quantity > 0);
-                    const sellingPrice = resolvePrice(p);
-                    const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
-                    const isJustAdded = (justAddedPid === pid);
+                // ── REGULAR VIEW RENDERING ──
+                regularDisplayProducts.length === 0 ? (
+                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 0' } },
+                    React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
+                    React.createElement('p', { style: { margin: 0, fontWeight: 600 } },
+                      searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`
+                    ),
+                    searchQuery && React.createElement('button', {
+                      className: 'btn btn-outline btn-sm',
+                      style: { marginTop: 12 },
+                      onClick: () => setSearchQuery('')
+                    }, 'Clear Search')
+                  )
+                ) : (
+                  React.createElement('div', { className: 'rcrm-qa-product-grid' },
+                    regularDisplayProducts.map(p => {
+                      const pid = String(p.rawId || p.id || '');
+                      const sel = selectedMap[pid];
+                      const isSel = Boolean(sel && sel.quantity > 0);
+                      const sellingPrice = resolvePrice(p);
+                      const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
+                      const isJustAdded = (justAddedPid === pid);
+                      const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
 
-                    return React.createElement('div', {
-                      key: pid,
-                      className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
-                      onClick: () => handleProductClick(p),
-                      title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
-                    },
-                      // Selected Quantity Badge
-                      isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' },
-                        `✓ ${sel.quantity}`
-                      ),
-                      // Product Name
-                      React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
-                      // Category Tag (especially helpful in All view & Search view)
-                      (selectedCategory === 'All' || searchQuery) && p.category && React.createElement('span', {
-                        className: 'rcrm-qa-product-cat'
-                      }, p.category),
-                      // Price & Stock Metadata
-                      React.createElement('div', { className: 'rcrm-qa-product-meta' },
-                        React.createElement('div', { className: 'rcrm-qa-product-price' },
-                          BillsoftUtils.formatCurrency(sellingPrice)
+                      return React.createElement('div', {
+                        key: pid,
+                        className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
+                        onClick: () => handleProductClick(p),
+                        title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
+                      },
+                        isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 } },
+                          React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
+                          React.createElement('button', {
+                            type: 'button',
+                            className: `rcrm-qa-star-btn ${isFav ? 'active' : ''}`,
+                            onClick: (e) => handleToggleFavorite(p, e),
+                            title: isFav ? 'Remove from favorites' : 'Add to favorites'
+                          }, isFav ? '★' : '☆')
                         ),
-                        curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
-                          className: 'rcrm-qa-product-stock',
-                          style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
-                        }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
-                      )
-                    );
-                  })
+                        (selectedCategory === 'All' || searchQuery) && p.category && React.createElement('span', {
+                          className: 'rcrm-qa-product-cat'
+                        }, p.category),
+                        React.createElement('div', { className: 'rcrm-qa-product-meta' },
+                          React.createElement('div', { className: 'rcrm-qa-product-price' }, BillsoftUtils.formatCurrency(sellingPrice)),
+                          curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
+                            className: 'rcrm-qa-product-stock',
+                            style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
+                          }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
+                        )
+                      );
+                    })
+                  )
                 )
               )
             ),
 
-            // ── RIGHT PANEL: Selected Items & Quantity Controls ──
+            // ── RIGHT PANEL: Selected Items & Quantity Controls (Permanent & Cart Preserving) ──
             React.createElement('div', { className: 'rcrm-qa-right' },
-              // Header
               React.createElement('div', { className: 'rcrm-qa-selected-header' },
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
                   React.createElement('strong', { style: { fontSize: '0.9rem' } }, 'Selected Items'),
@@ -12919,13 +13739,12 @@
                 }, 'Clear all')
               ),
 
-              // Scrollable Selected Items List
               React.createElement('div', { className: 'rcrm-qa-selected-list' },
                 selectedItems.length === 0 ? (
                   React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } },
                     React.createElement('div', { style: { fontSize: '2.4rem', marginBottom: 8 } }, '🛒'),
                     React.createElement('p', { style: { margin: 0, fontWeight: 600, fontSize: '0.86rem' } }, 'No items selected yet.'),
-                    React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.76rem' } }, 'Click products on the left to add them.')
+                    React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.76rem' } }, 'Click products or variations on the left to add them.')
                   )
                 ) : (
                   selectedItems.map(it => {
@@ -12936,7 +13755,6 @@
                       key: pid,
                       className: `rcrm-qa-selected-item ${isRemoving ? 'removing' : ''}`
                     },
-                      // Row 1: Name and Delete button
                       React.createElement('div', { className: 'rcrm-qa-item-top' },
                         React.createElement('span', { className: 'rcrm-qa-item-name' }, it.product.name),
                         React.createElement('button', {
@@ -12946,12 +13764,10 @@
                           title: 'Remove item'
                         }, '✕')
                       ),
-                      // Row 2: Unit Price and Unit/Category
                       React.createElement('div', { className: 'rcrm-qa-item-mid' },
                         React.createElement('span', null, `${BillsoftUtils.formatCurrency(it.unitPrice)} / ${it.product.unit || 'pcs'}`),
                         it.product.category && React.createElement('span', null, it.product.category)
                       ),
-                      // Row 3: [-] [qty] [+] and Line Total
                       React.createElement('div', { className: 'rcrm-qa-item-bottom' },
                         React.createElement('div', { className: 'rcrm-qa-qty-controls' },
                           React.createElement('button', {
@@ -12982,7 +13798,6 @@
                 )
               ),
 
-              // Selected Summary Box
               React.createElement('div', { className: 'rcrm-qa-selected-summary' },
                 React.createElement('div', { className: 'rcrm-qa-summary-row' },
                   React.createElement('span', null, 'Total Products:'),

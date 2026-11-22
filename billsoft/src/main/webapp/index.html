@@ -12548,184 +12548,173 @@
         return (pA.name || '').localeCompare(pB.name || '');
       }
 
-      function buildProductFamilies(products, options = {}) {
+      function recognizeProductTypes(products, selectedCategory) {
         if (!products || !Array.isArray(products) || products.length === 0) return [];
 
-        const {
-          searchQuery = '',
-          selectedCategory = 'All',
-          favoritesSet = new Set(),
-          frequentlyUsedMap = {},
-          recentlyUsedMap = {},
-          sortBy = 'DEFAULT',
-          resolvePrice = () => 0
-        } = options;
-
-        let filtered = products;
+        let list = products;
         if (selectedCategory && selectedCategory !== 'All') {
           const catLower = selectedCategory.trim().toLowerCase();
-          filtered = filtered.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+          list = list.filter(p => (p.category || '').trim().toLowerCase() === catLower);
         }
 
-        const q = (searchQuery || '').trim();
-        if (q) {
-          filtered = filtered.filter(p => matchesSearch(p, q));
+        if (list.length === 0) return [];
+
+        const catTokens = new Set();
+        if (selectedCategory && selectedCategory !== 'All') {
+          selectedCategory.toLowerCase().split(/[\s\-_/\\,]+/).filter(Boolean).forEach(t => catTokens.add(t));
         }
 
-        const annotated = filtered.map(p => {
+        const STOP_WORDS = new Set([
+          'and', 'or', 'with', 'for', 'the', 'in', 'of', 'to', 'by', 'at', 'on', 'from',
+          'set', 'pack', 'pkt', 'box', 'kit', 'nos', 'no', 'num', 'pcs', 'piece', 'pieces',
+          'type', 'model', 'series', 'grade', 'class', 'item', 'product', 'size', 'spec',
+          'heavy', 'light', 'medium', 'std', 'standard', 'regular', 'short', 'long',
+          'black', 'white', 'red', 'blue', 'green', 'yellow', 'grey', 'gray', 'orange',
+          'new', 'old', 'gen', 'universal', 'general', 'spare', 'spares', 'part', 'parts'
+        ]);
+
+        const UNIT_TOKENS = new Set([
+          'mm', 'cm', 'm', 'mtr', 'meter', 'meters', 'inch', 'inches', 'in', 'ft', 'feet',
+          'sq', 'sqmm', 'kg', 'g', 'gm', 'ltr', 'liter', 'litre', 'ml', 'v', 'volt', 'volts',
+          'w', 'watt', 'watts', 'a', 'amp', 'amps', 'ah', 'kva', 'hp', 'rpm', 'hz', 'bar', 'psi'
+        ]);
+
+        const MATERIAL_WORDS = new Set([
+          'pvc', 'upvc', 'cpvc', 'apvc', 'ptmt', 'ppr', 'hdpe', 'gi', 'ci', 'ms', 'ss',
+          'brass', 'copper', 'aluminum', 'aluminium', 'steel', 'iron', 'plastic', 'rubber',
+          'nylon', 'teflon', 'ceramic', 'wooden', 'glass', 'cast', 'mild', 'stainless'
+        ]);
+
+        const tokenDocCount = {};
+        const bigramDocCount = {};
+        const tokenCaseMap = {};
+        const totalCount = list.length;
+
+        list.forEach(p => {
+          if (!p.name) return;
           const attr = extractAttributes(p.name);
-          return {
-            ...p,
-            _intelAttr: attr
-          };
-        });
+          let stem = attr.stem || p.name;
 
-        const groups = {};
-        annotated.forEach(p => {
-          const cat = (p.category || '').trim().toLowerCase();
-          const stem = p._intelAttr.stem.toLowerCase();
-          const groupKey = `${cat}:::${stem}`;
+          const cleanStem = stem.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+          const rawWords = cleanStem.split(' ').filter(Boolean);
 
-          if (!groups[groupKey]) {
-            groups[groupKey] = {
-              groupKey,
-              catOriginal: p.category || '',
-              stemOriginal: p._intelAttr.stem,
-              products: []
-            };
+          const filteredWords = [];
+          const seenInProduct = new Set();
+
+          rawWords.forEach(w => {
+            const lower = w.toLowerCase();
+            if (/^\d+$/.test(lower) || lower.length <= 1) return;
+            if (STOP_WORDS.has(lower) || UNIT_TOKENS.has(lower) || catTokens.has(lower)) return;
+            if (!tokenCaseMap[lower]) {
+              tokenCaseMap[lower] = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+            }
+            filteredWords.push(lower);
+            if (!seenInProduct.has(lower)) {
+              seenInProduct.add(lower);
+              tokenDocCount[lower] = (tokenDocCount[lower] || 0) + 1;
+            }
+          });
+
+          const seenBigrams = new Set();
+          for (let i = 0; i < filteredWords.length - 1; i++) {
+            const w1 = filteredWords[i];
+            const w2 = filteredWords[i + 1];
+            const bigramKey = `${w1} ${w2}`;
+            if (!seenBigrams.has(bigramKey)) {
+              seenBigrams.add(bigramKey);
+              bigramDocCount[bigramKey] = (bigramDocCount[bigramKey] || 0) + 1;
+            }
           }
-          groups[groupKey].products.push(p);
         });
 
-        const resultItems = [];
+        const commonPrefixTokens = new Set();
+        if (totalCount >= 4) {
+          Object.entries(tokenDocCount).forEach(([tok, count]) => {
+            if (count / totalCount >= 0.80) {
+              commonPrefixTokens.add(tok);
+            }
+          });
+        }
 
-        Object.values(groups).forEach(g => {
-          const distinctVars = new Set(g.products.map(p => p._intelAttr.variationLabel.toLowerCase()));
+        const minFreq = totalCount >= 4 ? 2 : 1;
+        const candidates = [];
+        const bigramConsumedTokens = new Set();
 
-          if (g.products.length >= 2 && distinctVars.size >= 2) {
-            const sortedVars = [...g.products].sort(naturalCompareSize);
-
-            const prices = sortedVars.map(p => resolvePrice(p)).filter(pr => pr !== null && !isNaN(pr));
-            const minPr = prices.length > 0 ? Math.min(...prices) : 0;
-            const maxPr = prices.length > 0 ? Math.max(...prices) : 0;
-
-            const distinctSizes = Array.from(new Set(sortedVars.map(p => p._intelAttr.size ? p._intelAttr.size.raw : p._intelAttr.variationLabel).filter(Boolean)));
-            const sizesSummary = distinctSizes.slice(0, 4).join(', ') + (distinctSizes.length > 4 ? '...' : '');
-
-            let maxFreq = 0;
-            let latestDate = null;
-            sortedVars.forEach(p => {
-              const pid = String(p.rawId || p.id || '');
-              const freq = frequentlyUsedMap[pid] || 0;
-              if (freq > maxFreq) maxFreq = freq;
-              const rec = recentlyUsedMap[pid];
-              if (rec && (!latestDate || rec > latestDate)) latestDate = rec;
-            });
-
-            resultItems.push({
-              isFamily: true,
-              familyKey: g.groupKey,
-              familyName: g.stemOriginal,
-              category: g.catOriginal,
-              variations: sortedVars,
-              minPrice: minPr,
-              maxPrice: maxPr,
-              sizesSummary,
-              frequencyScore: maxFreq,
-              latestDate,
-              representativeProduct: sortedVars[0]
-            });
-          } else {
-            g.products.forEach(p => {
-              const pid = String(p.rawId || p.id || '');
-              resultItems.push({
-                isFamily: false,
-                product: p,
-                frequencyScore: frequentlyUsedMap[pid] || 0,
-                latestDate: recentlyUsedMap[pid] || null
+        Object.entries(bigramDocCount).forEach(([bigram, count]) => {
+          if (count >= minFreq) {
+            const [w1, w2] = bigram.split(' ');
+            if (MATERIAL_WORDS.has(w1)) return;
+            if (!commonPrefixTokens.has(w1) && !commonPrefixTokens.has(w2)) {
+              const titleBigram = `${tokenCaseMap[w1] || w1} ${tokenCaseMap[w2] || w2}`;
+              candidates.push({
+                type: 'bigram',
+                key: bigram,
+                label: titleBigram,
+                count: count,
+                w1, w2
               });
+              bigramConsumedTokens.add(w1);
+              bigramConsumedTokens.add(w2);
+            }
+          }
+        });
+
+        Object.entries(tokenDocCount).forEach(([tok, count]) => {
+          if (count >= minFreq) {
+            if (commonPrefixTokens.has(tok)) return;
+            if (MATERIAL_WORDS.has(tok)) return;
+
+            const bigramMatches = candidates.filter(c => c.type === 'bigram' && (c.w1 === tok || c.w2 === tok));
+            const maxBigramCount = bigramMatches.reduce((max, c) => Math.max(max, c.count), 0);
+            if (bigramMatches.length > 0 && maxBigramCount >= count * 0.8) {
+              return;
+            }
+
+            candidates.push({
+              type: 'word',
+              key: tok,
+              label: tokenCaseMap[tok] || (tok.charAt(0).toUpperCase() + tok.slice(1)),
+              count: count
             });
           }
         });
 
-        applySorting(resultItems, sortBy, resolvePrice);
+        candidates.sort((a, b) => {
+          if (b.count !== a.count) return b.count - a.count;
+          return a.label.localeCompare(b.label);
+        });
 
-        return resultItems;
+        return candidates.slice(0, 12).map(c => c.label);
       }
 
-      function applySorting(items, sortBy, resolvePrice) {
-        if (!sortBy || sortBy === 'DEFAULT') return;
+      function matchesProductType(product, typeLabel) {
+        if (!typeLabel || typeLabel === 'All' || typeLabel === 'All Types') return true;
+        if (!product || !product.name) return false;
 
-        items.sort((a, b) => {
-          const prodA = a.isFamily ? a.representativeProduct : a.product;
-          const prodB = b.isFamily ? b.representativeProduct : b.product;
-          const nameA = a.isFamily ? a.familyName : (prodA.name || '');
-          const nameB = b.isFamily ? b.familyName : (prodB.name || '');
+        const pName = product.name.toLowerCase();
+        const searchType = typeLabel.toLowerCase();
 
-          if (sortBy === 'FREQ') {
-            const fA = a.frequencyScore || 0;
-            const fB = b.frequencyScore || 0;
-            if (fB !== fA) return fB - fA;
-            return nameA.localeCompare(nameB);
-          }
+        if (searchType.includes(' ')) {
+          return pName.includes(searchType);
+        }
 
-          if (sortBy === 'RECENT') {
-            const rA = a.latestDate ? new Date(a.latestDate).getTime() : 0;
-            const rB = b.latestDate ? new Date(b.latestDate).getTime() : 0;
-            if (rB !== rA) return rB - rA;
-            return nameA.localeCompare(nameB);
-          }
-
-          if (sortBy === 'FAMILY') {
-            return nameA.localeCompare(nameB);
-          }
-
-          if (sortBy === 'SIZE') {
-            return naturalCompareSize(prodA, prodB);
-          }
-
-          if (sortBy === 'NAME_ASC') {
-            return nameA.localeCompare(nameB);
-          }
-
-          if (sortBy === 'NAME_DESC') {
-            return nameB.localeCompare(nameA);
-          }
-
-          if (sortBy === 'PRICE_ASC') {
-            const pA = a.isFamily ? a.minPrice : resolvePrice(prodA);
-            const pB = b.isFamily ? b.minPrice : resolvePrice(prodB);
-            return pA - pB;
-          }
-
-          if (sortBy === 'PRICE_DESC') {
-            const pA = a.isFamily ? a.maxPrice : resolvePrice(prodA);
-            const pB = b.isFamily ? b.maxPrice : resolvePrice(prodB);
-            return pB - pA;
-          }
-
-          if (sortBy === 'IN_STOCK') {
-            const stA = a.isFamily ? a.variations.some(v => (v.stockQuantity || 0) > 0) : ((prodA.stockQuantity || 0) > 0);
-            const stB = b.isFamily ? b.variations.some(v => (v.stockQuantity || 0) > 0) : ((prodB.stockQuantity || 0) > 0);
-            if (stA !== stB) return stB ? 1 : -1;
-            return nameA.localeCompare(nameB);
-          }
-
-          return 0;
-        });
+        const regex = new RegExp('\\b' + searchType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+        return regex.test(pName);
       }
 
       function matchesSearch(prod, query) {
         if (!query) return true;
         const q = query.trim().toLowerCase();
+        const lower = q;
         const compactQ = q.replace(/[\s\-_]/g, '');
 
         const name = (prod.name || '').toLowerCase();
         const compactName = name.replace(/[\s\-_]/g, '');
         if (name.includes(q) || compactName.includes(compactQ)) return true;
 
-        if (prod.sku && prod.sku.toLowerCase().includes(q)) return true;
-        if (prod.barcode && prod.barcode.toLowerCase().includes(q)) return true;
+        const p = prod;
+        if (p.sku && p.sku.toLowerCase().includes(lower)) return true;
+        if (p.barcode && p.barcode.toLowerCase().includes(lower)) return true;
         if (prod.category && prod.category.toLowerCase().includes(q)) return true;
         if (prod.hsnCode && prod.hsnCode.toLowerCase().includes(q)) return true;
 
@@ -12749,9 +12738,9 @@
       return {
         extractAttributes,
         naturalCompareSize,
-        buildProductFamilies,
         matchesSearch,
-        applySorting
+        recognizeProductTypes,
+        matchesProductType
       };
     })();
 
@@ -12788,17 +12777,10 @@
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [containerWidth, setContainerWidth] = useState(700);
 
-      // Dual-Mode & Smart Discovery States
-      const [browsingMode, setBrowsingMode] = useState(() => {
-        try {
-          return localStorage.getItem('rcrm_qa_browsing_mode') || 'smart';
-        } catch (e) {
-          return 'smart';
-        }
-      });
-      const [smartSection, setSmartSection] = useState('all'); // 'all' | 'frequently' | 'favorites' | 'recent'
-      const [smartSort, setSmartSort] = useState('FREQ');
-      const [regularSort, setRegularSort] = useState('DEFAULT');
+      // Quick Filters, Dynamic Recognition & Sorting States
+      const [quickFilter, setQuickFilter] = useState('ALL'); // 'ALL' | 'FREQUENT' | 'RECENT' | 'FAVORITES' | 'IN_STOCK'
+      const [selectedProductType, setSelectedProductType] = useState('All');
+      const [sortBy, setSortBy] = useState('DEFAULT');
       const [favoritesSet, setFavoritesSet] = useState(() => {
         try {
           const fid = activeFirmId ? String(activeFirmId) : (API.firmId ? String(API.firmId) : '1');
@@ -12809,7 +12791,6 @@
         }
       });
       const [smartDiscovery, setSmartDiscovery] = useState({ frequentlyUsed: [], recentlyUsed: [], periodDays: 90 });
-      const [expandedFamilies, setExpandedFamilies] = useState({});
 
       // Sound and Animation States
       const [soundEnabled, setSoundEnabled] = useState(() => !QuickAddAudio.isMuted());
@@ -12828,12 +12809,10 @@
         QuickAddAudio.setMuted(!next);
       };
 
-      const handleSwitchMode = (mode) => {
-        if (mode === browsingMode) return;
-        setBrowsingMode(mode);
-        try {
-          localStorage.setItem('rcrm_qa_browsing_mode', mode);
-        } catch (e) {}
+      const handleCategorySelect = (cat) => {
+        setSelectedCategory(cat);
+        setSelectedProductType('All');
+        setIsMoreOpen(false);
       };
 
       // Load products, categories, effective pricing, smart discovery, and favorites
@@ -12994,16 +12973,7 @@
         }
       };
 
-      // Toggle expanded family state
-      const handleToggleFamilyExpand = (familyKey, e) => {
-        if (e) e.stopPropagation();
-        setExpandedFamilies(prev => ({
-          ...prev,
-          [familyKey]: !prev[familyKey]
-        }));
-      };
-
-      // Map of selected quantities for instant badge rendering across cards and variation pills
+      // Map of selected quantities for instant badge rendering across cards
       const selectedMap = useMemo(() => {
         const map = {};
         selectedItems.forEach(it => {
@@ -13092,100 +13062,102 @@
         setSelectedItems([]);
       };
 
-      // Subtotal calculation
-      const { subtotal, totalQty } = useMemo(() => {
-        let sub = 0;
-        let qtyCount = 0;
-        selectedItems.forEach(it => {
-          sub += (it.quantity * it.unitPrice);
-          qtyCount += it.quantity;
-        });
-        return { subtotal: sub, totalQty: qtyCount };
+      const totalQty = useMemo(() => {
+        return selectedItems.reduce((acc, it) => acc + (parseFloat(it.quantity) || 0), 0);
       }, [selectedItems]);
 
-      // Counts for Smart View navigation badges
-      const smartTabCounts = useMemo(() => {
+      const subtotal = useMemo(() => {
+        return selectedItems.reduce((acc, it) => acc + (parseFloat(it.lineTotal) || 0), 0);
+      }, [selectedItems]);
+
+      // Dynamic recognition of product types from active catalog and selected category
+      const recognizedProductTypes = useMemo(() => {
+        return RupeeProductIntelligence.recognizeProductTypes(products, selectedCategory);
+      }, [products, selectedCategory]);
+
+      // Counts for Quick Filter pills
+      const filterCounts = useMemo(() => {
         const freqCount = products.filter(p => (frequentlyUsedMap[String(p.rawId || p.id)] || 0) > 0).length;
         const favCount = products.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id))).length;
         const recCount = products.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)])).length;
+        const inStockCount = products.filter(p => ((p.stockQuantity != null && Number(p.stockQuantity) > 0) || p.itemType === 'SERVICE')).length;
         return {
+          all: products.length,
           frequently: freqCount,
-          favorites: favCount,
           recent: recCount,
-          all: products.length
+          favorites: favCount,
+          inStock: inStockCount
         };
       }, [products, frequentlyUsedMap, favoritesSet, recentlyUsedMap]);
 
-      // Smart View Display Items (Grouped Families & Standalone)
-      const smartDisplayItems = useMemo(() => {
-        let baseList = products;
-        if (smartSection === 'frequently') {
-          baseList = products.filter(p => (frequentlyUsedMap[String(p.rawId || p.id)] || 0) > 0);
-        } else if (smartSection === 'favorites') {
-          baseList = products.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id)));
-        } else if (smartSection === 'recent') {
-          baseList = products.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)]));
+      // Unified Product Display List (Filtered by quick filters, category, recognized type, search & sort)
+      const displayProducts = useMemo(() => {
+        let list = products;
+
+        // 1. Quick Filter
+        if (quickFilter === 'FREQUENT') {
+          list = list.filter(p => (frequentlyUsedMap[String(p.rawId || p.id)] || 0) > 0);
+        } else if (quickFilter === 'RECENT') {
+          list = list.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)]));
+        } else if (quickFilter === 'FAVORITES') {
+          list = list.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id)));
+        } else if (quickFilter === 'IN_STOCK') {
+          list = list.filter(p => (p.stockQuantity != null && Number(p.stockQuantity) > 0) || p.itemType === 'SERVICE');
         }
 
-        return RupeeProductIntelligence.buildProductFamilies(baseList, {
-          searchQuery,
-          selectedCategory: (smartSection === 'all' || !smartSection) ? selectedCategory : 'All',
-          favoritesSet,
-          frequentlyUsedMap,
-          recentlyUsedMap,
-          sortBy: smartSort,
-          resolvePrice
-        });
-      }, [products, smartSection, selectedCategory, searchQuery, favoritesSet, frequentlyUsedMap, recentlyUsedMap, smartSort, resolvePrice]);
+        // 2. Category Filter
+        if (selectedCategory && selectedCategory !== 'All') {
+          const catLower = selectedCategory.trim().toLowerCase();
+          list = list.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+        }
 
-      // Regular View Display Products (Standard flat catalog with optional sorting)
-      const regularDisplayProducts = useMemo(() => {
-        let list = products;
+        // 3. Suggested Product Type Filter
+        if (selectedProductType && selectedProductType !== 'All' && selectedProductType !== 'All Types') {
+          list = list.filter(p => RupeeProductIntelligence.matchesProductType(p, selectedProductType));
+        }
+
+        // 4. Search Filter
         const q = (searchQuery || '').trim();
         if (q) {
-          const lower = q.toLowerCase();
-          list = products.filter(p =>
-            (p.name && p.name.toLowerCase().includes(lower)) ||
-            (p.sku && p.sku.toLowerCase().includes(lower)) ||
-            (p.barcode && p.barcode.toLowerCase().includes(lower)) ||
-            (p.category && p.category.toLowerCase().includes(lower)) ||
-            RupeeProductIntelligence.matchesSearch(p, q)
-          );
-        } else if (selectedCategory && selectedCategory !== 'All') {
-          const catLower = selectedCategory.trim().toLowerCase();
-          list = products.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+          list = list.filter(p => RupeeProductIntelligence.matchesSearch(p, q));
         }
 
-        if (regularSort && regularSort !== 'DEFAULT') {
-          const sorted = [...list];
-          if (regularSort === 'NAME_ASC') {
-            sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-          } else if (regularSort === 'NAME_DESC') {
-            sorted.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
-          } else if (regularSort === 'PRICE_ASC') {
-            sorted.sort((a, b) => resolvePrice(a) - resolvePrice(b));
-          } else if (regularSort === 'PRICE_DESC') {
-            sorted.sort((a, b) => resolvePrice(b) - resolvePrice(a));
-          } else if (regularSort === 'SIZE') {
-            sorted.sort(RupeeProductIntelligence.naturalCompareSize);
-          } else if (regularSort === 'FREQ') {
-            sorted.sort((a, b) => (frequentlyUsedMap[String(b.rawId || b.id)] || 0) - (frequentlyUsedMap[String(a.rawId || a.id)] || 0));
-          } else if (regularSort === 'RECENT') {
-            sorted.sort((a, b) => {
+        // 5. Sorting
+        if (sortBy === 'NAME_ASC') {
+          list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        } else if (sortBy === 'NAME_DESC') {
+          list = [...list].sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+        } else if (sortBy === 'PRICE_ASC') {
+          list = [...list].sort((a, b) => resolvePrice(a) - resolvePrice(b));
+        } else if (sortBy === 'PRICE_DESC') {
+          list = [...list].sort((a, b) => resolvePrice(b) - resolvePrice(a));
+        } else if (sortBy === 'SIZE') {
+          list = [...list].sort(RupeeProductIntelligence.naturalCompareSize);
+        } else if (sortBy === 'FREQ') {
+          list = [...list].sort((a, b) => (frequentlyUsedMap[String(b.rawId || b.id)] || 0) - (frequentlyUsedMap[String(a.rawId || a.id)] || 0));
+        } else if (sortBy === 'RECENT') {
+          list = [...list].sort((a, b) => {
+            const tA = recentlyUsedMap[String(a.rawId || a.id)] ? new Date(recentlyUsedMap[String(a.rawId || a.id)]).getTime() : 0;
+            const tB = recentlyUsedMap[String(b.rawId || b.id)] ? new Date(recentlyUsedMap[String(b.rawId || b.id)]).getTime() : 0;
+            return tB - tA;
+          });
+        } else if (sortBy === 'DEFAULT') {
+          if (quickFilter === 'FREQUENT') {
+            list = [...list].sort((a, b) => (frequentlyUsedMap[String(b.rawId || b.id)] || 0) - (frequentlyUsedMap[String(a.rawId || a.id)] || 0));
+          } else if (quickFilter === 'RECENT') {
+            list = [...list].sort((a, b) => {
               const tA = recentlyUsedMap[String(a.rawId || a.id)] ? new Date(recentlyUsedMap[String(a.rawId || a.id)]).getTime() : 0;
               const tB = recentlyUsedMap[String(b.rawId || b.id)] ? new Date(recentlyUsedMap[String(b.rawId || b.id)]).getTime() : 0;
               return tB - tA;
             });
           }
-          return sorted;
         }
+
         return list;
-      }, [products, searchQuery, selectedCategory, regularSort, resolvePrice, frequentlyUsedMap, recentlyUsedMap]);
+      }, [products, quickFilter, selectedCategory, selectedProductType, searchQuery, sortBy, frequentlyUsedMap, recentlyUsedMap, favoritesSet, resolvePrice]);
 
       // Backward-compatible displayedProducts alias for external assertions
-      const displayedProducts = browsingMode === 'smart'
-        ? smartDisplayItems.map(it => it.isFamily ? it.representativeProduct : it.product)
-        : regularDisplayProducts;
+      const displayedProducts = displayProducts;
 
       // Safe Close / Cancel handling
       const handleRequestClose = () => {
@@ -13317,109 +13289,71 @@
             // ── LEFT PANEL: Mode Switcher, Search, Navigation Bar & Product Grid ──
             React.createElement('div', { className: 'rcrm-qa-left' },
 
-              // Top Toolbar: Mode Switcher & Sort Selector
-              React.createElement('div', { className: 'rcrm-qa-mode-toolbar' },
-                React.createElement('div', { className: 'rcrm-qa-mode-segmented' },
-                  React.createElement('button', {
-                    type: 'button',
-                    className: `rcrm-qa-mode-tab ${browsingMode === 'regular' ? 'active' : ''}`,
-                    onClick: () => handleSwitchMode('regular'),
-                    title: 'Regular View — standard catalog browsing'
-                  }, '📋 Regular View'),
-                  React.createElement('button', {
-                    type: 'button',
-                    className: `rcrm-qa-mode-tab ${browsingMode === 'smart' ? 'active' : ''}`,
-                    onClick: () => handleSwitchMode('smart'),
-                    title: 'Smart View — intelligent discovery and product families'
-                  }, '⚡ Smart View')
-                ),
-                React.createElement('select', {
-                  className: 'rcrm-qa-sort-select',
-                  value: browsingMode === 'smart' ? smartSort : regularSort,
-                  onChange: e => browsingMode === 'smart' ? setSmartSort(e.target.value) : setRegularSort(e.target.value),
-                  title: 'Sort products'
-                },
-                  browsingMode === 'smart' ? [
-                    React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
-                    React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold'),
-                    React.createElement('option', { key: 'FAMILY', value: 'FAMILY' }, 'Sort: Product Family'),
-                    React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
-                    React.createElement('option', { key: 'NAME_ASC', value: 'NAME_ASC' }, 'Sort: Product Name A–Z'),
-                    React.createElement('option', { key: 'NAME_DESC', value: 'NAME_DESC' }, 'Sort: Product Name Z–A'),
-                    React.createElement('option', { key: 'PRICE_ASC', value: 'PRICE_ASC' }, 'Sort: Price: Low to High'),
-                    React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
-                    React.createElement('option', { key: 'IN_STOCK', value: 'IN_STOCK' }, 'Sort: In-stock Products First')
-                  ] : [
-                    React.createElement('option', { key: 'DEFAULT', value: 'DEFAULT' }, 'Sort: Default Order'),
-                    React.createElement('option', { key: 'NAME_ASC', value: 'NAME_ASC' }, 'Sort: Product Name A–Z'),
-                    React.createElement('option', { key: 'NAME_DESC', value: 'NAME_DESC' }, 'Sort: Product Name Z–A'),
-                    React.createElement('option', { key: 'PRICE_ASC', value: 'PRICE_ASC' }, 'Sort: Price: Low to High'),
-                    React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
-                    React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
-                    React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
-                    React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold')
-                  ]
-                )
-              ),
-
-              // Search Bar
+              // 1. Search Bar
               React.createElement('div', { className: 'rcrm-qa-search-box' },
                 React.createElement('span', { style: { color: 'var(--text-secondary, #64748b)', fontSize: '0.95rem' } }, '🔍'),
                 React.createElement('input', {
                   ref: searchInputRef,
                   type: 'text',
                   className: 'rcrm-qa-search-input',
-                  placeholder: browsingMode === 'smart'
-                    ? 'Search by name, SKU, barcode, size (e.g. 25 mm), or specifications...'
-                    : 'Search across all categories by product name, SKU, or barcode...',
+                  placeholder: 'Search across all categories by product name, SKU, or barcode...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 }),
                 searchQuery && React.createElement('button', {
+                  type: 'button',
                   className: 'btn btn-ghost btn-xs',
                   style: { color: 'var(--text-secondary)', padding: '2px 6px', fontSize: '0.8rem' },
                   onClick: () => setSearchQuery('')
                 }, '✕')
               ),
 
-              // Smart View 4-Tab Navigation
-              browsingMode === 'smart' && React.createElement('div', { className: 'rcrm-qa-smart-nav' },
+              // 2. Quick Filters (All Products, Frequently Used, Recently Used, Favorites, In Stock)
+              React.createElement('div', { className: 'rcrm-qa-quick-filters' },
                 React.createElement('button', {
                   type: 'button',
-                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'frequently' ? 'active' : ''}`,
-                  onClick: () => setSmartSection('frequently')
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'ALL' ? 'active' : ''}`,
+                  onClick: () => setQuickFilter('ALL')
+                },
+                  React.createElement('span', null, 'All Products'),
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.all}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'FREQUENT' ? 'active' : ''}`,
+                  onClick: () => setQuickFilter('FREQUENT')
                 },
                   React.createElement('span', null, '🔥 Frequently Used'),
-                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.frequently}`)
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.frequently}`)
                 ),
                 React.createElement('button', {
                   type: 'button',
-                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'favorites' ? 'active' : ''}`,
-                  onClick: () => setSmartSection('favorites')
-                },
-                  React.createElement('span', null, '⭐ Favorites'),
-                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.favorites}`)
-                ),
-                React.createElement('button', {
-                  type: 'button',
-                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'recent' ? 'active' : ''}`,
-                  onClick: () => setSmartSection('recent')
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'RECENT' ? 'active' : ''}`,
+                  onClick: () => setQuickFilter('RECENT')
                 },
                   React.createElement('span', null, '🕒 Recently Used'),
-                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.recent}`)
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.recent}`)
                 ),
                 React.createElement('button', {
                   type: 'button',
-                  className: `rcrm-qa-smart-nav-tab ${smartSection === 'all' ? 'active' : ''}`,
-                  onClick: () => setSmartSection('all')
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'FAVORITES' ? 'active' : ''}`,
+                  onClick: () => setQuickFilter('FAVORITES')
                 },
-                  React.createElement('span', null, '📦 All Products'),
-                  React.createElement('span', { className: 'rcrm-qa-smart-tab-count' }, `${smartTabCounts.all}`)
+                  React.createElement('span', null, '⭐ Favorites'),
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.favorites}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'IN_STOCK' ? 'active' : ''}`,
+                  onClick: () => setQuickFilter('IN_STOCK')
+                },
+                  React.createElement('span', null, '✓ In Stock'),
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.inStock}`)
                 )
               ),
 
-              // Horizontal Category Navigation (Regular View OR Smart View All Products)
-              (browsingMode === 'regular' || smartSection === 'all' || searchQuery) && React.createElement('div', {
+              // 3. Category Navigation
+              React.createElement('div', {
                 ref: catStripRef,
                 className: 'rcrm-qa-cat-nav-wrapper'
               },
@@ -13427,14 +13361,14 @@
                   React.createElement('button', {
                     type: 'button',
                     className: `rcrm-qa-cat-chip ${selectedCategory === 'All' ? 'active' : ''}`,
-                    onClick: () => { setSelectedCategory('All'); setIsMoreOpen(false); }
+                    onClick: () => handleCategorySelect('All')
                   }, 'All'),
 
                   visibleChips.map(cat => React.createElement('button', {
                     key: cat,
                     type: 'button',
                     className: `rcrm-qa-cat-chip ${selectedCategory === cat ? 'active' : ''}`,
-                    onClick: () => { setSelectedCategory(cat); setIsMoreOpen(false); }
+                    onClick: () => handleCategorySelect(cat)
                   }, cat)),
 
                   overflowChips.length > 0 && React.createElement('button', {
@@ -13464,8 +13398,7 @@
                         key: cat,
                         className: `rcrm-qa-more-item ${selectedCategory === cat ? 'active' : ''}`,
                         onClick: () => {
-                          setSelectedCategory(cat);
-                          setIsMoreOpen(false);
+                          handleCategorySelect(cat);
                           setMoreSearch('');
                         }
                       },
@@ -13479,245 +13412,123 @@
                 )
               ),
 
-              // Product Display Grid
+              // 4. Suggested Product Types (Dynamically Recognized)
+              recognizedProductTypes.length > 0 && React.createElement('div', { className: 'rcrm-qa-type-nav-wrapper' },
+                React.createElement('span', { className: 'rcrm-qa-type-label' }, 'Types:'),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-type-chip ${(selectedProductType === 'All' || !selectedProductType) ? 'active' : ''}`,
+                  onClick: () => setSelectedProductType('All')
+                }, 'All Types'),
+                recognizedProductTypes.map(t => React.createElement('button', {
+                  key: t,
+                  type: 'button',
+                  className: `rcrm-qa-type-chip ${selectedProductType === t ? 'active' : ''}`,
+                  onClick: () => setSelectedProductType(t)
+                }, t))
+              ),
+
+              // 5. Products Header & Sorting Control
+              React.createElement('div', { className: 'rcrm-qa-grid-header' },
+                React.createElement('span', { className: 'rcrm-qa-grid-count' }, `Products (${displayProducts.length})`),
+                React.createElement('select', {
+                  className: 'rcrm-qa-sort-select',
+                  value: sortBy,
+                  onChange: e => setSortBy(e.target.value),
+                  title: 'Sort products'
+                },
+                  React.createElement('option', { key: 'DEFAULT', value: 'DEFAULT' }, 'Sort: Default Order'),
+                  React.createElement('option', { key: 'NAME_ASC', value: 'NAME_ASC' }, 'Sort: Product Name A–Z'),
+                  React.createElement('option', { key: 'NAME_DESC', value: 'NAME_DESC' }, 'Sort: Product Name Z–A'),
+                  React.createElement('option', { key: 'PRICE_ASC', value: 'PRICE_ASC' }, 'Sort: Price: Low to High'),
+                  React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
+                  React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
+                  React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
+                  React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold')
+                )
+              ),
+
+              // 6. Product Display Grid
               loading ? (
                 React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } },
                   'Loading product catalog...'
                 )
-              ) : browsingMode === 'smart' ? (
-                // ── SMART VIEW RENDERING ──
-                smartDisplayItems.length === 0 ? (
-                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 16px', textAlign: 'center' } },
-                    React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } },
-                      smartSection === 'favorites' ? '⭐' : (smartSection === 'frequently' ? '🔥' : (smartSection === 'recent' ? '🕒' : '📦'))
-                    ),
-                    React.createElement('h4', { style: { margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text, #1e293b)' } },
-                      smartSection === 'favorites'
-                        ? 'No favorite products yet'
-                        : (smartSection === 'frequently'
-                          ? 'No frequently used products yet'
-                          : (smartSection === 'recent'
-                            ? 'No recent invoice activity'
-                            : (searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`)))
-                    ),
-                    React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', maxWidth: 360 } },
-                      smartSection === 'favorites'
-                        ? 'Click the star icon (★) on any product to bookmark it for instant one-click access.'
-                        : (smartSection === 'frequently'
-                          ? 'Products commonly included in your finalized invoices over the last 90 days will automatically rank here.'
-                          : (smartSection === 'recent'
-                            ? 'Products from your recent invoices will be listed here for quick reordering.'
-                            : 'Try adjusting your search terms or selecting another category.'))
-                    ),
-                    (smartSection !== 'all' || searchQuery) && React.createElement('button', {
-                      type: 'button',
-                      className: 'btn btn-outline btn-sm',
-                      style: { marginTop: 14 },
-                      onClick: () => { setSmartSection('all'); setSearchQuery(''); setSelectedCategory('All'); }
-                    }, '📦 Browse All Products')
-                  )
-                ) : (
-                  React.createElement('div', { className: 'rcrm-qa-product-grid' },
-                    smartDisplayItems.map(item => {
-                      if (item.isFamily) {
-                        const isExpanded = Boolean(expandedFamilies[item.familyKey]);
-                        let familySelQty = 0;
-                        item.variations.forEach(v => {
-                          const vid = String(v.rawId || v.id || '');
-                          if (selectedMap[vid] && selectedMap[vid].quantity > 0) {
-                            familySelQty += selectedMap[vid].quantity;
-                          }
-                        });
-
-                        return React.createElement('div', {
-                          key: item.familyKey,
-                          className: `rcrm-qa-family-card ${familySelQty > 0 ? 'has-selected' : ''}`
-                        },
-                          // Header: Family Name & Variations Count
-                          React.createElement('div', { className: 'rcrm-qa-family-header' },
-                            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 } },
-                              React.createElement('div', { className: 'rcrm-qa-family-title' }, item.familyName),
-                              item.category && React.createElement('span', { className: 'rcrm-qa-product-cat' }, item.category)
-                            ),
-                            React.createElement('button', {
-                              type: 'button',
-                              className: 'rcrm-qa-family-badge',
-                              style: { cursor: 'pointer', border: 'none' },
-                              onClick: (e) => handleToggleFamilyExpand(item.familyKey, e),
-                              title: isExpanded ? 'Collapse variations' : 'Expand all variations'
-                            }, `${item.variations.length} vars ${isExpanded ? '▴' : '▾'}`)
-                          ),
-
-                          // Price Range & Available Sizes
-                          React.createElement('div', { className: 'rcrm-qa-family-meta' },
-                            React.createElement('span', { className: 'rcrm-qa-product-price' },
-                              item.minPrice === item.maxPrice
-                                ? BillsoftUtils.formatCurrency(item.minPrice)
-                                : `${BillsoftUtils.formatCurrency(item.minPrice)} – ${BillsoftUtils.formatCurrency(item.maxPrice)}`
-                            ),
-                            familySelQty > 0 && React.createElement('span', {
-                              className: 'badge badge-primary',
-                              style: { fontSize: '0.68rem', padding: '1px 5px' }
-                            }, `✓ ${familySelQty} in cart`)
-                          ),
-
-                          item.sizesSummary && React.createElement('div', {
-                            style: { fontSize: '0.68rem', color: 'var(--text-secondary, #64748b)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                          }, item.sizesSummary),
-
-                          // Quick Direct Variation Pills
-                          React.createElement('div', { className: 'rcrm-qa-family-pills' },
-                            item.variations.slice(0, 4).map(v => {
-                              const vid = String(v.rawId || v.id || '');
-                              const vSel = selectedMap[vid];
-                              const vLabel = v._intelAttr ? v._intelAttr.variationLabel : (v.name || 'var');
-                              const vPrice = resolvePrice(v);
-
-                              return React.createElement('button', {
-                                key: vid,
-                                type: 'button',
-                                className: `rcrm-qa-variation-pill ${vSel ? 'selected' : ''}`,
-                                onClick: (e) => { e.stopPropagation(); handleProductClick(v); },
-                                title: `Add ${v.name} (${vPrice ? BillsoftUtils.formatCurrency(vPrice) : 'Free'})`
-                              },
-                                React.createElement('span', null, vLabel),
-                                vSel && React.createElement('span', { style: { fontWeight: 800 } }, `✓${vSel.quantity}`)
-                              );
-                            })
-                          ),
-
-                          // Expand / Collapse action
-                          React.createElement('button', {
-                            type: 'button',
-                            className: 'rcrm-qa-family-toggle-btn',
-                            onClick: (e) => handleToggleFamilyExpand(item.familyKey, e)
-                          }, isExpanded ? '▴ Collapse variations' : `▾ Show all ${item.variations.length} variations`),
-
-                          // Expanded Variations Grid
-                          isExpanded && React.createElement('div', { className: 'rcrm-qa-family-expanded-grid' },
-                            item.variations.map(v => {
-                              const vid = String(v.rawId || v.id || '');
-                              const vSel = selectedMap[vid];
-                              const isVSel = Boolean(vSel && vSel.quantity > 0);
-                              const vPrice = resolvePrice(v);
-                              const vStock = (v.stockQuantity != null) ? Number(v.stockQuantity) : null;
-                              const isVJustAdded = (justAddedPid === vid);
-                              const vLabel = v._intelAttr ? v._intelAttr.variationLabel : v.name;
-
-                              return React.createElement('div', {
-                                key: vid,
-                                className: `rcrm-qa-product-card ${isVSel ? 'selected' : ''} ${isVJustAdded ? 'just-added' : ''}`,
-                                style: { minHeight: 70, padding: 8 },
-                                onClick: () => handleProductClick(v),
-                                title: `Add ${v.name} (${vPrice ? BillsoftUtils.formatCurrency(vPrice) : 'Free'})`
-                              },
-                                isVSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${vSel.quantity}`),
-                                React.createElement('div', { className: 'rcrm-qa-product-name', style: { fontSize: '0.78rem' } }, vLabel),
-                                React.createElement('div', { className: 'rcrm-qa-product-meta' },
-                                  React.createElement('span', { className: 'rcrm-qa-product-price', style: { fontSize: '0.82rem' } }, BillsoftUtils.formatCurrency(vPrice)),
-                                  vStock !== null && React.createElement('span', {
-                                    className: 'rcrm-qa-product-stock',
-                                    style: { color: vStock <= 0 ? '#ef4444' : 'inherit', fontSize: '0.65rem' }
-                                  }, vStock <= 0 ? 'Out' : `${vStock}`)
-                                )
-                              );
-                            })
-                          )
-                        );
-                      } else {
-                        // Standalone Product Card in Smart View
-                        const p = item.product;
-                        const pid = String(p.rawId || p.id || '');
-                        const sel = selectedMap[pid];
-                        const isSel = Boolean(sel && sel.quantity > 0);
-                        const sellingPrice = resolvePrice(p);
-                        const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
-                        const isJustAdded = (justAddedPid === pid);
-                        const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
-
-                        return React.createElement('div', {
-                          key: pid,
-                          className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
-                          onClick: () => handleProductClick(p),
-                          title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
-                        },
-                          isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
-                          React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 } },
-                            React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
-                            React.createElement('button', {
-                              type: 'button',
-                              className: `rcrm-qa-star-btn ${isFav ? 'active' : ''}`,
-                              onClick: (e) => handleToggleFavorite(p, e),
-                              title: isFav ? 'Remove from favorites' : 'Add to favorites'
-                            }, isFav ? '★' : '☆')
-                          ),
-                          p.category && React.createElement('span', { className: 'rcrm-qa-product-cat' }, p.category),
-                          React.createElement('div', { className: 'rcrm-qa-product-meta' },
-                            React.createElement('div', { className: 'rcrm-qa-product-price' }, BillsoftUtils.formatCurrency(sellingPrice)),
-                            curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
-                              className: 'rcrm-qa-product-stock',
-                              style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
-                            }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
-                          )
-                        );
-                      }
-                    })
-                  )
+              ) : displayProducts.length === 0 ? (
+                // Empty State
+                React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 16px', textAlign: 'center' } },
+                  React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } },
+                    quickFilter === 'FAVORITES' ? '⭐' : (quickFilter === 'FREQUENT' ? '🔥' : (quickFilter === 'RECENT' ? '🕒' : '📦'))
+                  ),
+                  React.createElement('h4', { style: { margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text, #1e293b)' } },
+                    quickFilter === 'FAVORITES'
+                      ? 'No favorite products yet'
+                      : (quickFilter === 'FREQUENT'
+                        ? 'No frequently used products yet'
+                        : (quickFilter === 'RECENT'
+                          ? 'No recent invoice activity'
+                          : (searchQuery ? `No products matching "${searchQuery}"` : (selectedCategory !== 'All' ? `No products in ${selectedCategory}` : 'No products found'))))
+                  ),
+                  React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', maxWidth: 360 } },
+                    quickFilter === 'FAVORITES'
+                      ? 'Click the star icon (★) on any product card to bookmark it for instant access.'
+                      : (quickFilter === 'FREQUENT'
+                        ? 'Products included in finalized invoices over the last 90 days will automatically rank here.'
+                        : (quickFilter === 'RECENT'
+                          ? 'Products from your recent invoices will be listed here for fast reordering.'
+                          : 'Try clearing filters, searching for a different keyword, or selecting another category.'))
+                  ),
+                  (quickFilter !== 'ALL' || selectedCategory !== 'All' || selectedProductType !== 'All' || searchQuery) && React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-outline btn-sm',
+                    style: { marginTop: 14 },
+                    onClick: () => {
+                      setQuickFilter('ALL');
+                      setSelectedCategory('All');
+                      setSelectedProductType('All');
+                      setSearchQuery('');
+                      setSortBy('DEFAULT');
+                    }
+                  }, '📦 Reset All Filters')
                 )
               ) : (
-                // ── REGULAR VIEW RENDERING ──
-                regularDisplayProducts.length === 0 ? (
-                  React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 0' } },
-                    React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
-                    React.createElement('p', { style: { margin: 0, fontWeight: 600 } },
-                      searchQuery ? `No products matching "${searchQuery}"` : `No products in ${selectedCategory}`
-                    ),
-                    searchQuery && React.createElement('button', {
-                      className: 'btn btn-outline btn-sm',
-                      style: { marginTop: 12 },
-                      onClick: () => setSearchQuery('')
-                    }, 'Clear Search')
-                  )
-                ) : (
-                  React.createElement('div', { className: 'rcrm-qa-product-grid' },
-                    regularDisplayProducts.map(p => {
-                      const pid = String(p.rawId || p.id || '');
-                      const sel = selectedMap[pid];
-                      const isSel = Boolean(sel && sel.quantity > 0);
-                      const sellingPrice = resolvePrice(p);
-                      const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
-                      const isJustAdded = (justAddedPid === pid);
-                      const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
+                React.createElement('div', { className: 'rcrm-qa-product-grid' },
+                  displayProducts.map(p => {
+                    const pid = String(p.rawId || p.id || '');
+                    const sel = selectedMap[pid];
+                    const isSel = Boolean(sel && sel.quantity > 0);
+                    const sellingPrice = resolvePrice(p);
+                    const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
+                    const isJustAdded = (justAddedPid === pid);
+                    const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
 
-                      return React.createElement('div', {
-                        key: pid,
-                        className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
-                        onClick: () => handleProductClick(p),
-                        title: `Click to add ${p.name} (${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'})`
-                      },
-                        isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
-                        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 4 } },
-                          React.createElement('div', { className: 'rcrm-qa-product-name' }, p.name),
-                          React.createElement('button', {
-                            type: 'button',
-                            className: `rcrm-qa-star-btn ${isFav ? 'active' : ''}`,
-                            onClick: (e) => handleToggleFavorite(p, e),
-                            title: isFav ? 'Remove from favorites' : 'Add to favorites'
-                          }, isFav ? '★' : '☆')
-                        ),
-                        (selectedCategory === 'All' || searchQuery) && p.category && React.createElement('span', {
-                          className: 'rcrm-qa-product-cat'
-                        }, p.category),
-                        React.createElement('div', { className: 'rcrm-qa-product-meta' },
-                          React.createElement('div', { className: 'rcrm-qa-product-price' }, BillsoftUtils.formatCurrency(sellingPrice)),
-                          curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
-                            className: 'rcrm-qa-product-stock',
-                            style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
-                          }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
-                        )
-                      );
-                    })
-                  )
+                    return React.createElement('div', {
+                      key: pid,
+                      className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
+                      onClick: () => handleProductClick(p),
+                      title: `${p.name} — ${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'}`
+                    },
+                      isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
+                      React.createElement('div', { className: 'rcrm-qa-product-card-top' },
+                        React.createElement('div', { className: 'rcrm-qa-product-name', title: p.name }, p.name),
+                        React.createElement('button', {
+                          type: 'button',
+                          className: `rcrm-qa-star-btn ${isFav ? 'active' : ''}`,
+                          onClick: (e) => handleToggleFavorite(p, e),
+                          title: isFav ? 'Remove from favorites' : 'Add to favorites'
+                        }, isFav ? '★' : '☆')
+                      ),
+                      p.category && React.createElement('span', {
+                        className: 'rcrm-qa-product-cat'
+                      }, p.category),
+                      React.createElement('div', { className: 'rcrm-qa-product-meta' },
+                        React.createElement('div', { className: 'rcrm-qa-product-price' }, BillsoftUtils.formatCurrency(sellingPrice)),
+                        curStock !== null && p.itemType !== 'SERVICE' && React.createElement('span', {
+                          className: 'rcrm-qa-product-stock',
+                          style: { color: curStock <= 0 ? '#ef4444' : 'inherit' }
+                        }, curStock <= 0 ? 'Out of stock' : `${curStock} ${p.unit || 'pcs'}`)
+                      )
+                    );
+                  })
                 )
               )
             ),

@@ -381,9 +381,21 @@ jobs:
             throw "CRITICAL: Setup installer not found in release-dist!"
           }
           Write-Host "Running installer: $($installer.FullName)..."
-          $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
-          Write-Host "Installer finished with exit code: $($installProcess.ExitCode)"
-          if ($installProcess.ExitCode -ne 0) {
+          Start-Sleep -Seconds 5
+          $installAttempts = 0
+          $installSuccess = $false
+          while ($installAttempts -lt 3 -and -not $installSuccess) {
+            $installAttempts++
+            $installProcess = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
+            Write-Host "Installer attempt $installAttempts finished with exit code: $($installProcess.ExitCode)"
+            if ($installProcess.ExitCode -eq 0) {
+              $installSuccess = $true
+            } else {
+              Write-Host "Install attempt $installAttempts exited with code $($installProcess.ExitCode). Waiting 5s before retry..."
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $installSuccess) {
             throw "Installer exited with non-zero exit code: $($installProcess.ExitCode)"
           }
           Write-Host "✓ Silent installation finished successfully."

@@ -12533,11 +12533,13 @@
       };
     })();
 
-    // ─── RUPEECRM PRODUCT INTELLIGENCE & FAMILY GROUPING ENGINE ───
+// ─── RUPEECRM PRODUCT INTELLIGENCE & FAMILY GROUPING ENGINE ───
     const RupeeProductIntelligence = (() => {
-      const SIZE_METRIC_REGEX = /\b(\d+(?:\.\d+)?)\s*(mm|cm|m|mtr|meter|meters|inch|inches|in|ft|feet)\b/i;
-      const SIZE_COMPOUND_REGEX = /\b(\d+(?:\.\d+)?)\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?)(?:\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m|inch|in)?\b/i;
+      const SIZE_COMPOUND_REGEX = /\b(\d+(?:\.\d+)?)\s*(?:mm|cm|m|inch|in|")?\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?)(?:\s*(?:x|X|\*|×)\s*(\d+(?:\.\d+)?))?\s*(mm|cm|m|inch|in|")?\b/i;
       const SIZE_FRACTION_REGEX = /(?:(\d+)\s+)?(\d+)\/(\d+)\s*(?:inch|inches|"|'')?/i;
+      const SIZE_NB_REGEX = /\b(\d+(?:\.\d+)?)\s*NB\b/i;
+      const SIZE_RUN_REGEX = /\b(\d+(?:\.\d+)?)\s*(metre|meters|meter|mtr|m|ft|feet)\b/i;
+      const SIZE_METRIC_REGEX = /\b(\d+(?:\.\d+)?)\s*(mm|cm|m|mtr|meter|meters|inch|inches|in|ft|feet)\b/i;
       const SIZE_WIRE_REGEX = /\b(\d+(?:\.\d+)?)\s*(?:sq\s*mm|sqmm)\b/i;
       const SIZE_THREAD_REGEX = /\bM(\d+(?:\.\d+)?)\b/i;
       const SIZE_WEIGHT_REGEX = /\b(\d+(?:\.\d+)?)\s*(kg|gm|g|ltr|liter|litre|ml)\b/i;
@@ -12545,6 +12547,35 @@
       const SPEC_LENGTH_REGEX = /\b(short|long|regular|heavy|light|medium|std|standard|half|full)\b/i;
       const SPEC_RATING_REGEX = /\b(sch\s*\d+|schedule\s*\d+|pn\s*\d+|class\s*\d+)\b/i;
       const SPEC_COLOR_REGEX = /\b(red|blue|black|white|yellow|green|grey|gray|orange)\b/i;
+
+      const STOP_WORDS = new Set([
+        'and', 'or', 'with', 'for', 'the', 'in', 'of', 'to', 'by', 'at', 'on', 'from',
+        'set', 'pack', 'pkt', 'box', 'kit', 'nos', 'no', 'num', 'pcs', 'piece', 'pieces',
+        'type', 'model', 'series', 'grade', 'class', 'item', 'product', 'size', 'spec',
+        'black', 'white', 'red', 'blue', 'green', 'yellow', 'grey', 'gray', 'orange',
+        'new', 'old', 'gen', 'universal', 'general', 'spare', 'spares', 'part', 'parts'
+      ]);
+
+      const UNIT_TOKENS = new Set([
+        'mm', 'cm', 'm', 'mtr', 'meter', 'meters', 'inch', 'inches', 'in', 'ft', 'feet',
+        'sq', 'sqmm', 'kg', 'g', 'gm', 'ltr', 'liter', 'litre', 'ml', 'v', 'volt', 'volts',
+        'w', 'watt', 'watts', 'a', 'amp', 'amps', 'ah', 'kva', 'hp', 'rpm', 'hz', 'bar', 'psi'
+      ]);
+
+      const MATERIAL_WORDS = new Set([
+        'pvc', 'upvc', 'cpvc', 'apvc', 'ptmt', 'ppr', 'hdpe', 'gi', 'ci', 'ms', 'ss',
+        'brass', 'copper', 'aluminum', 'aluminium', 'steel', 'iron', 'plastic', 'rubber',
+        'nylon', 'teflon', 'ceramic', 'wooden', 'glass', 'cast', 'mild', 'stainless', 'titanium'
+      ]);
+
+      const MODIFIER_ADJECTIVES = new Set([
+        'reducing', 'reduced', 'long', 'short', 'threaded', 'plain', 'heavy', 'light', 'medium',
+        'double', 'single', 'triple', 'hex', 'round', 'square', 'flat', 'flexible', 'rigid',
+        'automatic', 'manual', 'slotted', 'flanged', 'welded', 'seamless', 'blind', 'socket',
+        'std', 'standard', 'handle'
+      ]);
+
+      const ACRONYMS = new Set(['fta', 'mta', 'mcb', 'rccb', 'elcb', 'led', 'smps', 'ups', 'cnc', 'nb', 'pn', 'sch']);
 
       function parseFraction(wholeStr, numStr, denomStr) {
         const whole = wholeStr ? parseFloat(wholeStr) : 0;
@@ -12554,101 +12585,167 @@
         return whole + (num / denom);
       }
 
-      function extractAttributes(productName) {
-        if (!productName || typeof productName !== 'string') {
-          return { stem: '', size: null, specs: [], variationLabel: '' };
-        }
+      function normalizeProductName(name) {
+        if (!name) return '';
+        let s = name.trim();
+        s = s.replace(/\bball[\s\-_]*valve\b/gi, 'Ball Valve');
+        s = s.replace(/[-–—/\\,]/g, ' ').replace(/\s+/g, ' ').trim();
+        return s;
+      }
 
-        let name = productName.trim();
-        let sizeObj = null;
-        const specs = [];
+      function extractSize(productName) {
+        if (!productName || typeof productName !== 'string') return null;
+        const name = productName.trim();
 
-        // 1. Compound dimension first (e.g. 20 x 15 mm, 25x20)
+        // 1. Compound dimension first (e.g. 20 x 15 mm, 25mm x 20mm, 20*15, 20x15 mm)
         const compMatch = name.match(SIZE_COMPOUND_REGEX);
         if (compMatch) {
           const n1 = parseFloat(compMatch[1]);
           const n2 = parseFloat(compMatch[2]);
           const n3 = compMatch[3] ? parseFloat(compMatch[3]) : null;
           const unit = (compMatch[4] || 'mm').toLowerCase();
-          sizeObj = {
+          const canonical = `${n1} x ${n2}${n3 ? ' x ' + n3 : ''} ${unit}`;
+          return {
             raw: compMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
             num: n1,
             num2: n2,
             num3: n3,
             unit: unit,
             isCompound: true
           };
-          name = name.replace(compMatch[0], ' ');
-        } else {
-          // 2. Fractional inches (e.g. 1 1/2", 3/4 inch, 1/2")
-          const fracMatch = name.match(SIZE_FRACTION_REGEX);
-          if (fracMatch) {
-            const fracVal = parseFraction(fracMatch[1], fracMatch[2], fracMatch[3]);
-            if (fracVal !== null) {
-              sizeObj = {
-                raw: fracMatch[0].trim(),
-                num: fracVal,
-                unit: 'inch',
-                isFraction: true
-              };
-              name = name.replace(fracMatch[0], ' ');
-            }
-          }
         }
 
-        // 3. Metric sizes if not yet matched (e.g. 15 mm, 20mm)
-        if (!sizeObj) {
-          const metricMatch = name.match(SIZE_METRIC_REGEX);
-          if (metricMatch) {
-            sizeObj = {
-              raw: metricMatch[0].trim(),
-              num: parseFloat(metricMatch[1]),
-              unit: metricMatch[2].toLowerCase()
+        // 2. Fractional inches (e.g. 1 1/2", 3/4 inch, 1/2")
+        const fracMatch = name.match(SIZE_FRACTION_REGEX);
+        if (fracMatch) {
+          const fracVal = parseFraction(fracMatch[1], fracMatch[2], fracMatch[3]);
+          if (fracVal !== null) {
+            const whole = fracMatch[1] ? parseInt(fracMatch[1], 10) : 0;
+            const num = parseInt(fracMatch[2], 10);
+            const denom = parseInt(fracMatch[3], 10);
+            const displayFrac = whole > 0 ? `${whole} ${num}/${denom}"` : `${num}/${denom}"`;
+            return {
+              raw: fracMatch[0].trim(),
+              canonical: displayFrac,
+              display: displayFrac,
+              num: fracVal,
+              unit: 'inch',
+              isFraction: true
             };
-            name = name.replace(metricMatch[0], ' ');
           }
         }
 
-        // 4. Wire size (e.g. 1.5 sq mm)
-        if (!sizeObj) {
-          const wireMatch = name.match(SIZE_WIRE_REGEX);
-          if (wireMatch) {
-            sizeObj = {
-              raw: wireMatch[0].trim(),
-              num: parseFloat(wireMatch[1]),
-              unit: 'sq mm'
-            };
-            name = name.replace(wireMatch[0], ' ');
-          }
+        // 3. Nominal Bore (e.g. 25 NB, 50 NB)
+        const nbMatch = name.match(SIZE_NB_REGEX);
+        if (nbMatch) {
+          const num = parseFloat(nbMatch[1]);
+          const canonical = `${num} NB`;
+          return {
+            raw: nbMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: 'NB',
+            isNB: true
+          };
         }
 
-        // 5. Thread (e.g. M8, M10)
-        if (!sizeObj) {
-          const threadMatch = name.match(SIZE_THREAD_REGEX);
-          if (threadMatch) {
-            sizeObj = {
-              raw: threadMatch[0].trim(),
-              num: parseFloat(threadMatch[1]),
-              unit: 'M'
-            };
-            name = name.replace(threadMatch[0], ' ');
-          }
+        // 4. Metric run/length (e.g. 3 metre, 6 m, 10 ft)
+        const runMatch = name.match(SIZE_RUN_REGEX);
+        if (runMatch) {
+          const num = parseFloat(runMatch[1]);
+          const rawUnit = runMatch[2].toLowerCase();
+          const unit = rawUnit.startsWith('m') ? 'm' : 'ft';
+          const canonical = `${num} ${unit}`;
+          return {
+            raw: runMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: unit,
+            isRun: true
+          };
         }
 
-        // 6. Weight / Volume (e.g. 500 g, 1 L)
-        if (!sizeObj) {
-          const weightMatch = name.match(SIZE_WEIGHT_REGEX);
-          if (weightMatch) {
-            sizeObj = {
-              raw: weightMatch[0].trim(),
-              num: parseFloat(weightMatch[1]),
-              unit: weightMatch[2].toLowerCase()
-            };
-            name = name.replace(weightMatch[0], ' ');
-          }
+        // 5. Standard metric diameter (e.g. 15 mm, 20mm)
+        const metricMatch = name.match(SIZE_METRIC_REGEX);
+        if (metricMatch) {
+          const num = parseFloat(metricMatch[1]);
+          const unit = metricMatch[2].toLowerCase();
+          const canonical = `${num} ${unit}`;
+          return {
+            raw: metricMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: unit,
+            isMetric: true
+          };
         }
 
-        // Extract spec tokens (Length, Schedule, Color)
+        // 6. Wire size (e.g. 1.5 sq mm)
+        const wireMatch = name.match(SIZE_WIRE_REGEX);
+        if (wireMatch) {
+          const num = parseFloat(wireMatch[1]);
+          const canonical = `${num} sq mm`;
+          return {
+            raw: wireMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: 'sq mm',
+            isWire: true
+          };
+        }
+
+        // 7. Thread (e.g. M8, M10)
+        const threadMatch = name.match(SIZE_THREAD_REGEX);
+        if (threadMatch) {
+          const num = parseFloat(threadMatch[1]);
+          const canonical = `M${num}`;
+          return {
+            raw: threadMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: 'M',
+            isThread: true
+          };
+        }
+
+        // 8. Weight/Volume (e.g. 500 g, 1 L)
+        const weightMatch = name.match(SIZE_WEIGHT_REGEX);
+        if (weightMatch) {
+          const num = parseFloat(weightMatch[1]);
+          const unit = weightMatch[2].toLowerCase();
+          const canonical = `${num} ${unit}`;
+          return {
+            raw: weightMatch[0].trim(),
+            canonical: canonical,
+            display: canonical,
+            num: num,
+            unit: unit,
+            isWeight: true
+          };
+        }
+
+        return null;
+      }
+
+      function extractAttributes(productName) {
+        if (!productName || typeof productName !== 'string') {
+          return { stem: '', size: null, specs: [], variationLabel: '' };
+        }
+
+        let name = productName.trim();
+        const sizeObj = extractSize(name);
+        if (sizeObj && sizeObj.raw) {
+          name = name.replace(sizeObj.raw, ' ');
+        }
+
+        const specs = [];
         const lengthMatch = name.match(SPEC_LENGTH_REGEX);
         if (lengthMatch) {
           specs.push(lengthMatch[0]);
@@ -12667,7 +12764,6 @@
           name = name.replace(colorMatch[0], ' ');
         }
 
-        // Clean up normalized stem
         let stem = name
           .replace(/[-–—/\\,]/g, ' ')
           .replace(/\s+/g, ' ')
@@ -12677,10 +12773,11 @@
           stem = productName.trim();
         }
 
-        // Build concise variation label
         const varParts = [];
         specs.forEach(s => varParts.push(s.charAt(0).toUpperCase() + s.slice(1)));
-        if (sizeObj && sizeObj.raw) {
+        if (sizeObj && sizeObj.canonical) {
+          varParts.push(sizeObj.canonical);
+        } else if (sizeObj && sizeObj.raw) {
           varParts.push(sizeObj.raw);
         }
         const variationLabel = varParts.length > 0 ? varParts.join(' ') : productName.trim();
@@ -12716,7 +12813,7 @@
         return (pA.name || '').localeCompare(pB.name || '');
       }
 
-      function recognizeProductTypes(products, selectedCategory) {
+      function recognizeProductTypes(products, selectedCategory, learnedRules = null) {
         if (!products || !Array.isArray(products) || products.length === 0) return [];
 
         let list = products;
@@ -12727,31 +12824,13 @@
 
         if (list.length === 0) return [];
 
+        const confirmedSet = new Set((learnedRules && learnedRules.confirmedTypes ? learnedRules.confirmedTypes : []).map(t => t.toLowerCase()));
+        const rejectedSet = new Set((learnedRules && learnedRules.rejectedTypes ? learnedRules.rejectedTypes : []).map(t => t.toLowerCase()));
+
         const catTokens = new Set();
         if (selectedCategory && selectedCategory !== 'All') {
           selectedCategory.toLowerCase().split(/[\s\-_/\\,]+/).filter(Boolean).forEach(t => catTokens.add(t));
         }
-
-        const STOP_WORDS = new Set([
-          'and', 'or', 'with', 'for', 'the', 'in', 'of', 'to', 'by', 'at', 'on', 'from',
-          'set', 'pack', 'pkt', 'box', 'kit', 'nos', 'no', 'num', 'pcs', 'piece', 'pieces',
-          'type', 'model', 'series', 'grade', 'class', 'item', 'product', 'size', 'spec',
-          'heavy', 'light', 'medium', 'std', 'standard', 'regular', 'short', 'long',
-          'black', 'white', 'red', 'blue', 'green', 'yellow', 'grey', 'gray', 'orange',
-          'new', 'old', 'gen', 'universal', 'general', 'spare', 'spares', 'part', 'parts'
-        ]);
-
-        const UNIT_TOKENS = new Set([
-          'mm', 'cm', 'm', 'mtr', 'meter', 'meters', 'inch', 'inches', 'in', 'ft', 'feet',
-          'sq', 'sqmm', 'kg', 'g', 'gm', 'ltr', 'liter', 'litre', 'ml', 'v', 'volt', 'volts',
-          'w', 'watt', 'watts', 'a', 'amp', 'amps', 'ah', 'kva', 'hp', 'rpm', 'hz', 'bar', 'psi'
-        ]);
-
-        const MATERIAL_WORDS = new Set([
-          'pvc', 'upvc', 'cpvc', 'apvc', 'ptmt', 'ppr', 'hdpe', 'gi', 'ci', 'ms', 'ss',
-          'brass', 'copper', 'aluminum', 'aluminium', 'steel', 'iron', 'plastic', 'rubber',
-          'nylon', 'teflon', 'ceramic', 'wooden', 'glass', 'cast', 'mild', 'stainless'
-        ]);
 
         const tokenDocCount = {};
         const bigramDocCount = {};
@@ -12760,10 +12839,19 @@
 
         list.forEach(p => {
           if (!p.name) return;
-          const attr = extractAttributes(p.name);
-          let stem = attr.stem || p.name;
+          let rawName = normalizeProductName(p.name);
 
-          const cleanStem = stem.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+          // Strip recognized sizes from the name to prevent dimensions becoming types
+          rawName = rawName.replace(SIZE_COMPOUND_REGEX, ' ');
+          rawName = rawName.replace(SIZE_FRACTION_REGEX, ' ');
+          rawName = rawName.replace(SIZE_NB_REGEX, ' ');
+          rawName = rawName.replace(SIZE_RUN_REGEX, ' ');
+          rawName = rawName.replace(SIZE_METRIC_REGEX, ' ');
+          rawName = rawName.replace(SIZE_WIRE_REGEX, ' ');
+          rawName = rawName.replace(SIZE_THREAD_REGEX, ' ');
+          rawName = rawName.replace(SIZE_WEIGHT_REGEX, ' ');
+
+          const cleanStem = rawName.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
           const rawWords = cleanStem.split(' ').filter(Boolean);
 
           const filteredWords = [];
@@ -12773,8 +12861,14 @@
             const lower = w.toLowerCase();
             if (/^\d+$/.test(lower) || lower.length <= 1) return;
             if (STOP_WORDS.has(lower) || UNIT_TOKENS.has(lower) || catTokens.has(lower)) return;
+            if (rejectedSet.has(lower)) return;
+
             if (!tokenCaseMap[lower]) {
-              tokenCaseMap[lower] = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+              if (ACRONYMS.has(lower) || /^[A-Z0-9]{2,5}$/.test(w)) {
+                tokenCaseMap[lower] = w.toUpperCase();
+              } else {
+                tokenCaseMap[lower] = w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+              }
             }
             filteredWords.push(lower);
             if (!seenInProduct.has(lower)) {
@@ -12783,11 +12877,13 @@
             }
           });
 
+          // Bigrams
           const seenBigrams = new Set();
           for (let i = 0; i < filteredWords.length - 1; i++) {
             const w1 = filteredWords[i];
             const w2 = filteredWords[i + 1];
-            const bigramKey = `${w1} ${w2}`;
+            if (MATERIAL_WORDS.has(w1)) continue; // Don't form Brass Elbow as compound
+            const bigramKey = w1 + ' ' + w2;
             if (!seenBigrams.has(bigramKey)) {
               seenBigrams.add(bigramKey);
               bigramDocCount[bigramKey] = (bigramDocCount[bigramKey] || 0) + 1;
@@ -12795,46 +12891,40 @@
           }
         });
 
-        const commonPrefixTokens = new Set();
-        if (totalCount >= 4) {
-          Object.entries(tokenDocCount).forEach(([tok, count]) => {
-            if (count / totalCount >= 0.80) {
-              commonPrefixTokens.add(tok);
-            }
-          });
-        }
-
-        const minFreq = totalCount >= 4 ? 2 : 1;
+        const minFreq = totalCount > 25 ? 2 : 1;
+        const minBigramFreq = totalCount > 30 ? 2 : 1;
         const candidates = [];
         const bigramConsumedTokens = new Set();
 
+        // 1. Evaluate bigrams (Compound Product Types)
         Object.entries(bigramDocCount).forEach(([bigram, count]) => {
-          if (count >= minFreq) {
-            const [w1, w2] = bigram.split(' ');
-            if (MATERIAL_WORDS.has(w1)) return;
-            if (!commonPrefixTokens.has(w1) && !commonPrefixTokens.has(w2)) {
-              const titleBigram = `${tokenCaseMap[w1] || w1} ${tokenCaseMap[w2] || w2}`;
-              candidates.push({
-                type: 'bigram',
-                key: bigram,
-                label: titleBigram,
-                count: count,
-                w1, w2
-              });
-              bigramConsumedTokens.add(w1);
-              bigramConsumedTokens.add(w2);
-            }
+          const [w1, w2] = bigram.split(' ');
+          const isConfirmed = confirmedSet.has(bigram);
+          if (count >= minBigramFreq || isConfirmed) {
+            const titleBigram = (tokenCaseMap[w1] || w1) + ' ' + (tokenCaseMap[w2] || w2);
+            candidates.push({
+              type: 'bigram',
+              key: bigram,
+              label: titleBigram,
+              count: count + (isConfirmed ? 100 : 0),
+              w1, w2
+            });
+            bigramConsumedTokens.add(w1);
+            bigramConsumedTokens.add(w2);
           }
         });
 
+        // 2. Evaluate single words
         Object.entries(tokenDocCount).forEach(([tok, count]) => {
-          if (count >= minFreq) {
-            if (commonPrefixTokens.has(tok)) return;
-            if (MATERIAL_WORDS.has(tok)) return;
+          const isConfirmed = confirmedSet.has(tok);
+          if (count >= minFreq || isConfirmed) {
+            if (MATERIAL_WORDS.has(tok)) return; // Suppress materials
+            if (MODIFIER_ADJECTIVES.has(tok) && !isConfirmed) return; // Suppress standalone adjectives
 
+            // Subsumption check: if a word only appears in compound bigram(s)
             const bigramMatches = candidates.filter(c => c.type === 'bigram' && (c.w1 === tok || c.w2 === tok));
             const maxBigramCount = bigramMatches.reduce((max, c) => Math.max(max, c.count), 0);
-            if (bigramMatches.length > 0 && maxBigramCount >= count * 0.8) {
+            if (bigramMatches.length > 0 && maxBigramCount >= count * 0.85 && !isConfirmed) {
               return;
             }
 
@@ -12842,17 +12932,28 @@
               type: 'word',
               key: tok,
               label: tokenCaseMap[tok] || (tok.charAt(0).toUpperCase() + tok.slice(1)),
-              count: count
+              count: count + (isConfirmed ? 100 : 0)
             });
           }
         });
 
+        // Deduplicate normalized labels
+        const seenLabels = new Set();
+        const finalCandidates = [];
         candidates.sort((a, b) => {
           if (b.count !== a.count) return b.count - a.count;
           return a.label.localeCompare(b.label);
         });
 
-        return candidates.slice(0, 12).map(c => c.label);
+        candidates.forEach(c => {
+          const norm = c.label.toLowerCase().replace(/[\s\-_]/g, '');
+          if (!seenLabels.has(norm)) {
+            seenLabels.add(norm);
+            finalCandidates.push(c.label);
+          }
+        });
+
+        return finalCandidates.slice(0, 16);
       }
 
       function matchesProductType(product, typeLabel) {
@@ -12863,23 +12964,79 @@
         const searchType = typeLabel.toLowerCase();
 
         if (searchType.includes(' ')) {
-          return pName.includes(searchType);
+          return pName.includes(searchType) || pName.replace(/[\s\-_]/g, '').includes(searchType.replace(/[\s\-_]/g, ''));
         }
 
         const regex = new RegExp('\\b' + searchType.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
         return regex.test(pName);
       }
 
+      function recognizeSizes(products, selectedCategory, selectedProductType) {
+        if (!products || !Array.isArray(products) || products.length === 0) return [];
+
+        let list = products;
+        if (selectedCategory && selectedCategory !== 'All') {
+          const catLower = selectedCategory.trim().toLowerCase();
+          list = list.filter(p => (p.category || '').trim().toLowerCase() === catLower);
+        }
+        if (selectedProductType && selectedProductType !== 'All' && selectedProductType !== 'All Types') {
+          list = list.filter(p => matchesProductType(p, selectedProductType));
+        }
+
+        const sizeMap = new Map();
+        list.forEach(p => {
+          if (!p || !p.name) return;
+          const sObj = extractSize(p.name);
+          if (sObj && sObj.canonical) {
+            if (!sizeMap.has(sObj.canonical)) {
+              sizeMap.set(sObj.canonical, sObj);
+            }
+          }
+        });
+
+        const sizeList = Array.from(sizeMap.values());
+        sizeList.sort((a, b) => {
+          if (a.num !== b.num) return a.num - b.num;
+          if (a.num2 !== undefined && b.num2 !== undefined && a.num2 !== b.num2) {
+            return a.num2 - b.num2;
+          }
+          return a.canonical.localeCompare(b.canonical);
+        });
+
+        return sizeList.map(s => s.canonical);
+      }
+
+      function matchesSize(product, selectedSize) {
+        if (!selectedSize || selectedSize === 'All' || selectedSize === 'All Sizes') return true;
+        if (!product || !product.name) return false;
+
+        const sObj = extractSize(product.name);
+        if (!sObj) return false;
+
+        const selLower = selectedSize.trim().toLowerCase();
+        if (sObj.canonical && sObj.canonical.toLowerCase() === selLower) return true;
+        if (sObj.display && sObj.display.toLowerCase() === selLower) return true;
+        if (sObj.raw && sObj.raw.toLowerCase() === selLower) return true;
+
+        const selCompact = selLower.replace(/[\s\-_]/g, '');
+        const canCompact = (sObj.canonical || '').toLowerCase().replace(/[\s\-_]/g, '');
+        const rawCompact = (sObj.raw || '').toLowerCase().replace(/[\s\-_]/g, '');
+
+        return canCompact === selCompact || rawCompact === selCompact;
+      }
+
       function matchesSearch(prod, query) {
         if (!query) return true;
         const q = query.trim().toLowerCase();
-        const lower = q;
-        const compactQ = q.replace(/[\s\-_]/g, '');
+        if (!q) return true;
 
         const name = (prod.name || '').toLowerCase();
+        const compactQ = q.replace(/[\s\-_]/g, '');
         const compactName = name.replace(/[\s\-_]/g, '');
+
         if (name.includes(q) || compactName.includes(compactQ)) return true;
 
+        const lower = q;
         const p = prod;
         if (p.sku && p.sku.toLowerCase().includes(lower)) return true;
         if (p.barcode && p.barcode.toLowerCase().includes(lower)) return true;
@@ -12887,32 +13044,113 @@
         if (prod.hsnCode && prod.hsnCode.toLowerCase().includes(q)) return true;
 
         const attr = prod._intelAttr || extractAttributes(prod.name);
-        if (attr.size && (attr.size.raw.toLowerCase().includes(q) || String(attr.size.num) === q)) return true;
+        if (attr.size) {
+          const sRaw = (attr.size.raw || '').toLowerCase();
+          const sCan = (attr.size.canonical || '').toLowerCase();
+          const sCompact = sRaw.replace(/[\s\-_]/g, '');
+          if (sRaw.includes(q) || sCan.includes(q) || sCompact.includes(compactQ) || String(attr.size.num) === q) {
+            return true;
+          }
+        }
         if (attr.variationLabel && attr.variationLabel.toLowerCase().includes(q)) return true;
 
-        const tokens = q.split(/\s+/).filter(Boolean);
+        const tokens = q.split(/[\s,]+/).filter(Boolean);
         if (tokens.length > 1) {
-          const allMatch = tokens.every(tok =>
-            name.includes(tok) ||
-            (prod.category && prod.category.toLowerCase().includes(tok)) ||
-            (attr.size && attr.size.raw.toLowerCase().includes(tok))
-          );
+          const allMatch = tokens.every(tok => {
+            const cTok = tok.replace(/[\s\-_]/g, '');
+            if (name.includes(tok) || compactName.includes(cTok)) return true;
+            if (prod.category && prod.category.toLowerCase().includes(tok)) return true;
+            if (prod.sku && prod.sku.toLowerCase().includes(tok)) return true;
+            if (prod.barcode && prod.barcode.toLowerCase().includes(tok)) return true;
+            if (attr.size) {
+              const sRaw = (attr.size.raw || '').toLowerCase();
+              const sCan = (attr.size.canonical || '').toLowerCase();
+              if (sRaw.includes(tok) || sCan.includes(tok) || sRaw.replace(/[\s\-_]/g, '').includes(cTok)) {
+                return true;
+              }
+            }
+            return false;
+          });
           if (allMatch) return true;
         }
 
         return false;
       }
 
+      function computeSearchRelevance(prod, query) {
+        if (!query) return 0;
+        const q = query.trim().toLowerCase();
+        const name = (prod.name || '').toLowerCase();
+        const sku = (prod.sku || '').toLowerCase();
+        const barcode = (prod.barcode || '').toLowerCase();
+
+        let score = 0;
+        if (sku === q || barcode === q) score += 1000;
+        else if (sku.startsWith(q) || barcode.startsWith(q)) score += 500;
+
+        if (name === q) score += 400;
+        else if (name.startsWith(q)) score += 300;
+        else if (name.includes(q)) score += 200;
+
+        const tokens = q.split(/[\s,]+/).filter(Boolean);
+        if (tokens.length > 1) {
+          let tHits = 0;
+          tokens.forEach(tok => {
+            if (name.includes(tok)) tHits += 50;
+          });
+          score += tHits;
+        }
+
+        if (prod.stockQuantity != null && Number(prod.stockQuantity) > 0) {
+          score += 15;
+        }
+
+        return score;
+      }
+
+      function findSimilarProducts(targetProduct, allProducts, limit = 6) {
+        if (!targetProduct || !allProducts || allProducts.length <= 1) return [];
+        const targetId = targetProduct.rawId || targetProduct.id;
+        const targetName = (targetProduct.name || '').trim();
+        const targetAttr = targetProduct._intelAttr || extractAttributes(targetName);
+        const targetStem = (targetAttr.stem || targetName).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        const results = [];
+        allProducts.forEach(p => {
+          if (p === targetProduct) return;
+          if (targetId && (p.rawId === targetId || p.id === targetId)) return;
+
+          const pAttr = p._intelAttr || extractAttributes(p.name);
+          const pStem = (pAttr.stem || p.name).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+          if (pStem && (pStem === targetStem || pStem.includes(targetStem) || targetStem.includes(pStem))) {
+            results.push({
+              product: p,
+              size: pAttr.size ? (pAttr.size.canonical || pAttr.size.raw) : null,
+              variationLabel: pAttr.variationLabel || p.name
+            });
+          }
+        });
+
+        results.sort((a, b) => naturalCompareSize(a.product, b.product));
+        return results.slice(0, limit);
+      }
+
       return {
         extractAttributes,
+        extractSize,
         naturalCompareSize,
         matchesSearch,
+        computeSearchRelevance,
         recognizeProductTypes,
-        matchesProductType
+        matchesProductType,
+        recognizeSizes,
+        matchesSize,
+        findSimilarProducts
       };
     })();
 
-    if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined') {
       window.RupeeProductIntelligence = RupeeProductIntelligence;
     }
     if (typeof module !== 'undefined' && module.exports) {
@@ -12946,9 +13184,16 @@
       const [containerWidth, setContainerWidth] = useState(700);
 
       // Quick Filters, Dynamic Recognition & Sorting States
-      const [quickFilter, setQuickFilter] = useState('ALL'); // 'ALL' | 'FREQUENT' | 'RECENT' | 'FAVORITES' | 'IN_STOCK'
+      const [quickFilter, setQuickFilter] = useState('ALL'); // 'ALL' | 'FREQUENT' | 'RECENT' | 'FAVORITES' | 'IN_STOCK' | 'RECENTLY_ADDED'
       const [selectedProductType, setSelectedProductType] = useState('All');
+      const [selectedSize, setSelectedSize] = useState('All');
+      const [isTypesExpanded, setIsTypesExpanded] = useState(false);
+      const [isSizesExpanded, setIsSizesExpanded] = useState(false);
+      const [focusedCardIndex, setFocusedCardIndex] = useState(-1);
       const [sortBy, setSortBy] = useState('DEFAULT');
+      const [learnedRules, setLearnedRules] = useState({ confirmedTypes: [], rejectedTypes: [] });
+      const [showLearnedConfig, setShowLearnedConfig] = useState(false);
+
       const [favoritesSet, setFavoritesSet] = useState(() => {
         try {
           const fid = activeFirmId ? String(activeFirmId) : (API.firmId ? String(API.firmId) : '1');
@@ -12980,7 +13225,78 @@
       const handleCategorySelect = (cat) => {
         setSelectedCategory(cat);
         setSelectedProductType('All');
+        setSelectedSize('All');
         setIsMoreOpen(false);
+        setFocusedCardIndex(-1);
+      };
+
+      const handleProductTypeSelect = (type) => {
+        setSelectedProductType(type);
+        setSelectedSize('All');
+        setFocusedCardIndex(-1);
+      };
+
+      const handleSizeSelect = (size) => {
+        setSelectedSize(size);
+        setFocusedCardIndex(-1);
+      };
+
+      // Helper to parse createdAt timestamp
+      const getProductCreatedAtTime = useCallback((p) => {
+        if (!p || !p.createdAt) return 0;
+        if (typeof p.createdAt === 'string') {
+          const t = new Date(p.createdAt).getTime();
+          return isNaN(t) ? 0 : t;
+        }
+        if (Array.isArray(p.createdAt) && p.createdAt.length >= 3) {
+          return new Date(p.createdAt[0], p.createdAt[1] - 1, p.createdAt[2], p.createdAt[3] || 0, p.createdAt[4] || 0).getTime();
+        }
+        if (typeof p.createdAt === 'number') return p.createdAt;
+        return 0;
+      }, []);
+
+      // Load firm-isolated learned rules
+      useEffect(() => {
+        const fid = targetFid;
+        if (!fid) return;
+        try {
+          const localSaved = localStorage.getItem('billsoft_qa_learned_' + fid);
+          if (localSaved) {
+            const parsed = JSON.parse(localSaved);
+            if (parsed && (Array.isArray(parsed.confirmedTypes) || Array.isArray(parsed.rejectedTypes))) {
+              setLearnedRules(parsed);
+            }
+          }
+        } catch (e) {}
+
+        fetch('/api/app-config/QA_LEARNED_TYPES_' + fid, {
+          headers: { 'X-Firm-Id': String(fid) }
+        }).then(r => r.json()).then(res => {
+          if (res && res.exists && res.value) {
+            try {
+              const parsed = typeof res.value === 'string' ? JSON.parse(res.value) : res.value;
+              if (parsed && (Array.isArray(parsed.confirmedTypes) || Array.isArray(parsed.rejectedTypes))) {
+                setLearnedRules(parsed);
+                localStorage.setItem('billsoft_qa_learned_' + fid, JSON.stringify(parsed));
+              }
+            } catch (e) {}
+          }
+        }).catch(() => {});
+      }, [targetFid]);
+
+      const handleResetLearnedRules = () => {
+        const fid = targetFid;
+        const emptyRules = { confirmedTypes: [], rejectedTypes: [] };
+        setLearnedRules(emptyRules);
+        if (fid) {
+          try { localStorage.removeItem('billsoft_qa_learned_' + fid); } catch (e) {}
+          fetch('/api/app-config/QA_LEARNED_TYPES_' + fid, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Firm-Id': String(fid) },
+            body: JSON.stringify({ value: JSON.stringify(emptyRules) })
+          }).catch(() => {});
+        }
+        setShowLearnedConfig(false);
       };
 
       // Load products, categories, effective pricing, smart discovery, and favorites
@@ -13002,7 +13318,6 @@
           promises.push(Promise.resolve({ effectivePrices: existingEffectivePriceMap || {} }));
         }
 
-        // Fetch smart discovery and favorites in parallel
         if (typeof API.products.getSmartDiscovery === 'function') {
           API.products.getSmartDiscovery(90, targetFid).then(res => {
             if (!isMounted || !res) return;
@@ -13240,8 +13555,13 @@
 
       // Dynamic recognition of product types from active catalog and selected category
       const recognizedProductTypes = useMemo(() => {
-        return RupeeProductIntelligence.recognizeProductTypes(products, selectedCategory);
-      }, [products, selectedCategory]);
+        return RupeeProductIntelligence.recognizeProductTypes(products, selectedCategory, learnedRules);
+      }, [products, selectedCategory, learnedRules]);
+
+      // Dynamic recognition of sizes / dimensions from active products, category & type
+      const recognizedSizes = useMemo(() => {
+        return RupeeProductIntelligence.recognizeSizes(products, selectedCategory, selectedProductType);
+      }, [products, selectedCategory, selectedProductType]);
 
       // Counts for Quick Filter pills
       const filterCounts = useMemo(() => {
@@ -13249,16 +13569,22 @@
         const favCount = products.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id))).length;
         const recCount = products.filter(p => Boolean(recentlyUsedMap[String(p.rawId || p.id)])).length;
         const inStockCount = products.filter(p => ((p.stockQuantity != null && Number(p.stockQuantity) > 0) || p.itemType === 'SERVICE')).length;
+        const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+        const recentlyAddedCount = products.filter(p => {
+          const t = getProductCreatedAtTime(p);
+          return t > sixtyDaysAgo || (t > 0 && products.length <= 100);
+        }).length;
         return {
           all: products.length,
           frequently: freqCount,
           recent: recCount,
           favorites: favCount,
-          inStock: inStockCount
+          inStock: inStockCount,
+          recentlyAdded: recentlyAddedCount
         };
-      }, [products, frequentlyUsedMap, favoritesSet, recentlyUsedMap]);
+      }, [products, frequentlyUsedMap, favoritesSet, recentlyUsedMap, getProductCreatedAtTime]);
 
-      // Unified Product Display List (Filtered by quick filters, category, recognized type, search & sort)
+      // Unified Product Display List (Filtered by quick filters, category, recognized type, size, search & sort)
       const displayProducts = useMemo(() => {
         let list = products;
 
@@ -13271,6 +13597,12 @@
           list = list.filter(p => favoritesSet.has(Number(p.rawId || p.id)) || favoritesSet.has(String(p.rawId || p.id)));
         } else if (quickFilter === 'IN_STOCK') {
           list = list.filter(p => (p.stockQuantity != null && Number(p.stockQuantity) > 0) || p.itemType === 'SERVICE');
+        } else if (quickFilter === 'RECENTLY_ADDED') {
+          const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
+          list = list.filter(p => {
+            const t = getProductCreatedAtTime(p);
+            return t > sixtyDaysAgo || (t > 0);
+          });
         }
 
         // 2. Category Filter
@@ -13284,13 +13616,18 @@
           list = list.filter(p => RupeeProductIntelligence.matchesProductType(p, selectedProductType));
         }
 
-        // 4. Search Filter
+        // 4. Suggested Size / Dimension Filter
+        if (selectedSize && selectedSize !== 'All' && selectedSize !== 'All Sizes') {
+          list = list.filter(p => RupeeProductIntelligence.matchesSize(p, selectedSize));
+        }
+
+        // 5. Search Filter (Multi-token natural query across name, type, size, material, SKU, barcode)
         const q = (searchQuery || '').trim();
         if (q) {
           list = list.filter(p => RupeeProductIntelligence.matchesSearch(p, q));
         }
 
-        // 5. Sorting
+        // 6. Sorting
         if (sortBy === 'NAME_ASC') {
           list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         } else if (sortBy === 'NAME_DESC') {
@@ -13309,8 +13646,18 @@
             const tB = recentlyUsedMap[String(b.rawId || b.id)] ? new Date(recentlyUsedMap[String(b.rawId || b.id)]).getTime() : 0;
             return tB - tA;
           });
+        } else if (sortBy === 'RECENTLY_ADDED') {
+          list = [...list].sort((a, b) => getProductCreatedAtTime(b) - getProductCreatedAtTime(a));
         } else if (sortBy === 'DEFAULT') {
-          if (quickFilter === 'FREQUENT') {
+          if (q) {
+            // Sort by search relevance
+            list = [...list].sort((a, b) => {
+              const scoreB = RupeeProductIntelligence.computeSearchRelevance(b, q);
+              const scoreA = RupeeProductIntelligence.computeSearchRelevance(a, q);
+              if (scoreB !== scoreA) return scoreB - scoreA;
+              return (a.name || '').localeCompare(b.name || '');
+            });
+          } else if (quickFilter === 'FREQUENT') {
             list = [...list].sort((a, b) => (frequentlyUsedMap[String(b.rawId || b.id)] || 0) - (frequentlyUsedMap[String(a.rawId || a.id)] || 0));
           } else if (quickFilter === 'RECENT') {
             list = [...list].sort((a, b) => {
@@ -13318,11 +13665,13 @@
               const tB = recentlyUsedMap[String(b.rawId || b.id)] ? new Date(recentlyUsedMap[String(b.rawId || b.id)]).getTime() : 0;
               return tB - tA;
             });
+          } else if (quickFilter === 'RECENTLY_ADDED') {
+            list = [...list].sort((a, b) => getProductCreatedAtTime(b) - getProductCreatedAtTime(a));
           }
         }
 
         return list;
-      }, [products, quickFilter, selectedCategory, selectedProductType, searchQuery, sortBy, frequentlyUsedMap, recentlyUsedMap, favoritesSet, resolvePrice]);
+      }, [products, quickFilter, selectedCategory, selectedProductType, selectedSize, searchQuery, sortBy, frequentlyUsedMap, recentlyUsedMap, favoritesSet, resolvePrice, getProductCreatedAtTime]);
 
       // Backward-compatible displayedProducts alias for external assertions
       const displayedProducts = displayProducts;
@@ -13342,22 +13691,67 @@
         onClose();
       };
 
-      // Keyboard Escape handler
+      // Keyboard Navigation: '/' or Ctrl/Cmd+F to search, Arrow keys to navigate cards, Enter to add, Escape to clear/close
       useEffect(() => {
-        const handleKeyDown = (e) => {
+        const handleGlobalKeyDown = (e) => {
+          const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+          const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+          if (!isInput && (e.key === '/' || ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')))) {
+            e.preventDefault();
+            if (searchInputRef.current) {
+              searchInputRef.current.focus();
+              searchInputRef.current.select();
+            }
+            return;
+          }
+
           if (e.key === 'Escape') {
+            if (searchQuery) {
+              e.preventDefault();
+              setSearchQuery('');
+              return;
+            }
             if (isMoreOpen) {
+              e.preventDefault();
               setIsMoreOpen(false);
-            } else if (showDiscardConfirm) {
+              return;
+            }
+            if (showDiscardConfirm) {
+              e.preventDefault();
               setShowDiscardConfirm(false);
-            } else {
-              handleRequestClose();
+              return;
+            }
+            if (showLearnedConfig) {
+              e.preventDefault();
+              setShowLearnedConfig(false);
+              return;
+            }
+            handleRequestClose();
+            return;
+          }
+
+          if (displayProducts.length > 0) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+              if (!isInput || (isInput && e.key === 'ArrowDown')) {
+                e.preventDefault();
+                setFocusedCardIndex(prev => (prev < displayProducts.length - 1 ? prev + 1 : 0));
+              }
+            } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+              if (!isInput || (isInput && e.key === 'ArrowUp')) {
+                e.preventDefault();
+                setFocusedCardIndex(prev => (prev > 0 ? prev - 1 : displayProducts.length - 1));
+              }
+            } else if (e.key === 'Enter' && !isInput && focusedCardIndex >= 0 && focusedCardIndex < displayProducts.length) {
+              e.preventDefault();
+              handleProductClick(displayProducts[focusedCardIndex]);
             }
           }
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [selectedItems, isMoreOpen, showDiscardConfirm]);
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+      }, [searchQuery, isMoreOpen, showDiscardConfirm, showLearnedConfig, displayProducts, focusedCardIndex]);
 
       // Finish – Add to Invoice
       const handleFinish = () => {
@@ -13438,6 +13832,12 @@
             React.createElement('div', { className: 'rcrm-qa-header-actions' },
               React.createElement('button', {
                 type: 'button',
+                className: 'rcrm-qa-gear-btn',
+                onClick: () => setShowLearnedConfig(!showLearnedConfig),
+                title: 'Product Intelligence & Firm Learning Settings'
+              }, '⚙️'),
+              React.createElement('button', {
+                type: 'button',
                 className: `rcrm-qa-sound-btn ${!soundEnabled ? 'muted' : ''}`,
                 onClick: handleToggleSound,
                 title: soundEnabled ? 'Mute sound feedback' : 'Unmute sound feedback'
@@ -13454,7 +13854,7 @@
           // ── Body (Two-Panel Layout) ──
           React.createElement('div', { className: 'rcrm-qa-body' },
 
-            // ── LEFT PANEL: Mode Switcher, Search, Navigation Bar & Product Grid ──
+            // ── LEFT PANEL: Search, Filters, Categories, Types, Sizes & Product Grid ──
             React.createElement('div', { className: 'rcrm-qa-left' },
 
               // 1. Search Bar
@@ -13466,7 +13866,7 @@
                   className: 'rcrm-qa-search-input',
                   placeholder: 'Search across all categories by product name, SKU, or barcode...',
                   value: searchQuery,
-                  onChange: e => setSearchQuery(e.target.value)
+                  onChange: e => { setSearchQuery(e.target.value); setFocusedCardIndex(-1); }
                 }),
                 searchQuery && React.createElement('button', {
                   type: 'button',
@@ -13476,12 +13876,12 @@
                 }, '✕')
               ),
 
-              // 2. Quick Filters (All Products, Frequently Used, Recently Used, Favorites, In Stock)
+              // 2. Quick Filters (All Products, Frequently Used, Recently Used, Favorites, In Stock, Recently Added)
               React.createElement('div', { className: 'rcrm-qa-quick-filters' },
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-filter-pill ${quickFilter === 'ALL' ? 'active' : ''}`,
-                  onClick: () => setQuickFilter('ALL')
+                  onClick: () => { setQuickFilter('ALL'); setFocusedCardIndex(-1); }
                 },
                   React.createElement('span', null, 'All Products'),
                   React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.all}`)
@@ -13489,7 +13889,7 @@
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-filter-pill ${quickFilter === 'FREQUENT' ? 'active' : ''}`,
-                  onClick: () => setQuickFilter('FREQUENT')
+                  onClick: () => { setQuickFilter('FREQUENT'); setFocusedCardIndex(-1); }
                 },
                   React.createElement('span', null, '🔥 Frequently Used'),
                   React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.frequently}`)
@@ -13497,7 +13897,7 @@
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-filter-pill ${quickFilter === 'RECENT' ? 'active' : ''}`,
-                  onClick: () => setQuickFilter('RECENT')
+                  onClick: () => { setQuickFilter('RECENT'); setFocusedCardIndex(-1); }
                 },
                   React.createElement('span', null, '🕒 Recently Used'),
                   React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.recent}`)
@@ -13505,7 +13905,7 @@
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-filter-pill ${quickFilter === 'FAVORITES' ? 'active' : ''}`,
-                  onClick: () => setQuickFilter('FAVORITES')
+                  onClick: () => { setQuickFilter('FAVORITES'); setFocusedCardIndex(-1); }
                 },
                   React.createElement('span', null, '⭐ Favorites'),
                   React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.favorites}`)
@@ -13513,10 +13913,18 @@
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-filter-pill ${quickFilter === 'IN_STOCK' ? 'active' : ''}`,
-                  onClick: () => setQuickFilter('IN_STOCK')
+                  onClick: () => { setQuickFilter('IN_STOCK'); setFocusedCardIndex(-1); }
                 },
                   React.createElement('span', null, '✓ In Stock'),
                   React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.inStock}`)
+                ),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-filter-pill ${quickFilter === 'RECENTLY_ADDED' ? 'active' : ''}`,
+                  onClick: () => { setQuickFilter('RECENTLY_ADDED'); setFocusedCardIndex(-1); }
+                },
+                  React.createElement('span', null, '🆕 Recently Added'),
+                  React.createElement('span', { className: 'rcrm-qa-filter-pill-count' }, `${filterCounts.recentlyAdded}`)
                 )
               ),
 
@@ -13580,23 +13988,51 @@
                 )
               ),
 
-              // 4. Suggested Product Types (Dynamically Recognized)
+              // 4. Suggested Product Types (Dynamically Recognized, NO COUNTS)
               recognizedProductTypes.length > 0 && React.createElement('div', { className: 'rcrm-qa-type-nav-wrapper' },
                 React.createElement('span', { className: 'rcrm-qa-type-label' }, 'Types:'),
                 React.createElement('button', {
                   type: 'button',
                   className: `rcrm-qa-type-chip ${(selectedProductType === 'All' || !selectedProductType) ? 'active' : ''}`,
-                  onClick: () => setSelectedProductType('All')
+                  onClick: () => handleProductTypeSelect('All')
                 }, 'All Types'),
-                recognizedProductTypes.map(t => React.createElement('button', {
+                (isTypesExpanded ? recognizedProductTypes : recognizedProductTypes.slice(0, 8)).map(t => React.createElement('button', {
                   key: t,
                   type: 'button',
                   className: `rcrm-qa-type-chip ${selectedProductType === t ? 'active' : ''}`,
-                  onClick: () => setSelectedProductType(t)
-                }, t))
+                  onClick: () => handleProductTypeSelect(t)
+                }, t)),
+                recognizedProductTypes.length > 8 && React.createElement('button', {
+                  type: 'button',
+                  className: 'rcrm-qa-type-more-btn',
+                  onClick: () => setIsTypesExpanded(!isTypesExpanded),
+                  title: isTypesExpanded ? 'Show fewer types' : 'Show all recognized types'
+                }, isTypesExpanded ? 'Show Less ▴' : `+ More (${recognizedProductTypes.length - 8}) ▾`)
               ),
 
-              // 5. Products Header & Sorting Control
+              // 5. Suggested Sizes / Dimensions (Dynamically Recognized)
+              recognizedSizes.length > 0 && React.createElement('div', { className: 'rcrm-qa-size-nav-wrapper' },
+                React.createElement('span', { className: 'rcrm-qa-size-label' }, 'Sizes:'),
+                React.createElement('button', {
+                  type: 'button',
+                  className: `rcrm-qa-size-chip ${(selectedSize === 'All' || !selectedSize) ? 'active' : ''}`,
+                  onClick: () => handleSizeSelect('All')
+                }, 'All Sizes'),
+                (isSizesExpanded ? recognizedSizes : recognizedSizes.slice(0, 8)).map(s => React.createElement('button', {
+                  key: s,
+                  type: 'button',
+                  className: `rcrm-qa-size-chip ${selectedSize === s ? 'active' : ''}`,
+                  onClick: () => handleSizeSelect(s)
+                }, s)),
+                recognizedSizes.length > 8 && React.createElement('button', {
+                  type: 'button',
+                  className: 'rcrm-qa-size-more-btn',
+                  onClick: () => setIsSizesExpanded(!isSizesExpanded),
+                  title: isSizesExpanded ? 'Show fewer sizes' : 'Show all sizes'
+                }, isSizesExpanded ? 'Show Less ▴' : `+ More (${recognizedSizes.length - 8}) ▾`)
+              ),
+
+              // 6. Products Header & Sorting Control
               React.createElement('div', { className: 'rcrm-qa-grid-header' },
                 React.createElement('span', { className: 'rcrm-qa-grid-count' }, `Products (${displayProducts.length})`),
                 React.createElement('select', {
@@ -13612,11 +14048,12 @@
                   React.createElement('option', { key: 'PRICE_DESC', value: 'PRICE_DESC' }, 'Sort: Price: High to Low'),
                   React.createElement('option', { key: 'SIZE', value: 'SIZE' }, 'Sort: Size / Dimension'),
                   React.createElement('option', { key: 'FREQ', value: 'FREQ' }, 'Sort: Most Frequently Used'),
-                  React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold')
+                  React.createElement('option', { key: 'RECENT', value: 'RECENT' }, 'Sort: Recently Sold'),
+                  React.createElement('option', { key: 'RECENTLY_ADDED', value: 'RECENTLY_ADDED' }, 'Sort: Recently Added')
                 )
               ),
 
-              // 6. Product Display Grid
+              // 7. Product Display Grid
               loading ? (
                 React.createElement('div', { style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' } },
                   'Loading product catalog...'
@@ -13625,7 +14062,7 @@
                 // Empty State
                 React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '40px 16px', textAlign: 'center' } },
                   React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } },
-                    quickFilter === 'FAVORITES' ? '⭐' : (quickFilter === 'FREQUENT' ? '🔥' : (quickFilter === 'RECENT' ? '🕒' : '📦'))
+                    quickFilter === 'FAVORITES' ? '⭐' : (quickFilter === 'FREQUENT' ? '🔥' : (quickFilter === 'RECENT' ? '🕒' : (quickFilter === 'RECENTLY_ADDED' ? '🆕' : '📦')))
                   ),
                   React.createElement('h4', { style: { margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 700, color: 'var(--text, #1e293b)' } },
                     quickFilter === 'FAVORITES'
@@ -13634,7 +14071,9 @@
                         ? 'No frequently used products yet'
                         : (quickFilter === 'RECENT'
                           ? 'No recent invoice activity'
-                          : (searchQuery ? `No products matching "${searchQuery}"` : (selectedCategory !== 'All' ? `No products in ${selectedCategory}` : 'No products found'))))
+                          : (quickFilter === 'RECENTLY_ADDED'
+                            ? 'No recently added products'
+                            : (searchQuery ? `No products matching "${searchQuery}"` : (selectedCategory !== 'All' ? `No products in ${selectedCategory}` : 'No products found')))))
                   ),
                   React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', maxWidth: 360 } },
                     quickFilter === 'FAVORITES'
@@ -13643,9 +14082,11 @@
                         ? 'Products included in finalized invoices over the last 90 days will automatically rank here.'
                         : (quickFilter === 'RECENT'
                           ? 'Products from your recent invoices will be listed here for fast reordering.'
-                          : 'Try clearing filters, searching for a different keyword, or selecting another category.'))
+                          : (quickFilter === 'RECENTLY_ADDED'
+                            ? 'Products created in your catalog will be listed here in chronological order.'
+                            : 'Try clearing filters, searching for a different keyword, or selecting another category.')))
                   ),
-                  (quickFilter !== 'ALL' || selectedCategory !== 'All' || selectedProductType !== 'All' || searchQuery) && React.createElement('button', {
+                  (quickFilter !== 'ALL' || selectedCategory !== 'All' || selectedProductType !== 'All' || selectedSize !== 'All' || searchQuery) && React.createElement('button', {
                     type: 'button',
                     className: 'btn btn-outline btn-sm',
                     style: { marginTop: 14 },
@@ -13653,14 +14094,16 @@
                       setQuickFilter('ALL');
                       setSelectedCategory('All');
                       setSelectedProductType('All');
+                      setSelectedSize('All');
                       setSearchQuery('');
                       setSortBy('DEFAULT');
+                      setFocusedCardIndex(-1);
                     }
                   }, '📦 Reset All Filters')
                 )
               ) : (
                 React.createElement('div', { className: 'rcrm-qa-product-grid' },
-                  displayProducts.map(p => {
+                  displayProducts.map((p, idx) => {
                     const pid = String(p.rawId || p.id || '');
                     const sel = selectedMap[pid];
                     const isSel = Boolean(sel && sel.quantity > 0);
@@ -13668,11 +14111,14 @@
                     const curStock = (p.stockQuantity != null) ? Number(p.stockQuantity) : null;
                     const isJustAdded = (justAddedPid === pid);
                     const isFav = favoritesSet.has(Number(pid)) || favoritesSet.has(pid);
+                    const isFocused = (focusedCardIndex === idx);
 
                     return React.createElement('div', {
                       key: pid,
-                      className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''}`,
+                      tabIndex: 0,
+                      className: `rcrm-qa-product-card ${isSel ? 'selected' : ''} ${isJustAdded ? 'just-added' : ''} ${isFocused ? 'keyboard-focused' : ''}`,
                       onClick: () => handleProductClick(p),
+                      onFocus: () => setFocusedCardIndex(idx),
                       title: `${p.name} — ${sellingPrice ? BillsoftUtils.formatCurrency(sellingPrice) : 'Free'}`
                     },
                       isSel && React.createElement('span', { className: 'rcrm-qa-qty-badge' }, `✓ ${sel.quantity}`),
@@ -13723,13 +14169,15 @@
                   React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } },
                     React.createElement('div', { style: { fontSize: '2.4rem', marginBottom: 8 } }, '🛒'),
                     React.createElement('p', { style: { margin: 0, fontWeight: 600, fontSize: '0.86rem' } }, 'No items selected yet.'),
-                    React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.76rem' } }, 'Click products or variations on the left to add them.')
+                    React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.76rem' } }, 'Click products on the left to add them.')
                   )
                 ) : (
                   selectedItems.map(it => {
                     const pid = String(it.product.rawId || it.product.id || '');
                     const isRemoving = (removingPid === pid);
                     const isJustUpdated = (justUpdatedPid === pid);
+                    const simList = RupeeProductIntelligence.findSimilarProducts(it.product, products, 3);
+
                     return React.createElement('div', {
                       key: pid,
                       className: `rcrm-qa-selected-item ${isRemoving ? 'removing' : ''}`
@@ -13771,6 +14219,20 @@
                         React.createElement('span', { className: 'rcrm-qa-item-linetotal' },
                           BillsoftUtils.formatCurrency(it.lineTotal)
                         )
+                      ),
+                      simList && simList.length > 0 && React.createElement('div', { className: 'rcrm-qa-similar-variants' },
+                        React.createElement('span', { className: 'rcrm-qa-similar-label' }, 'Related:'),
+                        simList.map(sim => {
+                          const simPid = String(sim.product.rawId || sim.product.id || '');
+                          const label = sim.size || sim.variationLabel || sim.product.name;
+                          return React.createElement('button', {
+                            key: simPid,
+                            type: 'button',
+                            className: 'rcrm-qa-similar-chip',
+                            onClick: () => handleProductClick(sim.product),
+                            title: `Quick add ${sim.product.name}`
+                          }, `+ ${label}`);
+                        })
                       )
                     );
                   })
@@ -13815,6 +14277,47 @@
               disabled: selectedItems.length === 0 || isSubmitting,
               onClick: handleFinish
             }, isSubmitting ? 'Transferring Items...' : `Finish – Add to Invoice (${selectedItems.length})`)
+          )
+        ),
+
+        // ── Firm Intelligence Learned Rules Modal ──
+        showLearnedConfig && React.createElement('div', {
+          className: 'modal-overlay',
+          style: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10400 },
+          onClick: () => setShowLearnedConfig(false)
+        },
+          React.createElement('div', {
+            className: 'modal-card',
+            style: { background: 'var(--bg-card, #fff)', color: 'var(--text-primary, #111827)', borderRadius: 12, padding: 20, maxWidth: 440, width: '90%', display: 'flex', flexDirection: 'column', gap: 14, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)' },
+            onClick: e => e.stopPropagation()
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                React.createElement('span', { style: { fontSize: '1.25rem' } }, '🧠'),
+                React.createElement('h4', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 700 } }, 'Firm Product Intelligence')
+              ),
+              React.createElement('button', { className: 'btn btn-ghost btn-xs', onClick: () => setShowLearnedConfig(false) }, '✕')
+            ),
+            React.createElement('p', { style: { margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary, #64748b)', lineHeight: 1.45 } },
+              `Product family grouping, compound types, and size recognition are calculated dynamically and strictly isolated to Firm #${targetFid || 'Default'}.`
+            ),
+            React.createElement('div', { style: { fontSize: '0.78rem', background: 'var(--bg-secondary, #f8fafc)', padding: 10, borderRadius: 8, border: '1px solid var(--border, #e2e8f0)', display: 'flex', flexDirection: 'column', gap: 4 } },
+              React.createElement('div', null, `Active Firm ID: `, React.createElement('strong', null, `${targetFid || 'Default'}`)),
+              React.createElement('div', null, `Confirmed Types: `, React.createElement('strong', null, `${(learnedRules.confirmedTypes || []).length}`)),
+              React.createElement('div', null, `Rejected Types: `, React.createElement('strong', null, `${(learnedRules.rejectedTypes || []).length}`))
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline btn-sm',
+                onClick: () => setShowLearnedConfig(false)
+              }, 'Close'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-danger btn-sm',
+                onClick: handleResetLearnedRules
+              }, 'Reset Learned Rules')
+            )
           )
         ),
 

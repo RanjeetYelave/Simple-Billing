@@ -18739,6 +18739,133 @@ body.no-liquid-glass {
   color: #f59e0b;
 }
 
+.rcrm-qa-gear-btn {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text-secondary, #64748b);
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rcrm-qa-gear-btn:hover {
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text, #1e293b);
+  border-color: var(--primary, #059669);
+}
+
+.rcrm-qa-type-more-btn,
+.rcrm-qa-size-more-btn {
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--border, #cbd5e1);
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rcrm-qa-type-more-btn:hover,
+.rcrm-qa-size-more-btn:hover {
+  color: var(--text, #1e293b);
+  border-color: var(--text-secondary, #64748b);
+}
+
+/* Suggested Sizes / Dimensions (Dynamic Recognition) */
+.rcrm-qa-size-nav-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  padding: 2px 0;
+}
+
+.rcrm-qa-size-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rcrm-qa-size-chip {
+  padding: 3px 9px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cbd5e1);
+  background: var(--bg-card, #ffffff);
+  color: var(--text, #1e293b);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.rcrm-qa-size-chip:hover {
+  border-color: #0284c7;
+  color: #0284c7;
+}
+
+.rcrm-qa-size-chip.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  font-weight: 700;
+}
+
+/* Keyboard focused product card */
+.rcrm-qa-product-card.keyboard-focused {
+  outline: 2px solid var(--primary, #059669);
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.25);
+  border-color: var(--primary, #059669);
+}
+
+/* Similar products variant suggestions in Selected Items list */
+.rcrm-qa-similar-variants {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border, #e2e8f0);
+}
+
+.rcrm-qa-similar-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.rcrm-qa-similar-chip {
+  background: var(--bg-secondary, #f1f5f9);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--primary, #059669);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  user-select: none;
+}
+
+.rcrm-qa-similar-chip:hover {
+  background: var(--primary, #059669);
+  color: #ffffff;
+  border-color: var(--primary, #059669);
+}
+
 @media (max-width: 768px) {
   .rcrm-quick-add-modal {
     width: 100vw;

@@ -67,7 +67,11 @@ public class ReminderService {
 
     @Transactional
     public Reminder update(Long id, Reminder updated) {
-        Long firmId = TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && updated.getFirmId() != null && !authoritativeFirmId.equals(updated.getFirmId())) {
+            throw new TenantSecurityException("Cross-firm reminder update prohibited");
+        }
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : updated.getFirmId();
         Reminder r = (firmId != null ? reminderRepository.findByIdAndFirmId(id, firmId) : reminderRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Reminder not found"));
 

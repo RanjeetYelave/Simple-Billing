@@ -11,6 +11,8 @@ import com.billing.simple.billsoft.repositories.PurchaseOrderItemRepository;
 import com.billing.simple.billsoft.repositories.PurchaseOrderRepository;
 import com.billing.simple.billsoft.service.PurchaseOrderPdfService;
 import com.billing.simple.billsoft.service.PurchaseOrderService;
+import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -265,15 +267,25 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional(readOnly = true)
     public Optional<PurchaseOrder> getPurchaseOrderById(Long id, Long firmId) {
-        if (firmId != null) {
-            return poRepository.findByIdAndFirmId(id, firmId);
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (effectiveFirmId != null) {
+            return poRepository.findByIdAndFirmId(id, effectiveFirmId);
         }
         return poRepository.findById(id);
     }
 
     @Override
     public PurchaseOrder updateStatus(Long id, Long firmId, PurchaseOrderStatus status) {
-        PurchaseOrder po = (firmId != null ? poRepository.findByIdAndFirmId(id, firmId) : poRepository.findById(id))
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId) : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
         PurchaseOrderStatus oldStatus = po.getStatus();
         po.setStatus(status);
@@ -293,7 +305,12 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     public void deletePurchaseOrder(Long id, Long firmId) {
-        PurchaseOrder po = (firmId != null ? poRepository.findByIdAndFirmId(id, firmId) : poRepository.findById(id))
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId) : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
 
         // If PO was RECEIVED, reverse stock upon deletion

@@ -31,7 +31,8 @@ public class InvoiceController {
     private final InvoicePdfService pdfService;
     private final com.billing.simple.billsoft.service.FirmDetailsService firmService;
 
-    public InvoiceController(InvoiceService service, InvoicePdfService pdfService, com.billing.simple.billsoft.service.FirmDetailsService firmService) {
+    public InvoiceController(InvoiceService service, InvoicePdfService pdfService,
+            com.billing.simple.billsoft.service.FirmDetailsService firmService) {
         this.service = service;
         this.pdfService = pdfService;
         this.firmService = firmService;
@@ -76,8 +77,10 @@ public class InvoiceController {
     @GetMapping("/{id}/linked-invoice")
     public ResponseEntity<Invoice> getLinkedInvoice(@PathVariable Long id) {
         Invoice inv = service.getById(id);
-        if (inv == null) return ResponseEntity.notFound().build();
-        if (inv.getConvertedInvoiceId() == null) return ResponseEntity.notFound().build();
+        if (inv == null)
+            return ResponseEntity.notFound().build();
+        if (inv.getConvertedInvoiceId() == null)
+            return ResponseEntity.notFound().build();
         Invoice linked = service.getById(inv.getConvertedInvoiceId());
         return linked == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(linked);
     }
@@ -96,7 +99,8 @@ public class InvoiceController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
         Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
-        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils
+                .createDefaultTransactionPageRequest(page, size, "invoiceDate");
         Page<Invoice> p = service.getPaginated(targetFirmId, pageable);
         return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
@@ -108,7 +112,8 @@ public class InvoiceController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
         Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
-        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils
+                .createDefaultTransactionPageRequest(page, size, "invoiceDate");
         Page<Invoice> p = service.getPaginatedEstimates(targetFirmId, pageable);
         return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
@@ -120,7 +125,8 @@ public class InvoiceController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
         Long targetFirmId = firmIdHeader != null ? firmIdHeader : firmId;
-        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "invoiceDate");
+        org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils
+                .createDefaultTransactionPageRequest(page, size, "invoiceDate");
         Page<Invoice> p = service.getPaginatedFinalInvoices(targetFirmId, pageable);
         return ResponseEntity.ok(com.billing.simple.billsoft.dtos.PageResponse.of(p));
     }
@@ -188,7 +194,8 @@ public class InvoiceController {
             @RequestParam(required = false) String color) {
 
         Long contextFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        Long effectiveFirmId = contextFirmId != null ? contextFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        Long effectiveFirmId = contextFirmId != null ? contextFirmId
+                : (firmIdHeader != null ? firmIdHeader : firmIdParam);
 
         try {
             Invoice inv = null;
@@ -208,13 +215,15 @@ public class InvoiceController {
             }
 
             if (inv == null) {
-                // If not found with firm context, check if invoice exists in repo
-                Invoice candidate = service.getById(id);
+                // If not found with firm context, check if invoice exists in repo (unscoped, e.g. for legacy records with null firmId)
+                Invoice candidate = service.getByIdUnscoped(id);
                 if (candidate == null) {
                     return ResponseEntity.notFound().build();
                 }
-                // Enforce tenant isolation: if caller specified a different firm from the invoice's firm
-                if (effectiveFirmId != null && candidate.getFirmId() != null && !effectiveFirmId.equals(candidate.getFirmId())) {
+                // Enforce tenant isolation: if caller specified a different firm from the
+                // invoice's firm
+                if (effectiveFirmId != null && candidate.getFirmId() != null
+                        && !effectiveFirmId.equals(candidate.getFirmId())) {
                     return ResponseEntity.notFound().build();
                 }
                 inv = candidate;
@@ -242,8 +251,12 @@ public class InvoiceController {
             }
 
             String num = (inv.getStatus() == InvoiceStatus.ESTIMATE)
-                    ? (inv.getEstimateNumber() != null && !inv.getEstimateNumber().isBlank() ? inv.getEstimateNumber().trim() : String.valueOf(inv.getId()))
-                    : (inv.getInvoiceNumber() != null && !inv.getInvoiceNumber().isBlank() ? inv.getInvoiceNumber().trim() : String.valueOf(inv.getId()));
+                    ? (inv.getEstimateNumber() != null && !inv.getEstimateNumber().isBlank()
+                            ? inv.getEstimateNumber().trim()
+                            : String.valueOf(inv.getId()))
+                    : (inv.getInvoiceNumber() != null && !inv.getInvoiceNumber().isBlank()
+                            ? inv.getInvoiceNumber().trim()
+                            : String.valueOf(inv.getId()));
             String prefix = (inv.getStatus() == InvoiceStatus.ESTIMATE) ? "estimate-" : "invoice-";
             String sanitizedNum = num.replaceAll("[^a-zA-Z0-9._-]", "_");
             String filename = prefix + sanitizedNum + ".pdf";
@@ -274,11 +287,12 @@ public class InvoiceController {
                     ? java.time.LocalDate.parse(body.get("paymentDate").toString())
                     : java.time.LocalDate.now();
             String paymentMode = body.get("paymentMode") != null ? body.get("paymentMode").toString() : "Cash";
-            String referenceNumber = body.get("referenceNumber") != null ? body.get("referenceNumber").toString() : null;
+            String referenceNumber = body.get("referenceNumber") != null ? body.get("referenceNumber").toString()
+                    : null;
             String notes = body.get("notes") != null ? body.get("notes").toString() : null;
 
-            com.billing.simple.billsoft.entities.InvoicePayment payment =
-                    service.recordPayment(id, amount, paymentDate, paymentMode, referenceNumber, notes);
+            com.billing.simple.billsoft.entities.InvoicePayment payment = service.recordPayment(id, amount, paymentDate,
+                    paymentMode, referenceNumber, notes);
             return ResponseEntity.ok(payment);
         } catch (com.billing.simple.billsoft.security.TenantSecurityException | IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
@@ -289,7 +303,8 @@ public class InvoiceController {
     }
 
     @GetMapping("/{id}/payments")
-    public ResponseEntity<List<com.billing.simple.billsoft.entities.InvoicePayment>> getPayments(@PathVariable Long id) {
+    public ResponseEntity<List<com.billing.simple.billsoft.entities.InvoicePayment>> getPayments(
+            @PathVariable Long id) {
         return ResponseEntity.ok(service.getPayments(id));
     }
 

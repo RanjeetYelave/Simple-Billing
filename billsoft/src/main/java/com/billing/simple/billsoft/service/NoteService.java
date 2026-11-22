@@ -89,10 +89,11 @@ public class NoteService {
     @Transactional
     public Note update(Long id, Note updated) {
         validateNote(updated);
-        Long firmId = TenantContext.getCurrentFirmId();
-        if (firmId == null && updated.getFirmId() != null) {
-            firmId = updated.getFirmId();
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && updated.getFirmId() != null && !authoritativeFirmId.equals(updated.getFirmId())) {
+            throw new TenantSecurityException("Cross-firm note update prohibited");
         }
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : updated.getFirmId();
         Note n = (firmId != null ? noteRepository.findByIdAndFirmId(id, firmId) : noteRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Note not found"));
 

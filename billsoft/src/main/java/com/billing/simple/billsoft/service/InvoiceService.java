@@ -424,8 +424,11 @@ public class InvoiceService {
 
     @Transactional(readOnly = true)
     public FirmAnalyticsResponse getFirmAnalytics(Long firmId) {
-        Long targetFirmId = firmId != null ? firmId
-                : com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long targetFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
         if (targetFirmId == null) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException(
                     "Active firm ID is required to generate firm analytics.");
@@ -700,6 +703,16 @@ public class InvoiceService {
         }
         if (ids.isEmpty())
             return Collections.emptyList();
+        if (firmId != null) {
+            List<Product> found = forUpdate
+                    ? productRepo.findByIdInAndFirmIdForUpdate(ids, firmId)
+                    : productRepo.findByIdInAndFirmId(ids, firmId);
+            if (found.size() < ids.size()) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                        "One or more products referenced do not exist or belong to a different firm.");
+            }
+            return found;
+        }
         if (forUpdate) {
             return productRepo.findByIdInForUpdate(ids);
         }
@@ -966,7 +979,13 @@ public class InvoiceService {
             invoice.setEstimateNumber(request.getEstimateNumber());
         }
 
-        List<Product> products = fetchProductsReferencedBy(request, null);
+        List<Product> products = fetchProductsReferencedBy(request, null, false, firmId);
+        for (Product p : products) {
+            if (p.getFirmId() != null && !p.getFirmId().equals(firmId)) {
+                throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                        "Product " + p.getName() + " (ID " + p.getId() + ") belongs to a different firm.");
+            }
+        }
         Invoice calc = engine.calculate(invoice, customer, products, request, false, resolveFirm(firmId));
         calc.setId(null);
         return calc;
@@ -1000,12 +1019,15 @@ public class InvoiceService {
         Invoice inv = (currentFirmId != null
                 ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
                 : invoiceRepo.findById(id)).orElse(null);
-        if (inv == null && currentFirmId != null) {
-            Invoice unassigned = invoiceRepo.findById(id).orElse(null);
-            if (unassigned != null && unassigned.getFirmId() == null) {
-                inv = unassigned;
-            }
-        }
+        if (inv == null)
+            return null;
+        normalizeStatus(inv);
+        populateConversionStatus(inv);
+        return inv;
+    }
+
+    public Invoice getByIdUnscoped(Long id) {
+        Invoice inv = invoiceRepo.findById(id).orElse(null);
         if (inv == null)
             return null;
         normalizeStatus(inv);
@@ -1033,7 +1055,7 @@ public class InvoiceService {
         }
 
         // AUDIT-029: Reject physical deletion if active sales returns or credit notes exist
-        List<SalesReturn> returns = currentFirmId != null
+        List<SalesReturn> returns = (currentFirmId != null)
                 ? salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(id, currentFirmId)
                 : salesReturnRepo.findByInvoiceIdOrderByCreatedAtDesc(id);
         if (!returns.isEmpty()) {
@@ -1519,7 +1541,7 @@ public class InvoiceService {
             overrideRequest.setEstimateNumber(null);
             overrideRequest.setFirmId(firmId);
 
-            List<Product> products = fetchProductsReferencedBy(overrideRequest, null);
+            List<Product> products = fetchProductsReferencedBy(overrideRequest, null, true, firmId);
             for (Product p : products) {
                 if (p.getFirmId() != null && !p.getFirmId().equals(firmId)) {
                     throw new com.billing.simple.billsoft.security.TenantSecurityException(
@@ -1600,7 +1622,7 @@ public class InvoiceService {
         req.setEstimateNumber(null);
         req.setFirmId(firmId);
 
-        List<Product> products = fetchProductsReferencedBy(req, null);
+        List<Product> products = fetchProductsReferencedBy(req, null, true, firmId);
         for (Product p : products) {
             if (p.getFirmId() != null && !p.getFirmId().equals(firmId)) {
                 throw new com.billing.simple.billsoft.security.TenantSecurityException(
@@ -2686,9 +2708,9 @@ public class InvoiceService {
 
     public SalesReturn getSalesReturnById(Long id) {
         Long currentFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (currentFirmId == null) {
-            return salesReturnRepo.findById(id).orElse(null);
+        if (currentFirmId != null) {
+            return salesReturnRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
         }
-        return salesReturnRepo.findByIdAndFirmId(id, currentFirmId).orElse(null);
+        return salesReturnRepo.findById(id).orElse(null);
     }
 }

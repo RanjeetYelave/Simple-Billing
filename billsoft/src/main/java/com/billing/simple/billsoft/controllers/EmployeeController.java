@@ -55,15 +55,15 @@ public class EmployeeController {
     private final LeaveRecordRepository leaveRepo;
 
     public EmployeeController(EmployeeRepository employeeRepo,
-                              EmployeeAdvanceRepository advanceRepo,
-                              SalaryRecordRepository salaryRepo,
-                              AppConfigRepository appConfigRepo,
-                              PromotionRecordRepository promotionRepo,
-                              EmployeePdfService pdfService,
-                              FirmDetailsService firmService,
-                              AttendanceRecordRepository attendanceRepo,
-                              EmployeeDocumentRepository documentRepo,
-                              LeaveRecordRepository leaveRepo) {
+            EmployeeAdvanceRepository advanceRepo,
+            SalaryRecordRepository salaryRepo,
+            AppConfigRepository appConfigRepo,
+            PromotionRecordRepository promotionRepo,
+            EmployeePdfService pdfService,
+            FirmDetailsService firmService,
+            AttendanceRecordRepository attendanceRepo,
+            EmployeeDocumentRepository documentRepo,
+            LeaveRecordRepository leaveRepo) {
         this.employeeRepo = employeeRepo;
         this.advanceRepo = advanceRepo;
         this.salaryRepo = salaryRepo;
@@ -87,9 +87,11 @@ public class EmployeeController {
         Long firmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (firmId != null) {
             return employeeRepo.findByIdAndFirmId(id, firmId)
-                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found or unauthorized"));
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                            "Employee not found or unauthorized"));
         }
-        return employeeRepo.findById(id).orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found"));
+        return employeeRepo.findById(id).orElseThrow(
+                () -> new com.billing.simple.billsoft.security.TenantSecurityException("Employee not found"));
     }
 
     // ─── PIN Endpoints ───
@@ -148,7 +150,8 @@ public class EmployeeController {
     // ─── Dashboard Analytics ───
 
     @GetMapping("/analytics")
-    public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(@RequestParam(value = "firmId", required = false) Long firmId) {
+    public ResponseEntity<Map<String, Object>> getEmployeeAnalytics(
+            @RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
@@ -206,7 +209,8 @@ public class EmployeeController {
      */
     @PostMapping("/apply-promotions")
     @Transactional
-    public ResponseEntity<Map<String, Integer>> applyPendingPromotions(@RequestParam(value = "firmId", required = false) Long firmId) {
+    public ResponseEntity<Map<String, Integer>> applyPendingPromotions(
+            @RequestParam(value = "firmId", required = false) Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
             throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
@@ -217,8 +221,10 @@ public class EmployeeController {
         int count = 0;
         for (PromotionRecord p : unapplied) {
             Employee emp = p.getEmployee();
-            if (emp == null) continue;
-            if (effectiveFirmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(effectiveFirmId)) continue;
+            if (emp == null)
+                continue;
+            if (effectiveFirmId != null && emp.getFirmId() != null && !emp.getFirmId().equals(effectiveFirmId))
+                continue;
             if (!p.getEffectiveDate().isAfter(today)) {
                 if (p.getNewRole() != null && !p.getNewRole().isEmpty()) {
                     emp.setRole(p.getNewRole());
@@ -250,7 +256,8 @@ public class EmployeeController {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null) {
             if (dto.getFirmId() != null && !authoritativeFirmId.equals(dto.getFirmId())) {
-                throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm employee creation prohibited");
+                throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                        "Cross-firm employee creation prohibited");
             }
         }
         Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : dto.getFirmId();
@@ -263,7 +270,8 @@ public class EmployeeController {
         emp.setIdProofNumber(dto.getIdProofNumber());
         emp.setIsActive(dto.getIsActive() != null ? dto.getIsActive() : true);
         emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary() != null ? dto.getMonthlyBaseSalary() : 0.0);
-        emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth() != null ? dto.getAllowedPaidLeavesPerMonth() : 0);
+        emp.setAllowedPaidLeavesPerMonth(
+                dto.getAllowedPaidLeavesPerMonth() != null ? dto.getAllowedPaidLeavesPerMonth() : 0);
         emp.setCurrentAdvanceBalance(0.0);
         emp.setDateOfJoining(dto.getDateOfJoining() != null ? dto.getDateOfJoining() : LocalDate.now());
         emp.setDepartment(dto.getDepartment());
@@ -283,24 +291,42 @@ public class EmployeeController {
     @PutMapping("/{id}")
     public ResponseEntity<EmployeeDTO> updateEmployee(@PathVariable Long id, @Valid @RequestBody EmployeeDTO dto) {
         Employee emp = getAuthorizedEmployee(id);
-        if (dto.getName() != null && !dto.getName().isBlank()) emp.setName(dto.getName().trim());
-        if (dto.getPhone() != null) emp.setPhone(dto.getPhone());
-        if (dto.getRole() != null) emp.setRole(dto.getRole());
-        if (dto.getIdProofNumber() != null) emp.setIdProofNumber(dto.getIdProofNumber());
-        if (dto.getIsActive() != null) emp.setIsActive(dto.getIsActive());
-        if (dto.getMonthlyBaseSalary() != null) emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary());
-        if (dto.getAllowedPaidLeavesPerMonth() != null) emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth());
-        if (dto.getDateOfJoining() != null) emp.setDateOfJoining(dto.getDateOfJoining());
-        if (dto.getDepartment() != null) emp.setDepartment(dto.getDepartment());
-        if (dto.getDesignation() != null) emp.setDesignation(dto.getDesignation());
-        if (dto.getEmail() != null) emp.setEmail(dto.getEmail());
-        if (dto.getAddress() != null) emp.setAddress(dto.getAddress());
-        if (dto.getEmergencyContactName() != null) emp.setEmergencyContactName(dto.getEmergencyContactName());
-        if (dto.getEmergencyContactPhone() != null) emp.setEmergencyContactPhone(dto.getEmergencyContactPhone());
-        if (dto.getBankAccountName() != null) emp.setBankAccountName(dto.getBankAccountName());
-        if (dto.getBankAccountNumber() != null) emp.setBankAccountNumber(dto.getBankAccountNumber());
-        if (dto.getBankIfscCode() != null) emp.setBankIfscCode(dto.getBankIfscCode());
-        if (dto.getBankName() != null) emp.setBankName(dto.getBankName());
+        if (dto.getName() != null && !dto.getName().isBlank())
+            emp.setName(dto.getName().trim());
+        if (dto.getPhone() != null)
+            emp.setPhone(dto.getPhone());
+        if (dto.getRole() != null)
+            emp.setRole(dto.getRole());
+        if (dto.getIdProofNumber() != null)
+            emp.setIdProofNumber(dto.getIdProofNumber());
+        if (dto.getIsActive() != null)
+            emp.setIsActive(dto.getIsActive());
+        if (dto.getMonthlyBaseSalary() != null)
+            emp.setMonthlyBaseSalary(dto.getMonthlyBaseSalary());
+        if (dto.getAllowedPaidLeavesPerMonth() != null)
+            emp.setAllowedPaidLeavesPerMonth(dto.getAllowedPaidLeavesPerMonth());
+        if (dto.getDateOfJoining() != null)
+            emp.setDateOfJoining(dto.getDateOfJoining());
+        if (dto.getDepartment() != null)
+            emp.setDepartment(dto.getDepartment());
+        if (dto.getDesignation() != null)
+            emp.setDesignation(dto.getDesignation());
+        if (dto.getEmail() != null)
+            emp.setEmail(dto.getEmail());
+        if (dto.getAddress() != null)
+            emp.setAddress(dto.getAddress());
+        if (dto.getEmergencyContactName() != null)
+            emp.setEmergencyContactName(dto.getEmergencyContactName());
+        if (dto.getEmergencyContactPhone() != null)
+            emp.setEmergencyContactPhone(dto.getEmergencyContactPhone());
+        if (dto.getBankAccountName() != null)
+            emp.setBankAccountName(dto.getBankAccountName());
+        if (dto.getBankAccountNumber() != null)
+            emp.setBankAccountNumber(dto.getBankAccountNumber());
+        if (dto.getBankIfscCode() != null)
+            emp.setBankIfscCode(dto.getBankIfscCode());
+        if (dto.getBankName() != null)
+            emp.setBankName(dto.getBankName());
         // Do NOT allow changing firmId
         return ResponseEntity.ok(toDTO(employeeRepo.save(emp)));
     }
@@ -310,11 +336,13 @@ public class EmployeeController {
      */
     @PutMapping("/{id}/status")
     @Transactional
-    public ResponseEntity<EmployeeDTO> changeEmployeeStatus(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<EmployeeDTO> changeEmployeeStatus(@PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
         Employee emp = getAuthorizedEmployee(id);
         Boolean isActive = body.get("isActive") instanceof Boolean ? (Boolean) body.get("isActive") : null;
         String reason = body.get("reason") instanceof String ? (String) body.get("reason") : "";
-        Double newSalary = body.get("newSalary") instanceof Number ? ((Number) body.get("newSalary")).doubleValue() : null;
+        Double newSalary = body.get("newSalary") instanceof Number ? ((Number) body.get("newSalary")).doubleValue()
+                : null;
         String newRole = body.get("newRole") instanceof String ? (String) body.get("newRole") : null;
 
         if (isActive != null) {
@@ -323,8 +351,10 @@ public class EmployeeController {
 
             emp.setIsActive(isActive);
             if (isActive) {
-                if (newSalary != null) emp.setMonthlyBaseSalary(newSalary);
-                if (newRole != null && !newRole.isBlank()) emp.setRole(newRole);
+                if (newSalary != null)
+                    emp.setMonthlyBaseSalary(newSalary);
+                if (newRole != null && !newRole.isBlank())
+                    emp.setRole(newRole);
             }
             employeeRepo.save(emp);
 
@@ -336,7 +366,8 @@ public class EmployeeController {
             timelineEntry.setNewRole(emp.getRole());
             timelineEntry.setPreviousSalary(previousSalary);
             timelineEntry.setNewSalary(emp.getMonthlyBaseSalary());
-            timelineEntry.setReason((reason != null && !reason.isBlank()) ? reason : (isActive ? "Employee rejoined" : "Employee retired"));
+            timelineEntry.setReason((reason != null && !reason.isBlank()) ? reason
+                    : (isActive ? "Employee rejoined" : "Employee retired"));
             timelineEntry.setIsApplied(true);
             promotionRepo.save(timelineEntry);
         }
@@ -375,7 +406,8 @@ public class EmployeeController {
         Employee emp = getAuthorizedEmployee(id);
 
         advance.setEmployee(emp);
-        if (advance.getDate() == null) advance.setDate(LocalDate.now());
+        if (advance.getDate() == null)
+            advance.setDate(LocalDate.now());
 
         // Validate: advance amount must be positive
         if (advance.getAmount() == null || advance.getAmount() <= 0) {
@@ -383,18 +415,20 @@ public class EmployeeController {
         }
 
         BigDecimal advAmount = BigDecimal.valueOf(advance.getAmount()).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal monthlySalary = BigDecimal.valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
-        BigDecimal maxAdvance = monthlySalary.multiply(BigDecimal.valueOf(MAX_ADVANCE_MULTIPLIER)).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal monthlySalary = BigDecimal
+                .valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
+        BigDecimal maxAdvance = monthlySalary.multiply(BigDecimal.valueOf(MAX_ADVANCE_MULTIPLIER)).setScale(2,
+                RoundingMode.HALF_UP);
 
         if (advAmount.compareTo(maxAdvance) > 0) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "Advance amount (" + String.format("%.2f", advAmount.doubleValue()) +
                             ") exceeds maximum limit of " + String.format("%.2f", maxAdvance.doubleValue()) +
-                            " (3x monthly salary)"
-            ));
+                            " (3x monthly salary)"));
         }
 
-        BigDecimal currentBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0);
+        BigDecimal currentBal = BigDecimal
+                .valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0);
         BigDecimal newBal = currentBal.add(advAmount).setScale(2, RoundingMode.HALF_UP);
         emp.setCurrentAdvanceBalance(newBal.doubleValue());
         employeeRepo.save(emp);
@@ -417,31 +451,33 @@ public class EmployeeController {
         Employee emp = getAuthorizedEmployee(id);
 
         record.setEmployee(emp);
-        if (record.getPaymentDate() == null) record.setPaymentDate(LocalDate.now());
+        if (record.getPaymentDate() == null)
+            record.setPaymentDate(LocalDate.now());
 
         // FIX B3: Prevent duplicate salary for same month/year
         Optional<SalaryRecord> existing = salaryRepo.findByEmployeeIdAndMonthYear(id, record.getMonthYear());
         if (existing.isPresent()) {
             return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Salary for " + record.getMonthYear() + " has already been processed for this employee"
-            ));
+                    "error", "Salary for " + record.getMonthYear() + " has already been processed for this employee"));
         }
 
         // --- BACKEND VALIDATION & COMPUTATION WITH BIGDECIMAL ---
-        BigDecimal advDeducted = BigDecimal.valueOf(record.getAdvanceDeducted() != null ? record.getAdvanceDeducted() : 0.0).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal currentAdvBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal advDeducted = BigDecimal
+                .valueOf(record.getAdvanceDeducted() != null ? record.getAdvanceDeducted() : 0.0)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal currentAdvBal = BigDecimal
+                .valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0)
+                .setScale(2, RoundingMode.HALF_UP);
 
         if (record.getAdvanceDeducted() != null) {
             if (advDeducted.compareTo(BigDecimal.ZERO) < 0) {
                 return ResponseEntity.badRequest().body(Map.of(
-                        "error", "Advance deduction cannot be negative"
-                ));
+                        "error", "Advance deduction cannot be negative"));
             }
             if (advDeducted.compareTo(currentAdvBal) > 0) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "Advance deduction amount (" + record.getAdvanceDeducted() +
-                                ") exceeds current advance balance (" + emp.getCurrentAdvanceBalance() + ")"
-                ));
+                                ") exceeds current advance balance (" + emp.getCurrentAdvanceBalance() + ")"));
             }
             if (advDeducted.compareTo(BigDecimal.ZERO) > 0) {
                 EmployeeAdvance deduction = new EmployeeAdvance();
@@ -457,12 +493,16 @@ public class EmployeeController {
             }
         }
 
-        // Server-side net salary computation using BigDecimal (ignore client-provided netPaid)
-        BigDecimal baseSal = BigDecimal.valueOf(record.getBaseSalaryAtTime() != null ? record.getBaseSalaryAtTime() : 0.0);
+        // Server-side net salary computation using BigDecimal (ignore client-provided
+        // netPaid)
+        BigDecimal baseSal = BigDecimal
+                .valueOf(record.getBaseSalaryAtTime() != null ? record.getBaseSalaryAtTime() : 0.0);
         BigDecimal bonusAmt = BigDecimal.valueOf(record.getBonusAmount() != null ? record.getBonusAmount() : 0.0);
-        BigDecimal leaveDed = BigDecimal.valueOf(record.getLeaveDeductionAmount() != null ? record.getLeaveDeductionAmount() : 0.0);
-        
-        BigDecimal calculatedNet = baseSal.add(bonusAmt).subtract(leaveDed).subtract(advDeducted).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal leaveDed = BigDecimal
+                .valueOf(record.getLeaveDeductionAmount() != null ? record.getLeaveDeductionAmount() : 0.0);
+
+        BigDecimal calculatedNet = baseSal.add(bonusAmt).subtract(leaveDed).subtract(advDeducted).setScale(2,
+                RoundingMode.HALF_UP);
         if (calculatedNet.compareTo(BigDecimal.ZERO) < 0) {
             calculatedNet = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
@@ -479,10 +519,16 @@ public class EmployeeController {
         @SuppressWarnings("unchecked")
         List<Integer> employeeIds = (List<Integer>) body.get("employeeIds");
         String monthYear = (String) body.get("monthYear");
-        Integer daysAbsent = body.get("daysAbsent") instanceof Number ? ((Number) body.get("daysAbsent")).intValue() : 0;
-        Double bonusAmount = body.get("bonusAmount") instanceof Number ? ((Number) body.get("bonusAmount")).doubleValue() : 0.0;
-        Double advanceDeduct = body.get("advanceDeduct") instanceof Number ? ((Number) body.get("advanceDeduct")).doubleValue() : 0.0;
-        LocalDate paymentDate = body.get("paymentDate") != null ? LocalDate.parse((String) body.get("paymentDate")) : LocalDate.now();
+        Integer daysAbsent = body.get("daysAbsent") instanceof Number ? ((Number) body.get("daysAbsent")).intValue()
+                : 0;
+        Double bonusAmount = body.get("bonusAmount") instanceof Number
+                ? ((Number) body.get("bonusAmount")).doubleValue()
+                : 0.0;
+        Double advanceDeduct = body.get("advanceDeduct") instanceof Number
+                ? ((Number) body.get("advanceDeduct")).doubleValue()
+                : 0.0;
+        LocalDate paymentDate = body.get("paymentDate") != null ? LocalDate.parse((String) body.get("paymentDate"))
+                : LocalDate.now();
 
         if (employeeIds == null || employeeIds.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "No employees selected"));
@@ -518,23 +564,31 @@ public class EmployeeController {
                     YearMonth ym = YearMonth.of(Integer.parseInt(parts[1]), Integer.parseInt(parts[0]));
                     daysInMonth = ym.lengthOfMonth();
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
-            BigDecimal monthlyBase = BigDecimal.valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
+            BigDecimal monthlyBase = BigDecimal
+                    .valueOf(emp.getMonthlyBaseSalary() != null ? emp.getMonthlyBaseSalary() : 0.0);
             BigDecimal perDaySalary = daysInMonth > 0
                     ? monthlyBase.divide(BigDecimal.valueOf(daysInMonth), 4, RoundingMode.HALF_UP)
                     : BigDecimal.ZERO;
 
-            int unpaidLeaves = Math.max(0, daysAbsent - (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
-            int paidLeavesUsed = Math.min(daysAbsent, (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
-            BigDecimal leaveDeduction = perDaySalary.multiply(BigDecimal.valueOf(unpaidLeaves)).setScale(2, RoundingMode.HALF_UP);
+            int unpaidLeaves = Math.max(0,
+                    daysAbsent - (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
+            int paidLeavesUsed = Math.min(daysAbsent,
+                    (emp.getAllowedPaidLeavesPerMonth() != null ? emp.getAllowedPaidLeavesPerMonth() : 0));
+            BigDecimal leaveDeduction = perDaySalary.multiply(BigDecimal.valueOf(unpaidLeaves)).setScale(2,
+                    RoundingMode.HALF_UP);
 
             BigDecimal requestedAdvDed = BigDecimal.valueOf(advanceDeduct).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal curAdvBal = BigDecimal.valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal curAdvBal = BigDecimal
+                    .valueOf(emp.getCurrentAdvanceBalance() != null ? emp.getCurrentAdvanceBalance() : 0.0)
+                    .setScale(2, RoundingMode.HALF_UP);
             BigDecimal actualAdvDed = requestedAdvDed.min(curAdvBal);
 
             BigDecimal bonusBd = BigDecimal.valueOf(bonusAmount).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal netPaidBd = monthlyBase.add(bonusBd).subtract(leaveDeduction).subtract(actualAdvDed).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal netPaidBd = monthlyBase.add(bonusBd).subtract(leaveDeduction).subtract(actualAdvDed).setScale(2,
+                    RoundingMode.HALF_UP);
             if (netPaidBd.compareTo(BigDecimal.ZERO) < 0) {
                 netPaidBd = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
             }
@@ -590,7 +644,8 @@ public class EmployeeController {
         Employee emp = getAuthorizedEmployee(id);
 
         record.setEmployee(emp);
-        if (record.getEffectiveDate() == null) record.setEffectiveDate(LocalDate.now());
+        if (record.getEffectiveDate() == null)
+            record.setEffectiveDate(LocalDate.now());
 
         if (record.getPreviousRole() == null || record.getPreviousRole().isEmpty()) {
             record.setPreviousRole(emp.getRole() != null ? emp.getRole() : emp.getDesignation());
@@ -602,9 +657,12 @@ public class EmployeeController {
         if (record.getType() == null || record.getType().isEmpty()) {
             boolean hasRole = record.getNewRole() != null && !record.getNewRole().trim().isEmpty();
             boolean hasSalary = record.getNewSalary() != null && record.getNewSalary() > 0;
-            if (hasRole && hasSalary) record.setType("BOTH");
-            else if (hasRole) record.setType("ROLE_CHANGE");
-            else record.setType("INCREMENT");
+            if (hasRole && hasSalary)
+                record.setType("BOTH");
+            else if (hasRole)
+                record.setType("ROLE_CHANGE");
+            else
+                record.setType("INCREMENT");
         }
 
         // Apply immediately if effective date is today or past
@@ -645,13 +703,17 @@ public class EmployeeController {
             if (monthYear != null && monthYear.contains("-")) {
                 try {
                     String[] parts = monthYear.split("-");
-                    if (parts.length != 2) continue;
+                    if (parts.length != 2)
+                        continue;
                     int yearPart = Integer.parseInt(parts[1].trim());
                     if (yearPart == currentYear) {
-                        BigDecimal base = BigDecimal.valueOf(s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0.0);
+                        BigDecimal base = BigDecimal
+                                .valueOf(s.getBaseSalaryAtTime() != null ? s.getBaseSalaryAtTime() : 0.0);
                         BigDecimal bonus = BigDecimal.valueOf(s.getBonusAmount() != null ? s.getBonusAmount() : 0.0);
-                        BigDecimal leave = BigDecimal.valueOf(s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0.0);
-                        BigDecimal adv = BigDecimal.valueOf(s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0.0);
+                        BigDecimal leave = BigDecimal
+                                .valueOf(s.getLeaveDeductionAmount() != null ? s.getLeaveDeductionAmount() : 0.0);
+                        BigDecimal adv = BigDecimal
+                                .valueOf(s.getAdvanceDeducted() != null ? s.getAdvanceDeducted() : 0.0);
                         BigDecimal net = BigDecimal.valueOf(s.getNetPaid() != null ? s.getNetPaid() : 0.0);
 
                         ytdGross = ytdGross.add(base).add(bonus);
@@ -660,7 +722,8 @@ public class EmployeeController {
                         ytdNet = ytdNet.add(net);
                         salaryCount++;
                     }
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             }
         }
 
@@ -692,7 +755,8 @@ public class EmployeeController {
         }
 
         try {
-            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
+            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId())
+                    : firmService.getFirst();
             List<SalaryRecord> allSalaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
             byte[] pdf = pdfService.generatePayslip(emp, salOpt.get(), firm, allSalaries, size, format, theme, color);
             HttpHeaders headers = new HttpHeaders();
@@ -721,8 +785,10 @@ public class EmployeeController {
         try {
             List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
             List<EmployeeAdvance> advances = advanceRepo.findByEmployeeIdOrderByDateDesc(id);
-            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId()) : firmService.getFirst();
-            byte[] pdf = pdfService.generateEmployeeStatement(emp, salaries, advances, from, to, firm, size, format, theme, color);
+            FirmDetails firm = (emp.getFirmId() != null) ? firmService.getFirmDetails(emp.getFirmId())
+                    : firmService.getFirst();
+            byte[] pdf = pdfService.generateEmployeeStatement(emp, salaries, advances, from, to, firm, size, format,
+                    theme, color);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
             headers.setContentDispositionFormData("filename", "employee-statement-" + id + ".pdf");
@@ -770,7 +836,8 @@ public class EmployeeController {
         getAuthorizedEmployee(id);
         List<SalaryRecord> salaries = salaryRepo.findByEmployeeIdOrderByPaymentDateDesc(id);
         StringBuilder csv = new StringBuilder();
-        csv.append("MonthYear,BaseSalary,DaysAbsent,PaidLeaves,UnpaidLeaves,LeaveDeduction,Bonus,AdvanceDeducted,NetPaid,PaymentDate\n");
+        csv.append(
+                "MonthYear,BaseSalary,DaysAbsent,PaidLeaves,UnpaidLeaves,LeaveDeduction,Bonus,AdvanceDeducted,NetPaid,PaymentDate\n");
         for (SalaryRecord s : salaries) {
             csv.append(escapeCsv(s.getMonthYear())).append(",");
             csv.append(s.getBaseSalaryAtTime()).append(",");
@@ -812,7 +879,8 @@ public class EmployeeController {
     // ─── Helper ───
 
     private String escapeCsv(String value) {
-        if (value == null) return "";
+        if (value == null)
+            return "";
         if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
@@ -854,11 +922,13 @@ public class EmployeeController {
     }
 
     @PostMapping("/{id}/attendance")
-    public ResponseEntity<?> setAttendance(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.AttendanceRecord record) {
+    public ResponseEntity<?> setAttendance(@PathVariable Long id,
+            @RequestBody com.billing.simple.billsoft.entities.AttendanceRecord record) {
         Employee emp = getAuthorizedEmployee(id);
         record.setEmployee(emp);
-        Optional<com.billing.simple.billsoft.entities.AttendanceRecord> existing = attendanceRepo.findByEmployeeIdAndDate(id, record.getDate());
-        if(existing.isPresent()) {
+        Optional<com.billing.simple.billsoft.entities.AttendanceRecord> existing = attendanceRepo
+                .findByEmployeeIdAndDate(id, record.getDate());
+        if (existing.isPresent()) {
             com.billing.simple.billsoft.entities.AttendanceRecord ext = existing.get();
             ext.setStatus(record.getStatus());
             ext.setRemarks(record.getRemarks());
@@ -870,13 +940,15 @@ public class EmployeeController {
     }
 
     @GetMapping("/{id}/attendance/range")
-    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceRange(@PathVariable Long id, @RequestParam("from") String from, @RequestParam("to") String to) {
+    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceRange(@PathVariable Long id,
+            @RequestParam("from") String from, @RequestParam("to") String to) {
         getAuthorizedEmployee(id);
         return attendanceRepo.findByEmployeeIdAndDateBetween(id, LocalDate.parse(from), LocalDate.parse(to));
     }
 
     @GetMapping("/{id}/attendance/month/{year}/{month}")
-    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceMonth(@PathVariable Long id, @PathVariable int year, @PathVariable int month) {
+    public List<com.billing.simple.billsoft.entities.AttendanceRecord> getAttendanceMonth(@PathVariable Long id,
+            @PathVariable int year, @PathVariable int month) {
         getAuthorizedEmployee(id);
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
@@ -893,7 +965,8 @@ public class EmployeeController {
     }
 
     @PostMapping("/{id}/documents")
-    public ResponseEntity<?> uploadDocument(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.EmployeeDocument doc) {
+    public ResponseEntity<?> uploadDocument(@PathVariable Long id,
+            @RequestBody com.billing.simple.billsoft.entities.EmployeeDocument doc) {
         Employee emp = getAuthorizedEmployee(id);
         doc.setEmployee(emp);
         doc.setUploadedAt(java.time.LocalDateTime.now());
@@ -901,10 +974,10 @@ public class EmployeeController {
     }
 
     // New multipart file upload endpoint for richer UI handling
-    @PostMapping(value = "/{id}/documents/upload", consumes = {"multipart/form-data"})
+    @PostMapping(value = "/{id}/documents/upload", consumes = { "multipart/form-data" })
     public ResponseEntity<?> uploadDocumentFile(@PathVariable Long id,
-                                                @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
-                                                @RequestParam(value = "type", required = false) String type) {
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(value = "type", required = false) String type) {
         Employee emp = getAuthorizedEmployee(id);
         try {
             com.billing.simple.billsoft.entities.EmployeeDocument doc = new com.billing.simple.billsoft.entities.EmployeeDocument();
@@ -946,16 +1019,18 @@ public class EmployeeController {
 
     private ResponseEntity<byte[]> serveDocumentBytes(Long docId, boolean asAttachment) {
         Optional<com.billing.simple.billsoft.entities.EmployeeDocument> docOpt = documentRepo.findById(docId);
-        if (docOpt.isEmpty()) return ResponseEntity.notFound().build();
+        if (docOpt.isEmpty())
+            return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.EmployeeDocument doc = docOpt.get();
         if (doc.getEmployee() == null) {
             return ResponseEntity.notFound().build();
         }
         getAuthorizedEmployee(doc.getEmployee().getId());
-        
+
         String b64 = doc.getDataBase64();
-        if (b64 == null || b64.isBlank()) return ResponseEntity.notFound().build();
-        
+        if (b64 == null || b64.isBlank())
+            return ResponseEntity.notFound().build();
+
         String mimeType = "application/octet-stream";
         if (b64.startsWith("data:")) {
             int mimeEnd = b64.indexOf(";base64,");
@@ -968,19 +1043,21 @@ public class EmployeeController {
             }
         }
         byte[] bytes = java.util.Base64.getDecoder().decode(b64.trim());
-        
+
         HttpHeaders headers = new HttpHeaders();
         try {
             headers.setContentType(MediaType.parseMediaType(mimeType));
         } catch (Exception e) {
             headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
         }
-        
-        String filename = (doc.getFileName() != null && !doc.getFileName().isBlank()) ? doc.getFileName() : "document.bin";
-        String disposition = asAttachment ? ("attachment; filename=\"" + filename + "\"") : ("inline; filename=\"" + filename + "\"");
+
+        String filename = (doc.getFileName() != null && !doc.getFileName().isBlank()) ? doc.getFileName()
+                : "document.bin";
+        String disposition = asAttachment ? ("attachment; filename=\"" + filename + "\"")
+                : ("inline; filename=\"" + filename + "\"");
         // Set Content-Disposition header to enforce view vs download behavior
         headers.set(HttpHeaders.CONTENT_DISPOSITION, disposition);
-        
+
         return ResponseEntity.ok().headers(headers).body(bytes);
     }
 
@@ -992,7 +1069,8 @@ public class EmployeeController {
     }
 
     @PostMapping("/{id}/leaves")
-    public ResponseEntity<?> requestLeave(@PathVariable Long id, @RequestBody com.billing.simple.billsoft.entities.LeaveRecord record) {
+    public ResponseEntity<?> requestLeave(@PathVariable Long id,
+            @RequestBody com.billing.simple.billsoft.entities.LeaveRecord record) {
         Employee emp = getAuthorizedEmployee(id);
         record.setEmployee(emp);
         record.setStatus("PENDING");
@@ -1002,7 +1080,8 @@ public class EmployeeController {
     @PutMapping("/leaves/{leaveId}/approve")
     public ResponseEntity<?> approveLeave(@PathVariable Long leaveId) {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
-        if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
+        if (lOpt.isEmpty())
+            return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
         if (l.getEmployee() == null) {
             return ResponseEntity.notFound().build();
@@ -1015,7 +1094,8 @@ public class EmployeeController {
     @PutMapping("/leaves/{leaveId}/reject")
     public ResponseEntity<?> rejectLeave(@PathVariable Long leaveId, @RequestBody Map<String, String> body) {
         Optional<com.billing.simple.billsoft.entities.LeaveRecord> lOpt = leaveRepo.findById(leaveId);
-        if(lOpt.isEmpty()) return ResponseEntity.notFound().build();
+        if (lOpt.isEmpty())
+            return ResponseEntity.notFound().build();
         com.billing.simple.billsoft.entities.LeaveRecord l = lOpt.get();
         if (l.getEmployee() == null) {
             return ResponseEntity.notFound().build();

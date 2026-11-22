@@ -47587,6 +47587,13 @@ function PartyDetailModal({
         const prevId = API.firmId;
         if (firmId === prevId) return;
         API.firmId = firmId;
+        setEditInvoiceId(null);
+        setEditQuotationId(null);
+        setConvertedFromQuotationId(null);
+        setFirmLoadKey(prev => prev + 1);
+        if (page === 'new-invoice' || page === 'new-quotation') {
+          setPage('dashboard');
+        }
         API.firm.get(firmId).then(f => { if (f && f.firmName) setFirmName(f.firmName); }).catch(() => { });
         API.firm.list().then(list => setFirms(list)).catch(() => { });
         window.dispatchEvent(new CustomEvent('billsoft:firm-changed', { detail: { firmId, prevId } }));

@@ -26,13 +26,15 @@ public class ExpenseService {
 
     public List<Expense> getExpensesByFirm(Long firmId) {
         Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        if (target == null) return Collections.emptyList();
+        if (target == null)
+            return Collections.emptyList();
         return repository.findByFirmIdOrderByExpenseDateDescIdDesc(target);
     }
 
     public PageResponse<Expense> getPaginatedExpenses(Long firmId, LocalDate from, LocalDate to, Pageable pageable) {
         Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        if (target == null) return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
+        if (target == null)
+            return PageResponse.empty(pageable.getPageNumber(), pageable.getPageSize());
         Page<Expense> page;
         if (from != null && to != null) {
             page = repository.findByFirmIdAndExpenseDateBetween(target, from, to, pageable);
@@ -48,13 +50,15 @@ public class ExpenseService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long target = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        if (target == null) return null;
+        if (target == null)
+            return null;
         return repository.findByIdAndFirmId(id, target).orElse(null);
     }
 
     public Expense createExpense(Expense expense) {
         Long authoritativeFirmId = TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null && expense.getFirmId() != null && !authoritativeFirmId.equals(expense.getFirmId())) {
+        if (authoritativeFirmId != null && expense.getFirmId() != null
+                && !authoritativeFirmId.equals(expense.getFirmId())) {
             throw new TenantSecurityException("Cross-firm expense creation prohibited");
         }
         Long firmId = authoritativeFirmId != null ? authoritativeFirmId : expense.getFirmId();
@@ -122,7 +126,8 @@ public class ExpenseService {
 
     public List<String> getCategoriesByFirm(Long firmId) {
         Long target = firmId != null ? firmId : TenantContext.getCurrentFirmId();
-        if (target == null) return new ArrayList<>(DEFAULT_CATEGORIES);
+        if (target == null)
+            return new ArrayList<>(DEFAULT_CATEGORIES);
         Set<String> categories = new LinkedHashSet<>(DEFAULT_CATEGORIES);
         List<Expense> list = repository.findByFirmIdOrderByExpenseDateDescIdDesc(target);
         for (Expense e : list) {

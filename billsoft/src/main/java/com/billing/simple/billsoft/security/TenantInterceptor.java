@@ -81,6 +81,22 @@ public class TenantInterceptor implements HandlerInterceptor {
         // 1. Extract client-supplied firm from header or query param
         String firmHeader = request.getHeader("X-Firm-Id");
         String firmParam = request.getParameter("firmId");
+
+        // Validate consistency between header and query param if both supplied
+        if (firmHeader != null && !firmHeader.isBlank() && firmParam != null && !firmParam.isBlank()) {
+            try {
+                long hId = Long.parseLong(firmHeader.trim());
+                long pId = Long.parseLong(firmParam.trim());
+                if (hId != pId) {
+                    sendErrorResponse(response, HttpStatus.FORBIDDEN, "Cross-firm mismatch between header (" + hId + ") and parameter (" + pId + ").");
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                sendErrorResponse(response, HttpStatus.BAD_REQUEST, "Invalid firm ID specified.");
+                return false;
+            }
+        }
+
         String firmVal = (firmHeader != null && !firmHeader.isBlank()) ? firmHeader : firmParam;
         Long clientSuppliedFirmId = null;
 

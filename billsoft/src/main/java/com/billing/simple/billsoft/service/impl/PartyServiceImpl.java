@@ -8,6 +8,8 @@ import com.billing.simple.billsoft.entities.PurchaseOrderStatus;
 import com.billing.simple.billsoft.repositories.PartyPaymentRepository;
 import com.billing.simple.billsoft.repositories.PartyRepository;
 import com.billing.simple.billsoft.repositories.PurchaseOrderRepository;
+import com.billing.simple.billsoft.security.TenantContext;
+import com.billing.simple.billsoft.security.TenantSecurityException;
 import com.billing.simple.billsoft.service.PartyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -107,15 +109,21 @@ public class PartyServiceImpl implements PartyService {
 
     @Override
     public void deleteParty(Long id, Long firmId) {
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (effectiveFirmId == null) {
+            throw new TenantSecurityException("Active firm context is required to delete party");
+        }
         if (linkRepo != null) {
-            boolean isLinked = (firmId != null)
-                    ? linkRepo.existsByFirmIdAndActivePartyId(firmId, id)
-                    : linkRepo.existsByPartyId(id);
+            boolean isLinked = linkRepo.existsByFirmIdAndActivePartyId(effectiveFirmId, id);
             if (isLinked) {
                 throw new IllegalStateException("Cannot delete Supplier #" + id + " because it is linked to a Customer. Please unlink first.");
             }
         }
-        Party party = partyRepository.findByIdAndFirmId(id, firmId)
+        Party party = partyRepository.findByIdAndFirmId(id, effectiveFirmId)
                 .orElseThrow(() -> new IllegalArgumentException("Party not found with id: " + id));
 
         // Delete associated payments

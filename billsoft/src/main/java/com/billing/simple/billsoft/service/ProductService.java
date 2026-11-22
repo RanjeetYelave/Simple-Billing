@@ -448,6 +448,9 @@ public class ProductService {
 		if (fid == null && updated.getFirmId() != null) {
 			fid = updated.getFirmId();
 		}
+		if (fid != null && updated.getFirmId() != null && !updated.getFirmId().equals(fid)) {
+			throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm product update prohibited");
+		}
 		Optional<Product> opt = (fid != null) ? repo.findByIdAndFirmId(id, fid) : repo.findById(id);
 		if (opt.isEmpty())
 			return null;

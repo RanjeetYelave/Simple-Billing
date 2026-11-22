@@ -85,6 +85,9 @@ public class CustomerService {
     @Transactional
     public Customer update(Long id, CustomerRequest request) {
         Long fid = TenantContext.getCurrentFirmId();
+        if (fid != null && request.getFirmId() != null && !request.getFirmId().equals(fid)) {
+            throw new TenantSecurityException("Cross-firm customer update prohibited");
+        }
         Customer existing = (fid != null ? repo.findByIdAndFirmId(id, fid) : repo.findById(id)).orElse(null);
         if (existing == null)
             return null;

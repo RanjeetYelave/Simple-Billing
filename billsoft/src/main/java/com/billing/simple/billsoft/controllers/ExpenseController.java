@@ -59,6 +59,9 @@ public class ExpenseController {
     @GetMapping("/{id}")
     public ResponseEntity<Expense> getById(@PathVariable Long id) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId == null) {
+            return ResponseEntity.notFound().build();
+        }
         Expense e = service.getExpenseById(id, authoritativeFirmId);
         return e != null ? ResponseEntity.ok(e) : ResponseEntity.notFound().build();
     }

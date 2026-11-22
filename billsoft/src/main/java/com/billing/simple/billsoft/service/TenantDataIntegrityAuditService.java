@@ -224,18 +224,96 @@ public class TenantDataIntegrityAuditService {
             }
         }
 
+        // 7. Scan Party Payments
+        List<PartyPayment> allPartyPayments = partyPaymentRepo.findAll();
+        totalPartyPaymentsScanned = allPartyPayments.size();
+        for (PartyPayment pp : allPartyPayments) {
+            if (pp.getPartyId() != null && pp.getFirmId() != null) {
+                Optional<Party> pOpt = partyRepo.findById(pp.getPartyId());
+                if (pOpt.isPresent() && !Objects.equals(pp.getFirmId(), pOpt.get().getFirmId())) {
+                    violations.add(createViolation(
+                            "PARTY_PAYMENT_MISMATCH",
+                            "PartyPayment ID " + pp.getId() + " (Firm " + pp.getFirmId() + ") references Party ID " + pOpt.get().getId() + " (Firm " + pOpt.get().getFirmId() + ")",
+                            pp.getId(), pp.getFirmId(), pOpt.get().getId(), pOpt.get().getFirmId()
+                    ));
+                }
+            }
+        }
+
+        // 8. Scan Business Letters
+        List<BusinessLetter> allLetters = letterRepo.findAll();
+        totalLettersScanned = allLetters.size();
+        for (BusinessLetter bl : allLetters) {
+            if (bl.getFirmId() != null) {
+                if (bl.getCustomerId() != null) {
+                    Optional<Customer> cust = customerRepo.findById(bl.getCustomerId());
+                    if (cust.isPresent() && !Objects.equals(bl.getFirmId(), cust.get().getFirmId())) {
+                        violations.add(createViolation(
+                                "LETTER_CUSTOMER_MISMATCH",
+                                "BusinessLetter ID " + bl.getId() + " (Firm " + bl.getFirmId() + ") references Customer ID " + cust.get().getId() + " (Firm " + cust.get().getFirmId() + ")",
+                                bl.getId(), bl.getFirmId(), cust.get().getId(), cust.get().getFirmId()
+                        ));
+                    }
+                }
+                if (bl.getPartyId() != null) {
+                    Optional<Party> party = partyRepo.findById(bl.getPartyId());
+                    if (party.isPresent() && !Objects.equals(bl.getFirmId(), party.get().getFirmId())) {
+                        violations.add(createViolation(
+                                "LETTER_PARTY_MISMATCH",
+                                "BusinessLetter ID " + bl.getId() + " (Firm " + bl.getFirmId() + ") references Party ID " + party.get().getId() + " (Firm " + party.get().getFirmId() + ")",
+                                bl.getId(), bl.getFirmId(), party.get().getId(), party.get().getFirmId()
+                        ));
+                    }
+                }
+            }
+        }
+
+        // 9. Scan for Orphan Records (Null Firm ID on primary entities)
+        for (Invoice inv : allInvoices) {
+            if (inv.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_INVOICE_NULL_FIRM", "Invoice #" + inv.getId() + " has null firmId", inv.getId(), null, null, null));
+            }
+        }
+        for (Customer c : customerRepo.findAll()) {
+            if (c.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_CUSTOMER_NULL_FIRM", "Customer #" + c.getId() + " has null firmId", c.getId(), null, null, null));
+            }
+        }
+        for (Product p : productRepo.findAll()) {
+            if (p.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_PRODUCT_NULL_FIRM", "Product #" + p.getId() + " has null firmId", p.getId(), null, null, null));
+            }
+        }
+        for (Party party : partyRepo.findAll()) {
+            if (party.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_PARTY_NULL_FIRM", "Party #" + party.getId() + " has null firmId", party.getId(), null, null, null));
+            }
+        }
+        for (PurchaseOrder po : allPos) {
+            if (po.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_PO_NULL_FIRM", "PurchaseOrder #" + po.getId() + " has null firmId", po.getId(), null, null, null));
+            }
+        }
+        for (Employee emp : employeeRepo.findAll()) {
+            if (emp.getFirmId() == null) {
+                violations.add(createViolation("ORPHAN_EMPLOYEE_NULL_FIRM", "Employee #" + emp.getId() + " has null firmId", emp.getId(), null, null, null));
+            }
+        }
+
         report.put("status", violations.isEmpty() ? "CLEAN" : "CORRUPTION_DETECTED");
         report.put("totalViolationsCount", violations.size());
         report.put("violations", violations);
-        report.put("scannedCounts", Map.of(
-                "invoices", totalInvoicesScanned,
-                "payments", totalPaymentsScanned,
-                "salesReturns", totalReturnsScanned,
-                "stockMovements", totalStockMovementsScanned,
-                "purchaseOrders", totalPoScanned,
-                "notes", totalNotesScanned,
-                "reminders", totalRemindersScanned
-        ));
+        Map<String, Integer> scannedCounts = new LinkedHashMap<>();
+        scannedCounts.put("invoices", totalInvoicesScanned);
+        scannedCounts.put("payments", totalPaymentsScanned);
+        scannedCounts.put("salesReturns", totalReturnsScanned);
+        scannedCounts.put("stockMovements", totalStockMovementsScanned);
+        scannedCounts.put("purchaseOrders", totalPoScanned);
+        scannedCounts.put("notes", totalNotesScanned);
+        scannedCounts.put("reminders", totalRemindersScanned);
+        scannedCounts.put("partyPayments", totalPartyPaymentsScanned);
+        scannedCounts.put("letters", totalLettersScanned);
+        report.put("scannedCounts", scannedCounts);
         report.put("auditTimestamp", java.time.LocalDateTime.now().toString());
 
         return report;

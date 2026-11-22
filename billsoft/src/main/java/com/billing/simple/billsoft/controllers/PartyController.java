@@ -19,13 +19,22 @@ public class PartyController {
         this.partyService = partyService;
     }
 
+    private Long resolveAuthoritativeFirmId(Long clientFirmId) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && clientFirmId != null && !authoritativeFirmId.equals(clientFirmId)) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long target = authoritativeFirmId != null ? authoritativeFirmId : clientFirmId;
+        if (target == null) {
+            throw new com.billing.simple.billsoft.security.TenantSecurityException("Active firm context is required");
+        }
+        return target;
+    }
+
     @GetMapping
     public ResponseEntity<List<Party>> list(@RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         return ResponseEntity.ok(partyService.getPartiesByFirm(firmId));
     }
 
@@ -35,10 +44,7 @@ public class PartyController {
             @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "25") int size) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         org.springframework.data.domain.Pageable pageable = com.billing.simple.billsoft.util.PaginationUtils.createDefaultTransactionPageRequest(page, size, "name");
         return ResponseEntity.ok(partyService.getPaginatedPartiesWithFinancialSummaries(firmId, pageable));
     }
@@ -47,7 +53,7 @@ public class PartyController {
     public ResponseEntity<Party> getById(@PathVariable Long id,
                                          @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                          @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         return partyService.getPartyById(id, firmId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -57,10 +63,7 @@ public class PartyController {
     public ResponseEntity<PartyFinancialSummary> getFinancialSummary(@PathVariable Long id,
                                                                      @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                                                      @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             return ResponseEntity.ok(partyService.getFinancialSummary(id, firmId));
         } catch (IllegalArgumentException e) {
@@ -71,12 +74,8 @@ public class PartyController {
     @PostMapping
     public ResponseEntity<Party> create(@RequestBody Party party,
                                         @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
-        if (party.getFirmId() == null && firmIdHeader != null) {
-            party.setFirmId(firmIdHeader);
-        }
-        if (party.getFirmId() == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(party.getFirmId() != null ? party.getFirmId() : firmIdHeader);
+        party.setFirmId(firmId);
         return ResponseEntity.ok(partyService.createParty(party));
     }
 
@@ -84,9 +83,8 @@ public class PartyController {
     public ResponseEntity<Party> update(@PathVariable Long id,
                                         @RequestBody Party party,
                                         @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
-        if (party.getFirmId() == null && firmIdHeader != null) {
-            party.setFirmId(firmIdHeader);
-        }
+        Long firmId = resolveAuthoritativeFirmId(party.getFirmId() != null ? party.getFirmId() : firmIdHeader);
+        party.setFirmId(firmId);
         try {
             return ResponseEntity.ok(partyService.updateParty(id, party));
         } catch (IllegalArgumentException e) {
@@ -98,10 +96,7 @@ public class PartyController {
     public ResponseEntity<Void> delete(@PathVariable Long id,
                                        @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                        @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             partyService.deleteParty(id, firmId);
             return ResponseEntity.noContent().build();
@@ -116,10 +111,7 @@ public class PartyController {
     public ResponseEntity<List<PartyPayment>> getPayments(@PathVariable Long id,
                                                           @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                                           @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         return ResponseEntity.ok(partyService.getPaymentsByParty(id, firmId));
     }
 
@@ -127,10 +119,7 @@ public class PartyController {
     public ResponseEntity<List<PartyPayment>> getUnallocatedPayments(@PathVariable Long id,
                                                                     @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                                                     @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         return ResponseEntity.ok(partyService.getUnallocatedPayments(id, firmId));
     }
 
@@ -139,12 +128,8 @@ public class PartyController {
                                                       @RequestBody PartyPayment payment,
                                                       @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
         payment.setPartyId(id);
-        if (payment.getFirmId() == null && firmIdHeader != null) {
-            payment.setFirmId(firmIdHeader);
-        }
-        if (payment.getFirmId() == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(payment.getFirmId() != null ? payment.getFirmId() : firmIdHeader);
+        payment.setFirmId(firmId);
         try {
             return ResponseEntity.ok(partyService.recordPayment(payment));
         } catch (IllegalArgumentException e) {
@@ -156,10 +141,7 @@ public class PartyController {
     public ResponseEntity<Void> deletePayment(@PathVariable Long paymentId,
                                               @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                               @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = firmIdHeader != null ? firmIdHeader : firmIdParam;
-        if (firmId == null) {
-            return ResponseEntity.badRequest().build();
-        }
+        Long firmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         try {
             partyService.deletePayment(paymentId, firmId);
             return ResponseEntity.noContent().build();

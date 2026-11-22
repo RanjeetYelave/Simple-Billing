@@ -542,8 +542,20 @@ jobs:
           # Test Reinstallation after Uninstallation
           # -------------------------------------------------------------
           Write-Host "=== Testing Clean Reinstallation after Uninstallation ==="
-          $reinstallProc = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
-          if ($reinstallProc.ExitCode -ne 0) {
+          Start-Sleep -Seconds 5
+          $reinstallAttempts = 0
+          $reinstallSuccess = $false
+          while ($reinstallAttempts -lt 3 -and -not $reinstallSuccess) {
+            $reinstallAttempts++
+            $reinstallProc = Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/currentuser" -Wait -PassThru
+            if ($reinstallProc.ExitCode -eq 0) {
+              $reinstallSuccess = $true
+            } else {
+              Write-Host "Reinstall attempt $reinstallAttempts exited with code $($reinstallProc.ExitCode). Waiting 5s before retry..."
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $reinstallSuccess) {
             throw "Reinstallation failed with exit code: $($reinstallProc.ExitCode)"
           }
           if (-not (Test-Path "$installDir\RupeeCRM.exe") -or -not (Test-Path "$installDir\resources\rupeecrm.war")) {

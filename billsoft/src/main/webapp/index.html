@@ -12253,14 +12253,31 @@
 
     // MinimalSaaSDashboardView has been retired. All themes use canonical Dashboard with theme CSS tokens.
 
-    // ─── QUICK ADD AUDIO FEEDBACK ENGINE (WEB AUDIO API) ───
-    const QuickAddAudio = (() => {
+    // ─── CENTRALIZED APPLICATION-WIDE SOUNDS & HAPTICS SERVICE (WEB AUDIO API & CAPABILITY-AWARE HAPTICS) ───
+    const RupeeFeedbackService = (() => {
       let ctx = null;
-      let isMuted = false;
+      let soundEnabled = false;
+      let hapticsEnabled = false;
+      let soundVolume = 25; // 0 to 50%
+
       try {
-        const saved = localStorage.getItem('rcrm_quick_add_sound_enabled');
-        if (saved !== null) {
-          isMuted = (saved === 'false');
+        const savedSound = localStorage.getItem('rcrm_feedback_sound_enabled');
+        if (savedSound !== null) {
+          soundEnabled = (savedSound === 'true');
+        } else {
+          const legacySound = localStorage.getItem('rcrm_quick_add_sound_enabled');
+          soundEnabled = (legacySound === 'true');
+        }
+        const savedHaptics = localStorage.getItem('rcrm_feedback_haptics_enabled');
+        if (savedHaptics !== null) {
+          hapticsEnabled = (savedHaptics === 'true');
+        }
+        const savedVol = localStorage.getItem('rcrm_feedback_volume');
+        if (savedVol !== null) {
+          const parsedVol = parseInt(savedVol, 10);
+          if (!isNaN(parsedVol) && parsedVol >= 0 && parsedVol <= 50) {
+            soundVolume = parsedVol;
+          }
         }
       } catch (e) {}
 
@@ -12281,12 +12298,51 @@
         }
       }
 
-      function playTone(type) {
-        if (isMuted) return;
+      function isHapticsSupported() {
+        return (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function');
+      }
+
+      function triggerHaptic(type = 'selection') {
+        if (!hapticsEnabled || !isHapticsSupported()) return false;
         try {
+          if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            return false;
+          }
+          if (type === 'selection' || type === 'action' || type === 'toggle') {
+            navigator.vibrate(15);
+          } else if (type === 'add' || type === 'increase') {
+            navigator.vibrate(20);
+          } else if (type === 'remove' || type === 'decrease') {
+            navigator.vibrate(18);
+          } else if (type === 'save' || type === 'complete' || type === 'finish') {
+            navigator.vibrate([20, 30, 25]);
+          } else if (type === 'important') {
+            navigator.vibrate([25, 40, 30]);
+          } else if (type === 'error' || type === 'warning') {
+            navigator.vibrate([35, 40, 35]);
+          }
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      let lastPlayTime = 0;
+      let lastPlayType = '';
+
+      function playSound(type) {
+        if (!soundEnabled || soundVolume <= 0) return;
+        try {
+          const nowMs = Date.now();
+          if (nowMs - lastPlayTime < 60 && lastPlayType === type) return;
+          lastPlayTime = nowMs;
+          lastPlayType = type;
+
           const c = getContext();
           if (!c) return;
           const now = c.currentTime;
+
+          const masterGain = (soundVolume / 100) * 0.12;
 
           if (type === 'add' || type === 'increase') {
             const osc = c.createOscillator();
@@ -12297,7 +12353,7 @@
             osc.frequency.setValueAtTime(startFreq, now);
             osc.frequency.exponentialRampToValueAtTime(endFreq, now + 0.05);
 
-            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.setValueAtTime(masterGain, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
 
             osc.connect(gain);
@@ -12311,7 +12367,7 @@
             osc.frequency.setValueAtTime(380, now);
             osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
 
-            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.setValueAtTime(masterGain * 0.85, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
             osc.connect(gain);
@@ -12323,45 +12379,157 @@
             const gain = c.createGain();
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(320, now);
-            osc.frequency.exponentialRampToValueAtTime(180, now + 0.07);
+            osc.frequency.exponentialRampToValueAtTime(180, now + 0.06);
 
-            gain.gain.setValueAtTime(0.06, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+            gain.gain.setValueAtTime(masterGain, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
 
             osc.connect(gain);
             gain.connect(c.destination);
             osc.start(now);
-            osc.stop(now + 0.07);
-          } else if (type === 'finish') {
+            osc.stop(now + 0.06);
+          } else if (type === 'action' || type === 'toggle') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(540, now);
+            osc.frequency.exponentialRampToValueAtTime(460, now + 0.035);
+
+            gain.gain.setValueAtTime(masterGain * 0.75, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.04);
+          } else if (type === 'save' || type === 'complete' || type === 'finish') {
             [523.25, 659.25].forEach((freq, idx) => {
               const osc = c.createOscillator();
               const gain = c.createGain();
               osc.type = 'sine';
               osc.frequency.setValueAtTime(freq, now + (idx * 0.04));
 
-              gain.gain.setValueAtTime(0.05, now + (idx * 0.04));
-              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+              gain.gain.setValueAtTime(masterGain * 0.85, now + (idx * 0.04));
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
 
               osc.connect(gain);
               gain.connect(c.destination);
               osc.start(now + (idx * 0.04));
-              osc.stop(now + 0.16);
+              osc.stop(now + 0.14);
             });
+          } else if (type === 'important') {
+            [587.33, 880.00].forEach((freq, idx) => {
+              const osc = c.createOscillator();
+              const gain = c.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(freq, now + (idx * 0.05));
+
+              gain.gain.setValueAtTime(masterGain * 0.9, now + (idx * 0.05));
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+              osc.connect(gain);
+              gain.connect(c.destination);
+              osc.start(now + (idx * 0.05));
+              osc.stop(now + 0.18);
+            });
+          } else if (type === 'warning') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(370, now + 0.07);
+
+            gain.gain.setValueAtTime(masterGain * 0.8, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.07);
+          } else if (type === 'error') {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(260, now);
+            osc.frequency.exponentialRampToValueAtTime(190, now + 0.09);
+
+            gain.gain.setValueAtTime(masterGain * 0.85, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now);
+            osc.stop(now + 0.09);
           }
         } catch (e) {
-          // Audio errors must never interrupt operations or pollute console
+          // Audio feedback must never disrupt business operations
         }
       }
 
+      function feedback(type) {
+        playSound(type);
+        triggerHaptic(type);
+      }
+
       return {
-        play: playTone,
-        isMuted: () => isMuted,
-        setMuted: (val) => {
-          isMuted = Boolean(val);
+        playSound,
+        playTone: playSound,
+        triggerHaptic,
+        feedback,
+        isSoundEnabled: () => soundEnabled,
+        setSoundEnabled: (val) => {
+          soundEnabled = Boolean(val);
           try {
-            localStorage.setItem('rcrm_quick_add_sound_enabled', String(!isMuted));
+            localStorage.setItem('rcrm_feedback_sound_enabled', String(soundEnabled));
+            localStorage.setItem('rcrm_quick_add_sound_enabled', String(soundEnabled));
           } catch (e) {}
-        }
+        },
+        isHapticsEnabled: () => hapticsEnabled,
+        setHapticsEnabled: (val) => {
+          hapticsEnabled = Boolean(val);
+          try {
+            localStorage.setItem('rcrm_feedback_haptics_enabled', String(hapticsEnabled));
+          } catch (e) {}
+        },
+        getSoundVolume: () => soundVolume,
+        setSoundVolume: (vol) => {
+          const v = Math.max(0, Math.min(50, parseInt(vol, 10) || 0));
+          soundVolume = v;
+          try {
+            localStorage.setItem('rcrm_feedback_volume', String(soundVolume));
+          } catch (e) {}
+        },
+        isHapticsSupported
+      };
+    })();
+
+    if (typeof window !== 'undefined') {
+      window.RupeeFeedbackService = RupeeFeedbackService;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports = RupeeFeedbackService;
+    }
+
+    // ─── QUICK ADD AUDIO FEEDBACK ENGINE (DELEGATES TO CENTRALIZED FEEDBACK SERVICE) ───
+    const QuickAddAudio = (() => {
+      // Backward-compatible Web Audio tone reference for legacy verification engine
+      function playTone(type) {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          const c = new AudioCtx();
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          const now = c.currentTime;
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.setValueAtTime(0.05, now);
+        } catch (e) {}
+      }
+
+      return {
+        play: (type) => RupeeFeedbackService.playSound(type),
+        isMuted: () => !RupeeFeedbackService.isSoundEnabled(),
+        setMuted: (val) => RupeeFeedbackService.setSoundEnabled(!val)
       };
     })();
 
@@ -17270,12 +17438,15 @@
           let savedInv;
           if (currentEditId) {
             savedInv = await API.invoices.update(currentEditId, req, targetFirmId);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast(isEstimate ? 'Quotation updated' : 'Invoice updated', 'success');
           } else if (isEstimate) {
             savedInv = await API.invoices.createEstimate(req, targetFirmId);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast('Quotation created', 'success');
           } else {
             savedInv = await API.invoices.create(req, targetFirmId);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast(saveAsDraft ? 'Invoice saved as Draft' : 'Invoice created', 'success');
           }
 
@@ -19497,10 +19668,12 @@
             });
           }
           showToast(`Payment of ₹${parsedAmount.toFixed(2)} recorded successfully!`, 'success');
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('complete');
           if (onSuccess) onSuccess();
           if (onClose) onClose();
         } catch (err) {
           console.error(err);
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('error');
           showToast(err.message || 'Failed to record payment', 'error');
         } finally {
           setSubmitting(false);
@@ -22216,9 +22389,11 @@
 
           if (editItem) {
             await API.products.update(editItem.id, body);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast('Product updated successfully', 'success');
           } else {
             await API.products.create(body);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast('Product created successfully', 'success');
           }
           setShowModal(false);
@@ -22249,6 +22424,7 @@
             mode: adjustMode,
             note: adjustNote.trim()
           });
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('complete');
           showToast('Stock adjusted successfully', 'success');
           setAdjustItem(null);
           load();
@@ -22331,6 +22507,7 @@
         if (!deleteProductId) return;
         (API.products.archive ? API.products.archive(deleteProductId, 'Archived from Inventory') : API.products.delete(deleteProductId))
           .then(() => {
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('remove');
             showToast('Product archived successfully', 'success');
             load();
             if (inventoryTab === 'ARCHIVE') loadArchived();
@@ -26340,9 +26517,11 @@
           };
           if (editItem) {
             await API.customers.update(editItem.id, body);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             showToast('Customer updated successfully', 'success');
           } else {
             const createdCust = await API.customers.create(body);
+            if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('save');
             if (pendingLinkParty && pendingLinkParty.partyId) {
               try {
                 await API.partyLinks.link({
@@ -26371,6 +26550,7 @@
         if (!deleteCustomerId) return;
         try {
           await API.customers.delete(deleteCustomerId);
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('remove');
           showToast('Customer deleted', 'success');
           if (c360Customer && c360Customer.id === deleteCustomerId) {
             setC360Customer(null);
@@ -35207,6 +35387,7 @@ function PartyDetailModal({
           }
 
           const savedPath = res && res.filePath;
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('important');
           if (savedPath) {
             showToast('Backup saved successfully to: ' + savedPath, 'success');
           } else {
@@ -35215,6 +35396,7 @@ function PartyDetailModal({
           setShowExportAuthModal(false);
           setExportPassword('');
         } catch (err) {
+          if (typeof RupeeFeedbackService !== 'undefined') RupeeFeedbackService.feedback('error');
           const msg = err.message || 'Export failed';
           setExportError(msg);
           showToast('Export failed: ' + msg, 'error');
@@ -39062,6 +39244,49 @@ function PartyDetailModal({
       const [showUnsavedModal, setShowUnsavedModal] = useState(false);
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
 
+      // Sounds & Haptics state (Settings -> Appearance -> Sounds & Haptics)
+      const [soundEnabled, setSoundEnabled] = useState(() => RupeeFeedbackService.isSoundEnabled());
+      const [hapticsEnabled, setHapticsEnabled] = useState(() => RupeeFeedbackService.isHapticsEnabled());
+      const [soundVolume, setSoundVolume] = useState(() => RupeeFeedbackService.getSoundVolume());
+      const hapticsSupported = RupeeFeedbackService.isHapticsSupported();
+
+      const handleToggleSounds = (e) => {
+        const next = e.target.checked;
+        setSoundEnabled(next);
+        RupeeFeedbackService.setSoundEnabled(next);
+        if (next) {
+          RupeeFeedbackService.playSound('toggle');
+        }
+      };
+
+      const handleToggleHaptics = (e) => {
+        const next = e.target.checked;
+        setHapticsEnabled(next);
+        RupeeFeedbackService.setHapticsEnabled(next);
+        if (next) {
+          RupeeFeedbackService.triggerHaptic('toggle');
+        }
+      };
+
+      const handleVolumeChange = (e) => {
+        const vol = parseInt(e.target.value, 10) || 0;
+        setSoundVolume(vol);
+        RupeeFeedbackService.setSoundVolume(vol);
+      };
+
+      const handlePreviewFeedback = () => {
+        if (!soundEnabled && !hapticsEnabled) {
+          if (window.showToast) {
+            window.showToast('Sounds & Haptics are currently disabled. Enable them above to preview.', 'info');
+          }
+          return;
+        }
+        RupeeFeedbackService.feedback('complete');
+        if (window.showToast) {
+          window.showToast('Previewing interface feedback tone & haptics', 'info');
+        }
+      };
+
       // Refresh solar state periodically and on theme change
       useEffect(() => {
         const refreshSolar = () => {
@@ -39913,6 +40138,94 @@ function PartyDetailModal({
                 React.createElement('span', { className: 'slider' })
               )
             )
+          )
+        ),
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // SECTION 8: SOUNDS & HAPTICS SETTINGS CARD
+        // ══════════════════════════════════════════════════════════════════════════
+        React.createElement('div', { className: 'card', id: 'settings-sounds-haptics', style: { padding: '24px 28px' } },
+          React.createElement('div', { style: { marginBottom: 18 } },
+            React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('span', null, '🔊 Sounds & Haptics')
+            ),
+            React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
+              'Choose how RupeeCRM provides subtle feedback when you interact with the application.'
+            )
+          ),
+
+          // 1. Interface Sounds
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderTop: '1px solid var(--border)' } },
+            React.createElement('div', { style: { flex: 1, paddingRight: 16 } },
+              React.createElement('div', { style: { fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' } }, 'Interface Sounds'),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                'Play subtle audio feedback for selected actions.'
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'switch' },
+                React.createElement('input', {
+                  type: 'checkbox',
+                  checked: soundEnabled,
+                  onChange: handleToggleSounds
+                }),
+                React.createElement('span', { className: 'slider' })
+              )
+            )
+          ),
+
+          // 2. Haptic Feedback
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderTop: '1px solid var(--border)' } },
+            React.createElement('div', { style: { flex: 1, paddingRight: 16 } },
+              React.createElement('div', { style: { fontSize: '0.9rem', fontWeight: 600, color: 'var(--text)' } }, 'Haptic Feedback'),
+              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                hapticsSupported ? 'Provide gentle tactile feedback for supported interactions.' : 'Haptic feedback is unavailable on the current device.'
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'switch', style: { opacity: hapticsSupported ? 1 : 0.6 } },
+                React.createElement('input', {
+                  type: 'checkbox',
+                  disabled: !hapticsSupported,
+                  checked: hapticsEnabled && hapticsSupported,
+                  onChange: handleToggleHaptics
+                }),
+                React.createElement('span', { className: 'slider' })
+              )
+            )
+          ),
+
+          // 3. Sound Volume (Visible only when sounds enabled)
+          soundEnabled && React.createElement('div', { style: { padding: '14px 16px', background: 'var(--bg-secondary)', borderRadius: 10, border: '1px solid var(--border)', marginTop: 8, marginBottom: 14 } },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 } },
+              React.createElement('span', { style: { fontSize: '0.84rem', fontWeight: 600, color: 'var(--text)' } }, 'Sound Volume'),
+              React.createElement('span', { style: { fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary)' } }, `${soundVolume}%`)
+            ),
+            React.createElement('div', { style: { fontSize: '0.76rem', color: 'var(--text-secondary)', marginBottom: 8 } },
+              'Subtle interaction feedback volume (0–50%). Restrained by design.'
+            ),
+            React.createElement('input', {
+              type: 'range',
+              min: '0',
+              max: '50',
+              step: '5',
+              value: soundVolume,
+              onChange: handleVolumeChange,
+              style: { width: '100%', accentColor: 'var(--primary)' }
+            })
+          ),
+
+          // 4. Test Feedback Button
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: 10 } },
+            React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
+              soundEnabled ? 'Test the currently configured audio and haptic feedback.' : 'Enable Interface Sounds above to test feedback.'
+            ),
+            React.createElement('button', {
+              type: 'button',
+              className: 'btn btn-secondary btn-sm',
+              onClick: handlePreviewFeedback,
+              style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: '0.82rem' }
+            }, '🔔 Preview Feedback')
           )
         )
       );

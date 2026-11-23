@@ -20,6 +20,7 @@ import java.util.Arrays;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -45,7 +46,8 @@ class FirmDetailsControllerTest {
 
     @BeforeEach
     void setUp() {
-        when(firmDetailsRepo.existsById(anyLong())).thenReturn(true);
+        doReturn(java.util.Collections.emptyList()).when(firmDetailsRepo).findAll();
+        doReturn(true).when(firmDetailsRepo).existsById(anyLong());
         this.mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .defaultRequest(get("/").header("X-Firm-Id", "1"))
                 .build();

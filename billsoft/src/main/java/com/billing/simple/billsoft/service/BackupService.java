@@ -2585,13 +2585,16 @@ public class BackupService {
                         notifToUse.setUpdatedAt(LocalDateTime.now());
                         notifToUse = notificationRepo.save(notifToUse);
                     } else {
+                        String eKey = (notif.getEventKey() != null && !notif.getEventKey().trim().isEmpty())
+                                ? notif.getEventKey().trim()
+                                : ("evt_" + (notif.getId() != null ? notif.getId() : System.nanoTime()) + "_" + mappedFirmId);
                         Notification newNotif = Notification.builder()
                                 .firmId(mappedFirmId)
                                 .category(notif.getCategory() != null ? notif.getCategory() : NotificationCategory.SYSTEM)
                                 .title(notif.getTitle())
                                 .body(notif.getBody())
                                 .sender(notif.getSender())
-                                .eventKey(notif.getEventKey())
+                                .eventKey(eKey)
                                 .primaryActionLabel(notif.getPrimaryActionLabel())
                                 .primaryActionType(notif.getPrimaryActionType())
                                 .primaryActionTarget(notif.getPrimaryActionTarget())

@@ -1671,6 +1671,14 @@ const API = {
     updateConfig: (productId, payload) => API._json(API._qs(`/api/forecast/products/${productId}/config`), { method: 'PUT', body: payload }),
     getRecommendations: (params = {}) => API._json(API._qs('/api/forecast/restock/recommendations', params)),
     adminSync: () => API._json(API._qs('/api/forecast/admin/sync'), { method: 'POST' })
+  },
+
+  // ─── Demo Mode ───
+  demo: {
+    getStatus: () => API._json(API._qs('/api/demo/status')),
+    enter: (pin = '0000') => API._json(API._qs('/api/demo/enter'), { method: 'POST', body: { pin } }),
+    exit: () => API._json(API._qs('/api/demo/exit'), { method: 'POST' }),
+    reset: () => API._json(API._qs('/api/demo/reset'), { method: 'POST' })
   }
 };
 

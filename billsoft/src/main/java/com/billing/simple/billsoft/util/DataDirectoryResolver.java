@@ -134,6 +134,41 @@ public final class DataDirectoryResolver {
     }
 
     /**
+     * Resolves the persistent demo directory (%LOCALAPPDATA%\RupeeCRM\demo).
+     */
+    public static File resolveDemoDirectory() {
+        String custom = System.getProperty("RUPEECRM_DEMO_DIR");
+        if (custom == null || custom.trim().isEmpty()) {
+            custom = System.getenv("RUPEECRM_DEMO_DIR");
+        }
+        if (custom != null && !custom.trim().isEmpty()) {
+            File dir = new File(custom.trim());
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+            return dir;
+        }
+
+        File baseDir = resolveBaseDirectory();
+        File demoDir = new File(baseDir, "demo");
+        if (!demoDir.exists()) {
+            demoDir.mkdirs();
+        }
+        return demoDir;
+    }
+
+    public static String resolveDemoDirectoryPath() {
+        return resolveDemoDirectory().getAbsolutePath();
+    }
+
+    /**
+     * Resolves the persistent demo state file (%LOCALAPPDATA%\RupeeCRM\demo_state.json).
+     */
+    public static File resolveDemoStateFile() {
+        return new File(resolveBaseDirectory(), "demo_state.json");
+    }
+
+    /**
      * Resolves the persistent backups directory (%LOCALAPPDATA%\RupeeCRM\backups).
      */
     public static File resolveBackupsDirectory() {

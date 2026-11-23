@@ -41,15 +41,16 @@ public class BackupController {
     private static final String MASTER_KEY_HASH = "3680e811ded1a1831a688d594243e727a23d8bc801a9e2fa31279dba46b635ce";
 
     public BackupController(BackupService backupService,
-                            AutoBackupService autoBackupService,
-                            AppConfigRepository appConfigRepo,
-                            AuthController authController,
-                            @org.springframework.beans.factory.annotation.Autowired(required = false) BackupArchiveService backupArchiveService) {
+            AutoBackupService autoBackupService,
+            AppConfigRepository appConfigRepo,
+            AuthController authController,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) BackupArchiveService backupArchiveService) {
         this.backupService = backupService;
         this.autoBackupService = autoBackupService;
         this.appConfigRepo = appConfigRepo;
         this.authController = authController;
-        this.backupArchiveService = backupArchiveService != null ? backupArchiveService : new BackupArchiveService(objectMapper, new BackupValidationService());
+        this.backupArchiveService = backupArchiveService != null ? backupArchiveService
+                : new BackupArchiveService(objectMapper, new BackupValidationService());
     }
 
     private boolean isMasterAuthorized(String masterPassword) {
@@ -379,7 +380,18 @@ public class BackupController {
     @PostMapping("/inspect")
     public ResponseEntity<?> inspectBackup(@RequestParam("file") MultipartFile file) {
         try {
-            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(),
+                    file.getOriginalFilename());
+            boolean isDemoBackup = backup.getMetadata() != null &&
+                    (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
+                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+            if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                return ResponseEntity.badRequest().body(response);
+            }
             com.billing.simple.billsoft.dto.BackupInspectionDTO inspection = backupService.inspectBackup(backup);
             return ResponseEntity.ok(inspection);
         } catch (BackupValidationException bve) {
@@ -433,7 +445,18 @@ public class BackupController {
         }
 
         try {
-            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(),
+                    file.getOriginalFilename());
+            boolean isDemoBackup = backup.getMetadata() != null &&
+                    (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
+                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+            if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                return ResponseEntity.badRequest().body(response);
+            }
             java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty())
                     ? new java.util.HashSet<>(firmIds)
                     : null;
@@ -477,6 +500,95 @@ public class BackupController {
         }
     }
 
+    @PostMapping(value = { "/import/test-dataset", "/import/test-data" })
+    public ResponseEntity<Map<String, Object>> importTestDataset(
+            HttpServletRequest request,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @RequestParam(value = "filePath", required = false) String filePath,
+            @RequestParam(value = "firmIds", required = false) java.util.List<Long> firmIds,
+            @RequestParam(value = "mode", defaultValue = "clone") String mode) {
+        String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
+        if (!"clone".equals(normalizedMode) && !"merge".equals(normalizedMode)) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "error");
+            response.put("errorCode", "INVALID_MODE");
+            response.put("error", "Test dataset import only supports 'clone' or 'merge' mode.");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        try {
+            BackupDTO backup;
+            if (file != null && !file.isEmpty()) {
+                backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(),
+                        file.getOriginalFilename());
+            } else if (filePath != null && !filePath.trim().isEmpty()) {
+                java.io.File diskFile = new java.io.File(filePath.trim());
+                if (!diskFile.exists() || !diskFile.isFile() || diskFile.length() == 0) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("status", "error");
+                    response.put("errorCode", "FILE_NOT_FOUND");
+                    response.put("error", "Test dataset file not found at path: " + filePath);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+                }
+                try (java.io.InputStream is = new java.io.FileInputStream(diskFile)) {
+                    backup = backupArchiveService.extractAndValidateBackup(is, diskFile.getName());
+                }
+            } else {
+                Map<String, Object> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("errorCode", "MISSING_PAYLOAD");
+                response.put("error", "Either a multipart 'file' upload or a valid local 'filePath' must be provided.");
+                return ResponseEntity.badRequest().body(response);
+            }
+
+            com.billing.simple.billsoft.dto.BackupInspectionDTO inspection = backupService.inspectBackup(backup);
+
+            java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty())
+                    ? new java.util.HashSet<>(firmIds)
+                    : null;
+            java.util.List<com.billing.simple.billsoft.entities.FirmDetails> restoredFirms = backupService
+                    .importSelectiveData(backup, selectedFirmIds, normalizedMode, null);
+
+            String sessionToken = authController.createSessionTokenForBootstrap();
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message",
+                    "Successfully imported test dataset containing " + restoredFirms.size() + " firm(s).");
+            response.put("importedFirms", restoredFirms);
+            response.put("totalStats", inspection.getTotalStats());
+            response.put("firmSummaries", inspection.getFirms());
+            response.put("token", sessionToken);
+            return ResponseEntity.ok()
+                    .header("X-Auth-Token", sessionToken)
+                    .body(response);
+        } catch (BackupValidationException bve) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "error");
+            response.put("error", bve.getMessage());
+            response.put("errorCode", bve.getErrorCode());
+            return ResponseEntity.badRequest().body(response);
+        } catch (com.fasterxml.jackson.core.JsonParseException
+                | com.fasterxml.jackson.databind.JsonMappingException e) {
+            e.printStackTrace();
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "The test dataset file is not valid JSON or is corrupted.");
+            response.put("errorCode", "MALFORMED_BACKUP");
+            return ResponseEntity.badRequest().body(response);
+        } catch (java.io.IOException e) {
+            e.printStackTrace();
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Failed to read test dataset file: " + e.getMessage());
+            return ResponseEntity.badRequest().body(response);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Test dataset import failed: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(response);
+        }
+    }
+
     @PostMapping({ "/import", "/restore", "/upload-restore" })
     public ResponseEntity<Map<String, String>> importBackup(
             @RequestParam("file") MultipartFile file,
@@ -499,7 +611,18 @@ public class BackupController {
         }
 
         try {
-            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(), file.getOriginalFilename());
+            BackupDTO backup = backupArchiveService.extractAndValidateBackup(file.getInputStream(),
+                    file.getOriginalFilename());
+            boolean isDemoBackup = backup.getMetadata() != null &&
+                    (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
+                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+            if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
+                Map<String, String> response = new HashMap<>();
+                response.put("status", "error");
+                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                return ResponseEntity.badRequest().body(response);
+            }
             boolean isMultiFirm = backup.getAllFirms() != null && backup.getAllFirms().size() > 1;
             if (firmId != null && isMultiFirm && sourceFirmId == null) {
                 Map<String, String> response = new HashMap<>();

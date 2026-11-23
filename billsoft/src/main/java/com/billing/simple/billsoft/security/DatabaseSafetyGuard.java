@@ -175,7 +175,9 @@ public final class DatabaseSafetyGuard {
                 filePath.contains("test_data") ||
                 filePath.contains("disposable") ||
                 filePath.contains("rehearsal") ||
-                filePath.contains("database-test")) {
+                filePath.contains("database-test") ||
+                filePath.contains("demo") ||
+                filePath.contains("demodb")) {
                 return true;
             }
         }
@@ -195,6 +197,11 @@ public final class DatabaseSafetyGuard {
         }
 
         String normalizedUrl = lower.replace('\\', '/');
+
+        // Demo databases are strictly isolated and never considered production databases
+        if (normalizedUrl.contains("/demo/") || normalizedUrl.contains("demo_database") || normalizedUrl.contains("demodb")) {
+            return false;
+        }
 
         // Check user home directory paths
         String userHome = System.getProperty("user.home", "").replace('\\', '/').toLowerCase();

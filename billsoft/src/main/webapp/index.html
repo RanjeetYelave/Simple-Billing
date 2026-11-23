@@ -41961,7 +41961,20 @@ function PartyDetailModal({
     function CreditsHelpdesk() {
       const [copied, setCopied] = useState(false);
       const [appVersion, setAppVersion] = useState(null);
+      const [isDemoActive, setIsDemoActive] = useState(() => Boolean(window.__rupeecrmIsDemoMode));
       const email = 'yelaveranjeet@gmail.com';
+
+      useEffect(() => {
+        if (typeof API !== 'undefined' && API.demo && typeof API.demo.getStatus === 'function') {
+          API.demo.getStatus()
+            .then(res => {
+              if (res && res.isDemoMode) {
+                setIsDemoActive(true);
+              }
+            })
+            .catch(() => { });
+        }
+      }, []);
 
       useEffect(() => {
         if (typeof API !== 'undefined' && API.system && typeof API.system.updateStatus === 'function') {
@@ -42079,6 +42092,81 @@ function PartyDetailModal({
                 className: 'btn btn-primary btn-sm',
                 style: { textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
               }, '✉️ Contact Support')
+            )
+          )
+        ),
+
+        // Sales Evaluation & Demonstration Mode Card
+        React.createElement('div', {
+          className: 'card',
+          style: {
+            padding: '24px 28px',
+            borderRadius: 16,
+            border: isDemoActive ? '2px solid #d97706' : '1px solid rgba(217, 119, 6, 0.35)',
+            background: isDemoActive ? 'rgba(217, 119, 6, 0.04)' : 'inherit'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { fontSize: '1.5rem', padding: 10, borderRadius: 12, background: 'rgba(217,119,6,0.12)', color: '#d97706' } }, '🎭'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+                  'Sales Evaluation & Demo Mode',
+                  isDemoActive && React.createElement('span', { className: 'rcrm-demo-pill' }, 'ACTIVE')
+                ),
+                React.createElement('p', { style: { margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' } }, 'Explore RupeeCRM with preloaded fictional business datasets')
+              )
+            )
+          ),
+          React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text)', lineHeight: 1.5, margin: '0 0 16px 0' } },
+            isDemoActive
+              ? "You are currently exploring in Demo Mode across 3 fictional companies (Apex Plumbing Solutions, Bright Electrical Traders, Mehta Industrial Supplies). Your real business records remain safe and untouched."
+              : "Demo Mode enables salesmen and evaluators to demonstrate complete application features using realistic preloaded fictional data. The real business database is completely isolated and untouched."
+          ),
+          React.createElement('div', {
+            style: {
+              background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)', padding: '14px 18px',
+              borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { fontSize: '1.2rem' } }, '🔑'),
+              React.createElement('span', { style: { fontSize: '0.90rem', fontWeight: 600, color: 'var(--text)' } }, 'Access Gate PIN: 0000')
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10 } },
+              isDemoActive
+                ? React.createElement(React.Fragment, null,
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-outline btn-sm',
+                      style: { fontWeight: 600 },
+                      onClick: () => {
+                        if (typeof window !== 'undefined' && typeof window.__rupeecrmResetDemo === 'function') {
+                          window.__rupeecrmResetDemo();
+                        }
+                      }
+                    }, '🔄 Reset Demo Data'),
+                    React.createElement('button', {
+                      type: 'button',
+                      className: 'btn btn-primary btn-sm',
+                      style: { background: '#dc2626', borderColor: '#dc2626', fontWeight: 700 },
+                      onClick: () => {
+                        if (typeof window !== 'undefined' && typeof window.__rupeecrmOpenDemoExitModal === 'function') {
+                          window.__rupeecrmOpenDemoExitModal();
+                        }
+                      }
+                    }, '✕ Exit Demo Mode')
+                  )
+                : React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-primary btn-sm',
+                    style: { background: '#d97706', borderColor: '#d97706', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 },
+                    onClick: () => {
+                      if (typeof window !== 'undefined' && typeof window.__rupeecrmOpenDemoEntryModal === 'function') {
+                        window.__rupeecrmOpenDemoEntryModal();
+                      }
+                    }
+                  }, '🎭 Enter Demo Mode')
             )
           )
         ),
@@ -48230,6 +48318,110 @@ function PartyDetailModal({
       const [networkDetails, setNetworkDetails] = useState(null);
       const [showNetworkModal, setShowNetworkModal] = useState(false);
 
+      const [isDemoMode, setIsDemoMode] = useState(false);
+      const [showDemoEntryModal, setShowDemoEntryModal] = useState(false);
+      const [showDemoExitModal, setShowDemoExitModal] = useState(false);
+      const [demoPin, setDemoPin] = useState('');
+      const [demoPinError, setDemoPinError] = useState('');
+      const [isDemoBusy, setIsDemoBusy] = useState(false);
+
+      useEffect(() => {
+        if (typeof API !== 'undefined' && API.demo && typeof API.demo.getStatus === 'function') {
+          API.demo.getStatus()
+            .then(res => {
+              if (res && res.isDemoMode) {
+                setIsDemoMode(true);
+                window.__rupeecrmIsDemoMode = true;
+              } else {
+                setIsDemoMode(false);
+                window.__rupeecrmIsDemoMode = false;
+              }
+            })
+            .catch(() => { });
+        }
+      }, []);
+
+      useEffect(() => {
+        window.__rupeecrmOpenDemoEntryModal = () => {
+          setShowDemoEntryModal(true);
+          setDemoPin('');
+          setDemoPinError('');
+        };
+        window.__rupeecrmOpenDemoExitModal = () => {
+          setShowDemoExitModal(true);
+        };
+        window.__rupeecrmResetDemo = () => {
+          handleResetDemo();
+        };
+      }, []);
+
+      const handleEnterDemo = async (customPin) => {
+        setIsDemoBusy(true);
+        setDemoPinError('');
+        try {
+          const pinToUse = customPin || demoPin || '0000';
+          const res = await API.demo.enter(pinToUse);
+          if (res && res.success) {
+            setIsDemoMode(true);
+            window.__rupeecrmIsDemoMode = true;
+            setShowDemoEntryModal(false);
+            setDemoPin('');
+            window.showToast && window.showToast('Demo Mode Activated! 3 sample company profiles loaded.', 'success');
+            setTimeout(() => {
+              window.location.reload();
+            }, 400);
+          } else {
+            setDemoPinError((res && res.message) || 'Invalid PIN. Please enter 0000.');
+          }
+        } catch (e) {
+          setDemoPinError((e && e.message) || 'Failed to enter Demo Mode');
+        } finally {
+          setIsDemoBusy(false);
+        }
+      };
+
+      const handleExitDemo = async () => {
+        setIsDemoBusy(true);
+        try {
+          const res = await API.demo.exit();
+          if (res && res.success) {
+            setIsDemoMode(false);
+            window.__rupeecrmIsDemoMode = false;
+            setShowDemoExitModal(false);
+            window.showToast && window.showToast('Exited Demo Mode. Real business records restored.', 'info');
+            setTimeout(() => {
+              window.location.reload();
+            }, 400);
+          } else {
+            window.showToast && window.showToast((res && res.message) || 'Failed to exit Demo Mode', 'error');
+          }
+        } catch (e) {
+          window.showToast && window.showToast((e && e.message) || 'Failed to exit Demo Mode', 'error');
+        } finally {
+          setIsDemoBusy(false);
+        }
+      };
+
+      const handleResetDemo = async () => {
+        if (!confirm('Reset Demo Mode data back to pristine seed state? All demo edits will be reset.')) return;
+        setIsDemoBusy(true);
+        try {
+          const res = await API.demo.reset();
+          if (res && res.success) {
+            window.showToast && window.showToast('Demo data successfully reset to pristine state.', 'success');
+            setTimeout(() => {
+              window.location.reload();
+            }, 400);
+          } else {
+            window.showToast && window.showToast((res && res.message) || 'Failed to reset demo data', 'error');
+          }
+        } catch (e) {
+          window.showToast && window.showToast((e && e.message) || 'Failed to reset demo data', 'error');
+        } finally {
+          setIsDemoBusy(false);
+        }
+      };
+
       const omniPlaceholders = useMemo(() => [
         // 1. Live Receivables & Customer Dues
         '💰 total udhari',
@@ -50279,6 +50471,50 @@ function PartyDetailModal({
           })
         ),
         React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
+          isDemoMode && React.createElement('div', {
+            id: 'rupeecrm-demo-mode-banner',
+            className: 'rcrm-demo-banner'
+          },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+              React.createElement('span', { className: 'rcrm-demo-tag' }, 'DEMO MODE'),
+              React.createElement('span', null,
+                'Preloaded fictional business data active. Actual business database is completely isolated & untouched.'
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm',
+                onClick: handleResetDemo,
+                disabled: isDemoBusy,
+                style: {
+                  background: 'rgba(255,255,255,0.2)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255,255,255,0.4)',
+                  padding: '3px 10px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }
+              }, isDemoBusy ? 'Processing...' : '🔄 Reset Demo Data'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm',
+                onClick: () => setShowDemoExitModal(true),
+                disabled: isDemoBusy,
+                style: {
+                  background: '#ffffff',
+                  color: '#9a3412',
+                  border: 'none',
+                  padding: '4px 12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                }
+              }, '✕ Exit Demo Mode')
+            )
+          ),
           React.createElement('header', { className: 'topbar' },
             React.createElement('div', { className: 'topbar-left', style: { display: 'flex', alignItems: 'center', gap: 12, flex: '0 1 auto', minWidth: 0 } },
               React.createElement('button', {
@@ -50513,7 +50749,7 @@ function PartyDetailModal({
                   onChange: e => handleFirmSwitch(parseInt(e.target.value, 10)),
                   title: 'Switch Active Firm'
                 },
-                  firms.map(f => React.createElement('option', { key: f.id, value: f.id }, f.firmName || 'Unnamed Firm'))
+                  firms.map(f => React.createElement('option', { key: f.id, value: f.id }, isDemoMode ? `[DEMO] ${f.firmName}` : (f.firmName || 'Unnamed Firm')))
                 ),
                 React.createElement(SessionTimerBadge, {
                   authEnabled,
@@ -51045,7 +51281,101 @@ function PartyDetailModal({
           onClose: () => setShowNetworkModal(false),
           networkData: networkDetails,
           onRefresh: (d) => { setNetworkDetails(d); setIsNetOnline(d.connected !== false); }
-        })
+        }),
+        showDemoEntryModal && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: 10600, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        },
+          React.createElement('div', { className: 'card', style: { maxWidth: 480, width: '92%', padding: '32px 28px', borderRadius: 16 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
+              React.createElement('div', { style: { fontSize: '2rem', padding: '10px', background: 'rgba(217, 119, 6, 0.12)', borderRadius: 12, color: '#d97706' } }, '🎭'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' } }, 'Enter Sales & Evaluation Demo Mode'),
+                React.createElement('p', { style: { margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Explore RupeeCRM safely with sample business data')
+              )
+            ),
+            React.createElement('div', {
+              style: {
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                padding: '14px 16px',
+                borderRadius: 10,
+                fontSize: '0.85rem',
+                color: 'var(--text)',
+                lineHeight: 1.5,
+                marginBottom: 18
+              }
+            },
+              React.createElement('p', { style: { margin: '0 0 8px 0', fontWeight: 600 } }, '🛡️ Complete Database Isolation Guaranteed:'),
+              React.createElement('ul', { style: { margin: 0, paddingLeft: 18, color: 'var(--text-secondary)', fontSize: '0.82rem' } },
+                React.createElement('li', null, 'Loads 3 fictional companies (Apex Plumbing, Bright Electrical, Mehta Industrial) with full catalogue & financial history.'),
+                React.createElement('li', null, 'Your actual customer and company records are 100% untouched and protected.'),
+                React.createElement('li', null, 'Any invoices, stock updates, or edits made in Demo Mode are isolated and reset upon exit.')
+              )
+            ),
+            React.createElement('div', { style: { marginBottom: 18 } },
+              React.createElement('label', { style: { display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: 6, color: 'var(--text)' } }, 'Enter Access PIN (Default: 0000):'),
+              React.createElement('input', {
+                type: 'password',
+                className: 'input',
+                style: { width: '100%', fontSize: '1.1rem', letterSpacing: '4px', textAlign: 'center', padding: '10px' },
+                maxLength: 6,
+                placeholder: '0000',
+                value: demoPin,
+                onChange: e => setDemoPin(e.target.value),
+                onKeyDown: e => { if (e.key === 'Enter') handleEnterDemo(); },
+                autoFocus: true
+              }),
+              demoPinError && React.createElement('div', { style: { color: 'var(--danger, #ef4444)', fontSize: '0.8rem', marginTop: 6, fontWeight: 500 } }, demoPinError)
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                onClick: () => setShowDemoEntryModal(false),
+                disabled: isDemoBusy
+              }, 'Cancel'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                style: { background: '#d97706', borderColor: '#d97706' },
+                onClick: () => handleEnterDemo(),
+                disabled: isDemoBusy
+              }, isDemoBusy ? 'Activating Demo Mode...' : '🚀 Enter Demo Mode')
+            )
+          )
+        ),
+        showDemoExitModal && React.createElement('div', {
+          className: 'modal-overlay modal-confirm',
+          style: { zIndex: 10600, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+        },
+          React.createElement('div', { className: 'card', style: { maxWidth: 440, width: '92%', padding: '32px 28px', borderRadius: 16 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
+              React.createElement('div', { style: { fontSize: '2rem', padding: '10px', background: 'rgba(16, 185, 129, 0.12)', borderRadius: 12, color: '#10b981' } }, '🚪'),
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--text)' } }, 'Exit Demo Mode?'),
+                React.createElement('p', { style: { margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' } }, 'Return to your live production workspace')
+              )
+            ),
+            React.createElement('p', { style: { fontSize: '0.88rem', color: 'var(--text)', lineHeight: 1.5, margin: '0 0 20px 0' } },
+              'Exiting Demo Mode will discard any test invoices or changes made during this demo session and cleanly restore your live company database.'
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                onClick: () => setShowDemoExitModal(false),
+                disabled: isDemoBusy
+              }, 'Stay in Demo'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                onClick: handleExitDemo,
+                disabled: isDemoBusy
+              }, isDemoBusy ? 'Restoring Live Mode...' : 'Exit to Live Mode')
+            )
+          )
+        )
       );
     }
 

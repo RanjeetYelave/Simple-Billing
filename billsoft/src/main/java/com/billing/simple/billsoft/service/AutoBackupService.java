@@ -165,6 +165,13 @@ public class AutoBackupService {
      * read-back integrity verification, historical archiving, and retention management.
      */
     public synchronized Map<String, Object> runAutoBackup() {
+        if (com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode()) {
+            log.info("Automated backup skipped: RupeeCRM is currently in DEMO mode. Demo data must never be saved to production backups.");
+            lastBackupStatus.put("status", "SKIPPED_DEMO_MODE");
+            lastBackupStatus.put("message", "Automated backup skipped: RupeeCRM is currently running in Demo Mode.");
+            return new HashMap<>(lastBackupStatus);
+        }
+
         if (!coordinator.tryLock()) {
             log.info("Automated backup skipped: System recovery, restore, or reset operation is currently in progress.");
             lastBackupStatus.put("status", "SKIPPED_RECOVERY_IN_PROGRESS");

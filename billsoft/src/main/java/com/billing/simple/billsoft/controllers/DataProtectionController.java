@@ -79,6 +79,11 @@ public class DataProtectionController {
 
     @PostMapping("/backup-now")
     public ResponseEntity<Map<String, Object>> runBackupNow(HttpServletRequest request) {
+        if (com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode()) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Cloud Data Protection backup is disabled in Demo Mode.");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
         String masterPassword = request.getHeader("X-Master-Password");
         if (masterPassword == null || masterPassword.isBlank()) {
             masterPassword = request.getParameter("masterPassword");
@@ -105,6 +110,11 @@ public class DataProtectionController {
             @RequestBody(required = false) Map<String, String> body,
             @RequestParam(value = "machineId", required = false) String paramMachineId,
             @RequestParam(value = "licenseId", required = false) String paramLicenseId) {
+        if (com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode()) {
+            Map<String, String> response = new HashMap<>();
+            response.put("error", "Cloud Data Protection inspection is disabled in Demo Mode.");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
         String masterPassword = request.getHeader("X-Master-Password");
         if (masterPassword == null || masterPassword.isBlank()) {
             masterPassword = request.getParameter("masterPassword");
@@ -140,6 +150,11 @@ public class DataProtectionController {
             @RequestParam(value = "firmIds", required = false) List<Long> firmIds,
             @RequestParam(value = "mode", defaultValue = "clone") String mode,
             @RequestParam(value = "targetFirmId", required = false) Long targetFirmId) {
+        if (com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode()) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Cloud Data Protection restore is disabled in Demo Mode.");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
         Long currentFirmId = TenantContext.getCurrentFirmId();
         if (targetFirmId != null && currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
             Map<String, Object> response = new HashMap<>();

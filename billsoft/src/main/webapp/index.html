@@ -5743,7 +5743,7 @@
                       else if (onNavigateToReturn) onNavigateToReturn(r, { openExportModal: true });
                     },
                     title: `Preview / Export Credit Note ${cnLabel}`
-                  }, 'Preview / Export'),
+                  }, 'Preview'),
                   React.createElement('button', {
                     type: 'button',
                     className: 'btn btn-xs btn-ghost',
@@ -6381,7 +6381,7 @@
           ) :
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'table-container' },
-                React.createElement('table', null,
+                React.createElement('table', { style: { width: '100%', minWidth: 880 } },
                   React.createElement('thead', null,
                     React.createElement('tr', null,
                       React.createElement('th', null, 'Type'),
@@ -6400,7 +6400,7 @@
                       React.createElement('th', { className: 'sortable', style: { cursor: 'pointer' }, onClick: () => toggleSort('status') },
                         'Status', sortField === 'status' ? (sortDir === 'asc' ? ' 🔼' : ' 🔽') : null
                       ),
-                      React.createElement('th', { style: { textAlign: 'right' } }, 'Actions')
+                      React.createElement('th', { style: { textAlign: 'right', minWidth: 260 } }, 'Actions')
                     )
                   ),
                   React.createElement('tbody', null,
@@ -6544,7 +6544,7 @@
                                 className: 'btn-seg-preview',
                                 title: doc.isEstimate ? 'Preview, Customize & Export Quotation' : 'Preview, Customize & Export Invoice',
                                 onClick: () => handlePrintPdf(doc)
-                              }, 'Preview / Export'),
+                              }, 'Preview'),
                               React.createElement('button', {
                                 type: 'button',
                                 className: 'btn-seg-share',
@@ -15154,107 +15154,96 @@ if (typeof window !== 'undefined') {
 
       return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 20 } },
 
-        // Sleek Header Bar with Dual Segment Switcher & Universal Quick Actions
-        React.createElement('div', {
-          style: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'nowrap',
-            gap: 12,
-            paddingBottom: 4,
-            minWidth: 0,
-            width: '100%',
-            overflow: 'hidden'
-          }
-        },
-          // Left: Title + Segment Switcher
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'nowrap', minWidth: 0, flexShrink: 1 } },
-            React.createElement('div', { style: { minWidth: 0, flexShrink: 1 } },
-              React.createElement('h1', { className: 'dashboard-title', style: { margin: 0, fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 } }, `Welcome back, ${greetingName}! 👋`),
+        // Responsive Header Bar with Dual Segment Switcher & Universal Quick Actions
+        React.createElement('div', { className: 'dashboard-header-container' },
+          // Left Group: Greeting + Subtitle + Segment Switcher
+          React.createElement('div', { className: 'dashboard-header-left' },
+            React.createElement('div', { className: 'dashboard-greeting-wrapper' },
+              React.createElement('h1', { className: 'dashboard-title' }, `Welcome back, ${greetingName}! 👋`),
               React.createElement('div', {
-                style: {
-                  fontSize: '0.78rem',
-                  color: 'var(--text-secondary)',
-                  marginTop: 2,
-                  maxWidth: 280,
-                  minWidth: 0,
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                },
+                className: 'dashboard-subtitle',
                 title: `${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}${currentFirmObj ? ' • ' + currentFirmObj.firmName : ''}`
               },
                 React.createElement('span', { style: { flexShrink: 0 } }, new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })),
                 currentFirmObj ? React.createElement('span', { style: { flexShrink: 0, opacity: 0.6 } }, '•') : null,
-                currentFirmObj ? React.createElement('span', { style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, display: 'inline-block', verticalAlign: 'bottom', fontWeight: 500 } }, currentFirmObj.firmName) : null
+                currentFirmObj ? React.createElement('span', { className: 'dashboard-firm-pill' }, currentFirmObj.firmName) : null
               )
             ),
             // Segment Switcher Pill
-            React.createElement('div', { className: 'dashboard-segment-switcher', style: { flexShrink: 0 } },
+            React.createElement('div', { className: 'dashboard-segment-switcher' },
               React.createElement('button', {
+                type: 'button',
                 className: `dashboard-segment-btn${dashSegment === 'business' ? ' active' : ''}`,
                 onClick: () => setDashSegment('business')
               }, '🏢 Business View'),
               React.createElement('button', {
+                type: 'button',
                 className: `dashboard-segment-btn${dashSegment === 'personal' ? ' active' : ''}`,
                 onClick: () => setDashSegment('personal')
               }, '👤 Personal View')
             )
           ),
 
-          // Right: Pinned Universal Quick Actions
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'nowrap', flexShrink: 0 } },
-            React.createElement('button', {
-              className: 'btn btn-sm btn-primary',
-              onClick: () => setShowQuickAddModal(true),
-              'aria-label': 'Quick Invoice',
-              style: {
-                gap: 5,
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                padding: '3px 10px',
-                height: 28,
-                display: 'inline-flex',
-                alignItems: 'center',
-                whiteSpace: 'nowrap',
-                background: 'var(--primary, #059669)',
-                color: '#ffffff',
-                borderRadius: 6
-              },
-              title: 'Quick Invoice: Select products first and proceed to new invoice draft'
-            }, '⚡ Quick Invoice'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openGesturePalette('reminder'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '🔔 + Reminder'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openGesturePalette('task'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '📋 + Task'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openGesturePalette('expense'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '💳 + Expense'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('saving'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '💰 + Saving'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openQuickModal('goal'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '🎯 + Goal'),
-            React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
-              onClick: () => openGesturePalette('note'),
-              style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
-            }, '📝 + Note')
+          // Right Group: Pinned Universal Quick Actions (responsive wrap)
+          React.createElement('div', { className: 'dashboard-header-right' },
+            React.createElement('div', { className: 'dashboard-quick-actions-bar' },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-primary',
+                onClick: () => setShowQuickAddModal(true),
+                'aria-label': 'Quick Invoice',
+                style: {
+                  gap: 5,
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  padding: '3px 10px',
+                  height: 28,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  whiteSpace: 'nowrap',
+                  background: 'var(--primary, #059669)',
+                  color: '#ffffff',
+                  borderRadius: 6
+                },
+                title: 'Quick Invoice: Select products first and proceed to new invoice draft'
+              }, '⚡ Quick Invoice'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openGesturePalette('reminder'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '🔔 + Reminder'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openGesturePalette('task'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '📋 + Task'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openGesturePalette('expense'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '💳 + Expense'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openQuickModal('saving'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '💰 + Saving'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openQuickModal('goal'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '🎯 + Goal'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => openGesturePalette('note'),
+                style: { gap: 4, fontSize: '0.76rem', padding: '3px 8px', height: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }
+              }, '📝 + Note')
+            )
           )
         ),
 
@@ -20551,7 +20540,7 @@ if (typeof window !== 'undefined') {
               )
             ),
             React.createElement('div', { style: { display: 'flex', gap: 8 } },
-              React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => onPrint(returnData), title: 'Preview, Customize & Export Credit Note' }, 'Preview / Export'),
+              React.createElement('button', { className: 'btn btn-sm btn-outline', onClick: () => onPrint(returnData), title: 'Preview, Customize & Export Credit Note' }, 'Preview'),
               onReturnMore && inv.id && React.createElement('button', { className: 'btn btn-sm btn-primary', onClick: () => { onClose(); onReturnMore(inv.id); } }, '+ Return More on Invoice'),
               React.createElement('button', { className: 'btn btn-sm btn-ghost', onClick: onClose }, '✕')
             )
@@ -21227,7 +21216,7 @@ if (typeof window !== 'undefined') {
                             className: 'returns-btn-action returns-btn-print',
                             title: 'Preview, Customize & Export Credit Note',
                             onClick: () => handlePrintPdf(r)
-                          }, 'Preview / Export'),
+                          }, 'Preview'),
                           inv.id && inv.status !== 'CANCELLED' && React.createElement('button', {
                             type: 'button',
                             className: 'returns-btn-action returns-btn-more',
@@ -21707,7 +21696,7 @@ if (typeof window !== 'undefined') {
             React.createElement(Fragment, null,
               React.createElement('div', { className: 'card' },
                 React.createElement('div', { className: 'table-container' },
-                  React.createElement('table', null,
+                  React.createElement('table', { style: { width: '100%', minWidth: 880 } },
                     React.createElement('thead', null,
                       React.createElement('tr', null,
                         React.createElement('th', { className: 'sortable', onClick: () => toggleSort('number') }, 'Number', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
@@ -21715,7 +21704,7 @@ if (typeof window !== 'undefined') {
                         React.createElement('th', { className: 'sortable', onClick: () => toggleSort('date') }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
                         React.createElement('th', { className: 'sortable', onClick: () => toggleSort('amount') }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
                         React.createElement('th', { className: 'sortable', onClick: () => toggleSort('status') }, 'Status', sortField === 'status' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                        React.createElement('th', null, 'Actions')
+                        React.createElement('th', { style: { textAlign: 'right', minWidth: 260 } }, 'Actions')
                       )
                     ),
                     React.createElement('tbody', null,
@@ -21792,7 +21781,7 @@ if (typeof window !== 'undefined') {
                                   className: 'btn-seg-preview',
                                   title: 'Preview, Customize & Export Invoice',
                                   onClick: () => handlePrintPdf(inv.id)
-                                }, 'Preview / Export'),
+                                }, 'Preview'),
                                 React.createElement('button', {
                                   type: 'button',
                                   className: 'btn-seg-share',
@@ -22243,7 +22232,7 @@ if (typeof window !== 'undefined') {
           ) :
             React.createElement('div', { className: 'card' },
               React.createElement('div', { className: 'table-container' },
-                React.createElement('table', null,
+                React.createElement('table', { style: { width: '100%', minWidth: 840 } },
                   React.createElement('thead', null,
                     React.createElement('tr', null,
                       React.createElement('th', { className: 'sortable', onClick: () => toggleSort('number') }, 'Quotation #', sortField === 'number' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
@@ -22251,7 +22240,7 @@ if (typeof window !== 'undefined') {
                       React.createElement('th', { className: 'sortable', onClick: () => toggleSort('date') }, 'Date', sortField === 'date' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
                       React.createElement('th', { className: 'sortable', onClick: () => toggleSort('amount') }, 'Amount', sortField === 'amount' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
                       React.createElement('th', { className: 'sortable', onClick: () => toggleSort('status') }, 'Status', sortField === 'status' ? (sortDir === 'asc' ? Icons.arrowUp : Icons.arrowDown) : null),
-                      React.createElement('th', null, 'Actions')
+                      React.createElement('th', { style: { textAlign: 'right', minWidth: 240 } }, 'Actions')
                     )
                   ),
                   React.createElement('tbody', null,
@@ -22295,7 +22284,7 @@ if (typeof window !== 'undefined') {
                                 className: 'btn-seg-preview',
                                 title: 'Preview, Customize & Export Quotation',
                                 onClick: () => handlePrintPdf(q.id)
-                              }, 'Preview / Export'),
+                              }, 'Preview'),
                               React.createElement('button', {
                                 type: 'button',
                                 className: 'btn-seg-share',
@@ -32882,15 +32871,15 @@ function PartyDetailModal({
         loading ? React.createElement(RupeeCRMLoader, { message: 'Loading purchase orders...', size: 56, style: { minHeight: 280 } }) :
           React.createElement('div', { className: 'card firm-table-card' },
             React.createElement('div', { className: 'table-container' },
-              React.createElement('table', null,
+              React.createElement('table', { style: { minWidth: 880 } },
                 React.createElement('thead', null, React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '12%' } }, 'PO #'),
-                  React.createElement('th', { style: { width: '10%' } }, 'Date'),
-                  React.createElement('th', null, 'Vendor / Party'),
-                  React.createElement('th', { style: { textAlign: 'right', width: '14%' } }, 'Grand Total'),
-                  React.createElement('th', { style: { textAlign: 'center', width: '14%' } }, 'Payment'),
-                  React.createElement('th', { style: { textAlign: 'center', width: '12%' } }, 'Order Status'),
-                  React.createElement('th', { style: { textAlign: 'center', width: '180px' } }, 'Actions')
+                  React.createElement('th', { style: { width: '12%', minWidth: 90 } }, 'PO #'),
+                  React.createElement('th', { style: { width: '10%', minWidth: 80 } }, 'Date'),
+                  React.createElement('th', { style: { minWidth: 150 } }, 'Vendor / Party'),
+                  React.createElement('th', { style: { textAlign: 'right', width: '14%', minWidth: 100 } }, 'Grand Total'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '14%', minWidth: 100 } }, 'Payment'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '12%', minWidth: 90 } }, 'Order Status'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '220px', minWidth: 200 } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredOrders.length === 0 ?
@@ -32957,7 +32946,7 @@ function PartyDetailModal({
                               style: { padding: '4px 8px', fontSize: '0.78rem', whiteSpace: 'nowrap' },
                               onClick: () => setExportModalPo(po),
                               title: 'Preview, Customize & Export Purchase Order'
-                            }, 'Preview / Export'),
+                            }, 'Preview'),
                             React.createElement('button', {
                               type: 'button',
                               className: 'btn btn-sm btn-whatsapp-outline',
@@ -34096,14 +34085,14 @@ function PartyDetailModal({
         loading ? React.createElement(RupeeCRMLoader, { message: 'Loading document directory...', size: 56, style: { minHeight: 280 } }) :
           React.createElement('div', { className: 'card firm-table-card' },
             React.createElement('div', { className: 'table-container' },
-              React.createElement('table', null,
+              React.createElement('table', { style: { minWidth: 840 } },
                 React.createElement('thead', null, React.createElement('tr', null,
-                  React.createElement('th', null, 'Ref / Letter #'),
-                  React.createElement('th', null, 'Date'),
-                  React.createElement('th', null, 'Recipient'),
-                  React.createElement('th', null, 'Subject & Category'),
-                  React.createElement('th', { style: { textAlign: 'center' } }, 'Status'),
-                  React.createElement('th', { style: { textAlign: 'center' } }, 'Actions')
+                  React.createElement('th', { style: { minWidth: 100 } }, 'Ref / Letter #'),
+                  React.createElement('th', { style: { minWidth: 90 } }, 'Date'),
+                  React.createElement('th', { style: { minWidth: 140 } }, 'Recipient'),
+                  React.createElement('th', { style: { minWidth: 150 } }, 'Subject & Category'),
+                  React.createElement('th', { style: { textAlign: 'center', minWidth: 90 } }, 'Status'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '220px', minWidth: 200 } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredLetters.length === 0 ?
@@ -34150,7 +34139,7 @@ function PartyDetailModal({
                               style: { padding: '4px 8px', fontSize: '0.78rem', whiteSpace: 'nowrap' },
                               onClick: () => setExportModalLetter(l),
                               title: 'Preview, Customize & Export Business Letter'
-                            }, 'Preview / Export'),
+                            }, 'Preview'),
                             React.createElement('button', {
                               type: 'button',
                               className: 'btn btn-sm btn-whatsapp-outline',
@@ -42170,7 +42159,7 @@ function PartyDetailModal({
           },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
               React.createElement('span', { style: { fontSize: '1.2rem' } }, '🔑'),
-              React.createElement('span', { style: { fontSize: '0.90rem', fontWeight: 600, color: 'var(--text)' } }, 'Access Gate PIN: 0000')
+              React.createElement('span', { style: { fontSize: '0.90rem', fontWeight: 600, color: 'var(--text)' } }, 'Protected access · PIN required')
             ),
             React.createElement('div', { style: { display: 'flex', gap: 10 } },
               isDemoActive
@@ -45789,15 +45778,15 @@ function PartyDetailModal({
             // Staff Directory Table
             React.createElement('div', { className: 'card', style: { padding: 0, overflow: 'hidden', border: '1px solid var(--border)' } },
               React.createElement('div', { className: 'table-container' },
-                React.createElement('table', { className: 'table planner-ledger-table' },
+                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', minWidth: 880 } },
                   React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: '22%' } }, 'Staff Member'),
-                    React.createElement('th', { style: { width: '18%' } }, 'Department & Designation'),
-                    React.createElement('th', { style: { width: '16%' } }, 'Contact Info'),
-                    React.createElement('th', { style: { width: '14%', textAlign: 'right' } }, 'Base Salary'),
-                    React.createElement('th', { style: { width: '14%', textAlign: 'right' } }, 'Advance Balance'),
-                    React.createElement('th', { style: { width: '8%', textAlign: 'center' } }, 'Status'),
-                    React.createElement('th', { style: { width: '8%', textAlign: 'right' } }, 'Actions')
+                    React.createElement('th', { style: { width: '20%', minWidth: 150 } }, 'Staff Member'),
+                    React.createElement('th', { style: { width: '16%', minWidth: 130 } }, 'Department & Designation'),
+                    React.createElement('th', { style: { width: '14%', minWidth: 110 } }, 'Contact Info'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 90, textAlign: 'right' } }, 'Base Salary'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 90, textAlign: 'right' } }, 'Advance Balance'),
+                    React.createElement('th', { style: { width: '8%', minWidth: 70, textAlign: 'center' } }, 'Status'),
+                    React.createElement('th', { style: { width: '18%', minWidth: 160, textAlign: 'right' } }, 'Actions')
                   )),
                   React.createElement('tbody', null,
                     staffError ? React.createElement('tr', null,
@@ -45861,7 +45850,7 @@ function PartyDetailModal({
                             : React.createElement('span', { className: 'badge', style: { backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.72rem', padding: '2px 8px' } }, 'Inactive')
                         ),
                         React.createElement('td', { style: { textAlign: 'right' } },
-                          React.createElement('div', { style: { display: 'inline-flex', gap: 4 } },
+                          React.createElement('div', { style: { display: 'inline-flex', gap: 4, whiteSpace: 'nowrap', alignItems: 'center', justifyContent: 'flex-end' } },
                             React.createElement('button', {
                               className: 'btn btn-xs btn-ghost',
                               title: 'View Profile',
@@ -46039,13 +46028,13 @@ function PartyDetailModal({
             // Logged Leaves Table
             React.createElement('div', { className: 'card', style: { padding: 0, overflow: 'hidden', border: '1px solid var(--border)' } },
               React.createElement('div', { className: 'table-container' },
-                React.createElement('table', { className: 'table planner-ledger-table' },
+                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', minWidth: 780 } },
                   React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: '24%' } }, 'Staff Member'),
-                    React.createElement('th', { style: { width: '15%' } }, 'Leave Date'),
-                    React.createElement('th', { style: { width: '15%' } }, 'Leave Type'),
-                    React.createElement('th', { style: { width: '28%' } }, 'Reason / Remarks'),
-                    React.createElement('th', { style: { width: '18%' } }, 'Approved By')
+                    React.createElement('th', { style: { width: '24%', minWidth: 160 } }, 'Staff Member'),
+                    React.createElement('th', { style: { width: '15%', minWidth: 100 } }, 'Leave Date'),
+                    React.createElement('th', { style: { width: '15%', minWidth: 100 } }, 'Leave Type'),
+                    React.createElement('th', { style: { width: '28%', minWidth: 180 } }, 'Reason / Remarks'),
+                    React.createElement('th', { style: { width: '18%', minWidth: 120 } }, 'Approved By')
                   )),
                   React.createElement('tbody', null,
                     (() => {
@@ -46200,13 +46189,13 @@ function PartyDetailModal({
             // Advances Table
             React.createElement('div', { className: 'card', style: { padding: 0, overflow: 'hidden', border: '1px solid var(--border)' } },
               React.createElement('div', { className: 'table-container' },
-                React.createElement('table', { className: 'table planner-ledger-table' },
+                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', minWidth: 840 } },
                   React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: '25%' } }, 'Staff Member'),
-                    React.createElement('th', { style: { width: '22%' } }, 'Department'),
-                    React.createElement('th', { style: { width: '18%', textAlign: 'right' } }, 'Base Salary'),
-                    React.createElement('th', { style: { width: '20%', textAlign: 'right' } }, 'Outstanding Balance'),
-                    React.createElement('th', { style: { width: '15%', textAlign: 'right' } }, 'Actions')
+                    React.createElement('th', { style: { width: '22%', minWidth: 150 } }, 'Staff Member'),
+                    React.createElement('th', { style: { width: '18%', minWidth: 120 } }, 'Department'),
+                    React.createElement('th', { style: { width: '18%', minWidth: 110, textAlign: 'right' } }, 'Base Salary'),
+                    React.createElement('th', { style: { width: '20%', minWidth: 120, textAlign: 'right' } }, 'Outstanding Balance'),
+                    React.createElement('th', { style: { width: '22%', minWidth: 180, textAlign: 'right' } }, 'Actions')
                   )),
                   React.createElement('tbody', null,
                     employees.length === 0 ? React.createElement('tr', null,
@@ -46227,7 +46216,7 @@ function PartyDetailModal({
                         }
                       }, BillsoftUtils.formatCurrency(emp.currentAdvanceBalance || 0)),
                       React.createElement('td', { style: { textAlign: 'right' } },
-                        React.createElement('div', { style: { display: 'inline-flex', gap: 6 } },
+                        React.createElement('div', { style: { display: 'inline-flex', gap: 6, whiteSpace: 'nowrap', alignItems: 'center', justifyContent: 'flex-end' } },
                           React.createElement('button', {
                             className: 'btn btn-outline btn-xs',
                             style: { display: 'inline-flex', alignItems: 'center', gap: 4 },
@@ -46385,16 +46374,16 @@ function PartyDetailModal({
             // Payroll Table (Compact Table Layout)
             React.createElement('div', { className: 'card', style: { padding: 0, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 } },
               React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
-                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.82rem' } },
+                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', minWidth: 980, fontSize: '0.82rem' } },
                   React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: '17%', verticalAlign: 'middle', padding: '8px 8px' } }, 'Staff Member'),
-                    React.createElement('th', { style: { width: '11%', verticalAlign: 'middle', padding: '8px 8px', textAlign: 'right' } }, 'Base Salary'),
-                    React.createElement('th', { style: { width: '13%', verticalAlign: 'middle', padding: '8px 8px' } }, 'Advance Owed'),
-                    React.createElement('th', { style: { width: '13%', verticalAlign: 'middle', padding: '8px 8px' } }, 'Absences'),
-                    React.createElement('th', { style: { width: '10%', verticalAlign: 'middle', padding: '8px 8px' } }, 'Bonus (₹)'),
-                    React.createElement('th', { style: { width: '19%', verticalAlign: 'middle', padding: '8px 8px' } }, 'Adv Deduct (Tick/Custom)'),
-                    React.createElement('th', { style: { width: '12%', verticalAlign: 'middle', padding: '8px 8px', textAlign: 'right' } }, 'Net Payable'),
-                    React.createElement('th', { style: { width: '5%', textAlign: 'right', verticalAlign: 'middle', padding: '8px 8px' } }, '')
+                    React.createElement('th', { style: { width: '16%', minWidth: 140, verticalAlign: 'middle', padding: '8px 8px' } }, 'Staff Member'),
+                    React.createElement('th', { style: { width: '11%', minWidth: 90, verticalAlign: 'middle', padding: '8px 8px', textAlign: 'right' } }, 'Base Salary'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 95, verticalAlign: 'middle', padding: '8px 8px' } }, 'Advance Owed'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 95, verticalAlign: 'middle', padding: '8px 8px' } }, 'Absences'),
+                    React.createElement('th', { style: { width: '10%', minWidth: 75, verticalAlign: 'middle', padding: '8px 8px' } }, 'Bonus (₹)'),
+                    React.createElement('th', { style: { width: '18%', minWidth: 150, verticalAlign: 'middle', padding: '8px 8px' } }, 'Adv Deduct (Tick/Custom)'),
+                    React.createElement('th', { style: { width: '10%', minWidth: 95, verticalAlign: 'middle', padding: '8px 8px', textAlign: 'right' } }, 'Net Payable'),
+                    React.createElement('th', { style: { width: '11%', minWidth: 145, textAlign: 'right', verticalAlign: 'middle', padding: '8px 8px' } }, 'Actions')
                   )),
                   React.createElement('tbody', null,
                     employees.filter(e => e.isActive).map(emp => {
@@ -46460,7 +46449,7 @@ function PartyDetailModal({
                             )
                           ),
                           React.createElement('td', { style: { textAlign: 'right', verticalAlign: 'middle', padding: '8px 8px' } },
-                            React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                            React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', justifyContent: 'flex-end' } },
                               React.createElement('button', {
                                 className: 'btn btn-outline btn-xs',
                                 style: { padding: '3px 6px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: 4 },
@@ -46676,15 +46665,15 @@ function PartyDetailModal({
               ),
 
               React.createElement('div', { className: 'table-container', style: { overflowX: 'auto', width: '100%' } },
-                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', tableLayout: 'fixed', fontSize: '0.82rem' } },
+                React.createElement('table', { className: 'table planner-ledger-table', style: { width: '100%', minWidth: 880, fontSize: '0.82rem' } },
                   React.createElement('thead', null, React.createElement('tr', null,
-                    React.createElement('th', { style: { width: '20%' } }, 'Staff Member'),
-                    React.createElement('th', { style: { width: '12%' } }, 'Month'),
-                    React.createElement('th', { style: { width: '14%' } }, 'Payment Date'),
-                    React.createElement('th', { style: { width: '14%', textAlign: 'right' } }, 'Base Salary'),
-                    React.createElement('th', { style: { width: '22%' } }, 'Deductions & Bonus'),
-                    React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Net Paid'),
-                    React.createElement('th', { style: { width: '6%', textAlign: 'right' } }, '')
+                    React.createElement('th', { style: { width: '20%', minWidth: 150 } }, 'Staff Member'),
+                    React.createElement('th', { style: { width: '10%', minWidth: 80 } }, 'Month'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 95 } }, 'Payment Date'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 95, textAlign: 'right' } }, 'Base Salary'),
+                    React.createElement('th', { style: { width: '20%', minWidth: 150 } }, 'Deductions & Bonus'),
+                    React.createElement('th', { style: { width: '12%', minWidth: 95, textAlign: 'right' } }, 'Net Paid'),
+                    React.createElement('th', { style: { width: '14%', minWidth: 140, textAlign: 'right' } }, 'Actions')
                   )),
                   React.createElement('tbody', null,
                     (() => {
@@ -46729,7 +46718,7 @@ function PartyDetailModal({
                         ),
                         React.createElement('td', { style: { fontWeight: 700, color: 'var(--primary)', fontSize: '0.98rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, BillsoftUtils.formatCurrency(s.netPaid)),
                         React.createElement('td', { style: { textAlign: 'right' } },
-                          React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                          React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', justifyContent: 'flex-end' } },
                             React.createElement('button', {
                               className: 'btn btn-outline btn-xs',
                               style: { display: 'inline-flex', alignItems: 'center', gap: 4 },
@@ -46880,14 +46869,14 @@ function PartyDetailModal({
                 )
               ),
               salaries.length > 0 ? React.createElement('div', { className: 'table-container' },
-                React.createElement('table', { className: 'table', style: { fontSize: '0.82rem' } },
+                React.createElement('table', { className: 'table', style: { width: '100%', minWidth: 640, fontSize: '0.82rem' } },
                   React.createElement('thead', null, React.createElement('tr', null,
                     React.createElement('th', null, 'Month-Year'),
                     React.createElement('th', null, 'Payment Date'),
                     React.createElement('th', null, 'Base Salary'),
                     React.createElement('th', null, 'Deductions & Additions'),
                     React.createElement('th', null, 'Net Paid'),
-                    React.createElement('th', { style: { textAlign: 'right' } }, 'Payslip')
+                    React.createElement('th', { style: { textAlign: 'right', minWidth: 120 } }, 'Payslip')
                   )),
                   React.createElement('tbody', null,
                     salaries.map(s => React.createElement('tr', { key: s.id },
@@ -46903,7 +46892,7 @@ function PartyDetailModal({
                       ),
                       React.createElement('td', { style: { fontWeight: 700, color: '#059669' } }, BillsoftUtils.formatCurrency(s.netPaid)),
                       React.createElement('td', { style: { textAlign: 'right' } },
-                        React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center' } },
+                        React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap', justifyContent: 'flex-end' } },
                           React.createElement('button', { className: 'btn btn-outline btn-sm', onClick: () => handleDownloadPayslip(selectedEmployee.id, selectedEmployee.name, s.id), title: 'Download Payslip PDF' }, 'PDF'),
                           React.createElement('button', {
                             className: 'btn btn-whatsapp-outline btn-sm',
@@ -48398,7 +48387,12 @@ function PartyDetailModal({
         setIsDemoBusy(true);
         setDemoPinError('');
         try {
-          const pinToUse = customPin || demoPin || '0000';
+          const pinToUse = (customPin || demoPin || '').trim();
+          if (!pinToUse) {
+            setDemoPinError('Please enter the access PIN');
+            setIsDemoBusy(false);
+            return;
+          }
           const res = await API.demo.enter(pinToUse);
           if (res && res.success) {
             setIsDemoMode(true);
@@ -48410,7 +48404,7 @@ function PartyDetailModal({
               window.location.reload();
             }, 400);
           } else {
-            setDemoPinError((res && res.message) || 'Invalid PIN. Please enter 0000.');
+            setDemoPinError((res && res.message) || 'Invalid PIN. Access denied.');
           }
         } catch (e) {
           setDemoPinError((e && e.message) || 'Failed to enter Demo Mode');
@@ -51353,13 +51347,13 @@ function PartyDetailModal({
               )
             ),
             React.createElement('div', { style: { marginBottom: 18 } },
-              React.createElement('label', { style: { display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: 6, color: 'var(--text)' } }, 'Enter Access PIN (Default: 0000):'),
+              React.createElement('label', { style: { display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: 6, color: 'var(--text)' } }, 'Enter Access PIN:'),
               React.createElement('input', {
                 type: 'password',
                 className: 'input',
                 style: { width: '100%', fontSize: '1.1rem', letterSpacing: '4px', textAlign: 'center', padding: '10px' },
                 maxLength: 6,
-                placeholder: '0000',
+                placeholder: '••••',
                 value: demoPin,
                 onChange: e => setDemoPin(e.target.value),
                 onKeyDown: e => { if (e.key === 'Enter') handleEnterDemo(); },

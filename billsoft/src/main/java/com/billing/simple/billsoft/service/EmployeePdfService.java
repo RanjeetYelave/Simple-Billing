@@ -94,6 +94,8 @@ public class EmployeePdfService {
         if (firm != null) {
             if (firm.getAddressLine1() != null && !firm.getAddressLine1().isBlank())
                 left.addElement(new Paragraph(firm.getAddressLine1(), small));
+            if (firm.getAddressLine2() != null && !firm.getAddressLine2().isBlank())
+                left.addElement(new Paragraph(firm.getAddressLine2(), small));
             StringBuilder cityLine = new StringBuilder();
             if (firm.getCity() != null && !firm.getCity().isBlank()) cityLine.append(firm.getCity());
             if (firm.getState() != null && !firm.getState().isBlank()) {
@@ -105,6 +107,15 @@ public class EmployeePdfService {
                 cityLine.append(firm.getPincode());
             }
             if (cityLine.length() > 0) left.addElement(new Paragraph(cityLine.toString(), small));
+            if (firm.getGstin() != null && !firm.getGstin().isBlank())
+                left.addElement(new Paragraph("GSTIN: " + firm.getGstin(), small));
+            StringBuilder contactLine = new StringBuilder();
+            if (firm.getPhone() != null && !firm.getPhone().isBlank()) contactLine.append("Phone: ").append(firm.getPhone());
+            if (firm.getEmail() != null && !firm.getEmail().isBlank()) {
+                if (contactLine.length() > 0) contactLine.append(" | ");
+                contactLine.append("Email: ").append(firm.getEmail());
+            }
+            if (contactLine.length() > 0) left.addElement(new Paragraph(contactLine.toString(), small));
         }
         header.addCell(left);
 
@@ -112,65 +123,32 @@ public class EmployeePdfService {
         right.setBorder(Rectangle.NO_BORDER);
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
         if (themeEnum != InvoiceTheme.PROFESSIONAL) {
-            Paragraph payslipTitle = new Paragraph("PAYSLIP", titleFont);
+            Paragraph payslipTitle = new Paragraph("PAYSLIP", new Font(Font.HELVETICA, 16 * scale, Font.BOLD, primaryColor));
             payslipTitle.setAlignment(Element.ALIGN_RIGHT);
             right.addElement(payslipTitle);
         }
-        Paragraph pMonth = new Paragraph("Month: " + salary.getMonthYear(), bold);
+        String myFormatted = formatMonthYear(salary.getMonthYear());
+        Paragraph pMonth = new Paragraph("Salary Month: " + myFormatted, bold);
         pMonth.setAlignment(Element.ALIGN_RIGHT);
         right.addElement(pMonth);
 
-        Paragraph pDate = new Paragraph("Date: " + (salary.getPaymentDate() != null ? salary.getPaymentDate().format(DATE_FMT) : "-"), small);
+        String refNo = "SLIP-" + (salary.getId() != null ? salary.getId() : "1");
+        Paragraph pRef = new Paragraph("Ref No: " + refNo, small);
+        pRef.setAlignment(Element.ALIGN_RIGHT);
+        right.addElement(pRef);
+
+        Paragraph pDate = new Paragraph("Disbursal Date: " + (salary.getPaymentDate() != null ? salary.getPaymentDate().format(DATE_FMT) : "-"), small);
         pDate.setAlignment(Element.ALIGN_RIGHT);
         right.addElement(pDate);
+
+        Paragraph pStatus = new Paragraph("Payment Status: PAID", new Font(Font.HELVETICA, 8.5f * scale, Font.BOLD, new Color(22, 101, 52)));
+        pStatus.setAlignment(Element.ALIGN_RIGHT);
+        right.addElement(pStatus);
         header.addCell(right);
 
         doc.add(header);
-        doc.add(new Paragraph(" "));
 
-        // --- Employee Details Card ---
-        PdfPTable empSection = new PdfPTable(new float[]{1f, 1f});
-        empSection.setWidthPercentage(100);
-        empSection.getDefaultCell().setBorder(Rectangle.NO_BORDER);
-
-        PdfPCell empLeft = new PdfPCell();
-        empLeft.setBorder(Rectangle.NO_BORDER);
-        empLeft.addElement(new Paragraph("Employee Details", hFont));
-        empLeft.addElement(new Paragraph("Name: " + emp.getName(), normal));
-        if (emp.getRole() != null && !emp.getRole().isBlank())
-            empLeft.addElement(new Paragraph("Role: " + emp.getRole(), normal));
-        if (emp.getPhone() != null && !emp.getPhone().isBlank())
-            empLeft.addElement(new Paragraph("Phone: " + emp.getPhone(), normal));
-        empSection.addCell(empLeft);
-
-        PdfPCell empRight = new PdfPCell();
-        empRight.setBorder(Rectangle.NO_BORDER);
-        empRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph empIdP = new Paragraph("Employee ID: " + emp.getId(), normal);
-        empIdP.setAlignment(Element.ALIGN_RIGHT);
-        empRight.addElement(empIdP);
-        if (emp.getDateOfJoining() != null) {
-            Paragraph dojP = new Paragraph("DOJ: " + emp.getDateOfJoining().format(DATE_FMT), normal);
-            dojP.setAlignment(Element.ALIGN_RIGHT);
-            empRight.addElement(dojP);
-        }
-        empSection.addCell(empRight);
-
-        doc.add(empSection);
-        doc.add(new Paragraph(" "));
-
-        // --- Earnings & Deductions Table ---
-        PdfPTable details = new PdfPTable(new float[]{3f, 1.2f, 1.2f});
-        details.setWidthPercentage(100);
-        details.setHeaderRows(1);
-
-        Font thFont = new Font(Font.HELVETICA, 9 * scale, Font.BOLD, (themeEnum == InvoiceTheme.MINIMAL) ? primaryColor : Color.WHITE);
-        String[] detailHeads = {"Description", "Days/Units", "Amount (₹)"};
-        for (String h : detailHeads) {
-            int align = h.contains("Amount") ? Element.ALIGN_RIGHT : (h.contains("Days") ? Element.ALIGN_CENTER : Element.ALIGN_LEFT);
-            details.addCell(DocumentThemeHelper.createHeaderCell(h, themeEnum, primaryColor, thFont, align, scale));
-        }
-
+        // --- Calculate calendar days and working days ---
         int totalDays = 30;
         String my = salary.getMonthYear();
         int targetYear = LocalDate.now().getYear();
@@ -185,61 +163,152 @@ public class EmployeePdfService {
                 }
             } catch (Exception ignored) {}
         }
-        int workingDays = totalDays - (salary.getDaysAbsent() != null ? salary.getDaysAbsent() : 0);
+        int daysAbsent = salary.getDaysAbsent() != null ? salary.getDaysAbsent() : 0;
+        int workingDays = Math.max(0, totalDays - daysAbsent);
+        int unpaidLeaves = salary.getUnpaidLeaves() != null ? salary.getUnpaidLeaves() : 0;
 
-        boolean rowAlt = false;
-        details.addCell(DocumentThemeHelper.createDataCell(new Phrase("Base Salary", normal), themeEnum, rowAlt, Element.ALIGN_LEFT, scale));
-        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(workingDays + "/" + totalDays, normal), themeEnum, rowAlt, Element.ALIGN_CENTER, scale));
-        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(formatAmount(salary.getBaseSalaryAtTime()), normal), themeEnum, rowAlt, Element.ALIGN_RIGHT, scale));
+        // --- Employee Details Card ---
+        PdfPTable empSection = new PdfPTable(new float[]{1.2f, 2f, 1.2f, 2f});
+        empSection.setWidthPercentage(100);
+        empSection.setSpacingBefore(8 * scale);
+        empSection.setSpacingAfter(8 * scale);
 
-        if (salary.getBonusAmount() != null && salary.getBonusAmount() > 0) {
-            rowAlt = !rowAlt;
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("Bonus / Overtime", normal), themeEnum, rowAlt, Element.ALIGN_LEFT, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("-", normal), themeEnum, rowAlt, Element.ALIGN_CENTER, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase(formatAmount(salary.getBonusAmount()), normal), themeEnum, rowAlt, Element.ALIGN_RIGHT, scale));
-        }
+        PdfPCell empHeaderCell = new PdfPCell(new Phrase("EMPLOYEE INFORMATION", new Font(Font.HELVETICA, 8.5f * scale, Font.BOLD, primaryColor)));
+        empHeaderCell.setColspan(4);
+        empHeaderCell.setBackgroundColor(lightTint);
+        empHeaderCell.setPadding(4.5f * scale);
+        empHeaderCell.setBorderColor(DocumentThemeHelper.BORDER_COLOR);
+        empSection.addCell(empHeaderCell);
 
-        if (salary.getLeaveDeductionAmount() != null && salary.getLeaveDeductionAmount() > 0) {
-            rowAlt = !rowAlt;
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("Leave Deduction (" + (salary.getUnpaidLeaves() != null ? salary.getUnpaidLeaves() : 0) + " days)", normal), themeEnum, rowAlt, Element.ALIGN_LEFT, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase(String.valueOf(salary.getUnpaidLeaves()), normal), themeEnum, rowAlt, Element.ALIGN_CENTER, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("- " + formatAmount(salary.getLeaveDeductionAmount()), normal), themeEnum, rowAlt, Element.ALIGN_RIGHT, scale));
-        }
+        addInfoCell(empSection, "Employee Name:", bold, emp.getName() != null ? emp.getName() : "-", normal, scale);
+        addInfoCell(empSection, "Employee ID:", bold, "EMP-" + String.format("%04d", emp.getId() != null ? emp.getId() : 1), normal, scale);
 
-        if (salary.getAdvanceDeducted() != null && salary.getAdvanceDeducted() > 0) {
-            rowAlt = !rowAlt;
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("Advance Deduction", normal), themeEnum, rowAlt, Element.ALIGN_LEFT, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("-", normal), themeEnum, rowAlt, Element.ALIGN_CENTER, scale));
-            details.addCell(DocumentThemeHelper.createDataCell(new Phrase("- " + formatAmount(salary.getAdvanceDeducted()), normal), themeEnum, rowAlt, Element.ALIGN_RIGHT, scale));
-        }
+        String designation = emp.getDesignation() != null && !emp.getDesignation().isBlank()
+                ? emp.getDesignation() : (emp.getRole() != null && !emp.getRole().isBlank() ? emp.getRole() : "Staff");
+        String department = emp.getDepartment() != null && !emp.getDepartment().isBlank() ? emp.getDepartment() : "Operations";
+        addInfoCell(empSection, "Designation:", bold, designation, normal, scale);
+        addInfoCell(empSection, "Department:", bold, department, normal, scale);
 
-        // Net Paid Highlight Row
-        PdfPCell netLabel = new PdfPCell(new Phrase("NET PAID", bold));
-        netLabel.setPadding(8 * scale);
-        netLabel.setBackgroundColor(lightTint);
-        netLabel.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
-        details.addCell(netLabel);
+        String doj = emp.getDateOfJoining() != null ? emp.getDateOfJoining().format(DATE_FMT) : "—";
+        String contact = emp.getPhone() != null && !emp.getPhone().isBlank() ? emp.getPhone() : (emp.getEmail() != null ? emp.getEmail() : "—");
+        addInfoCell(empSection, "Date of Joining:", bold, doj, normal, scale);
+        addInfoCell(empSection, "Contact:", bold, contact, normal, scale);
 
-        PdfPCell netDays = new PdfPCell(new Phrase("", bold));
-        netDays.setBackgroundColor(lightTint);
-        netDays.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
-        details.addCell(netDays);
+        String bankInfo = (emp.getBankName() != null && !emp.getBankName().isBlank()) ? emp.getBankName() : "Bank Transfer";
+        String bankAcc = maskBankAccount(emp.getBankAccountNumber());
+        addInfoCell(empSection, "Payment Mode:", bold, bankInfo, normal, scale);
+        addInfoCell(empSection, "Bank Account:", bold, bankAcc, normal, scale);
 
-        PdfPCell netAmt = new PdfPCell(new Phrase("₹ " + formatAmount(salary.getNetPaid()), new Font(Font.HELVETICA, 11 * scale, Font.BOLD, primaryColor)));
-        netAmt.setPadding(8 * scale);
-        netAmt.setBackgroundColor(lightTint);
-        netAmt.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
-        netAmt.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        details.addCell(netAmt);
+        addInfoCell(empSection, "Calendar Days:", bold, String.valueOf(totalDays), normal, scale);
+        addInfoCell(empSection, "Days Worked:", bold, workingDays + " Days" + (unpaidLeaves > 0 ? " (" + unpaidLeaves + " Unpaid)" : ""), normal, scale);
+
+        doc.add(empSection);
+
+        // --- Earnings & Deductions Structured 2-Column Table ---
+        PdfPTable details = new PdfPTable(new float[]{2.4f, 1.2f, 2.4f, 1.2f});
+        details.setWidthPercentage(100);
+        details.setHeaderRows(1);
+        details.setSpacingBefore(4 * scale);
+        details.setSpacingAfter(4 * scale);
+
+        Font thFont = new Font(Font.HELVETICA, 9 * scale, Font.BOLD, (themeEnum == InvoiceTheme.MINIMAL) ? primaryColor : Color.WHITE);
+        details.addCell(DocumentThemeHelper.createHeaderCell("EARNINGS", themeEnum, primaryColor, thFont, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createHeaderCell("AMOUNT (₹)", themeEnum, primaryColor, thFont, Element.ALIGN_RIGHT, scale));
+        details.addCell(DocumentThemeHelper.createHeaderCell("DEDUCTIONS", themeEnum, primaryColor, thFont, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createHeaderCell("AMOUNT (₹)", themeEnum, primaryColor, thFont, Element.ALIGN_RIGHT, scale));
+
+        double baseSal = salary.getBaseSalaryAtTime() != null ? salary.getBaseSalaryAtTime() : 0.0;
+        double bonus = salary.getBonusAmount() != null ? salary.getBonusAmount() : 0.0;
+        double grossEarnings = baseSal + bonus;
+
+        double leaveDed = salary.getLeaveDeductionAmount() != null ? salary.getLeaveDeductionAmount() : 0.0;
+        double advDed = salary.getAdvanceDeducted() != null ? salary.getAdvanceDeducted() : 0.0;
+        double totalDeductions = leaveDed + advDed;
+
+        // Row 1: Basic Salary & Leave Deductions
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase("Basic / Monthly Salary", normal), themeEnum, false, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(formatIndian(baseSal), normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
+        String leaveDesc = unpaidLeaves > 0 ? "Leave Deductions (" + unpaidLeaves + " days)" : "Leave Deductions";
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(leaveDesc, normal), themeEnum, false, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(leaveDed > 0 ? "- " + formatIndian(leaveDed) : "0.00", normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
+
+        // Row 2: Bonus & Advance Deductions
+        String bonusLabel = bonus > 0 ? "Bonus / Incentives / OT" : "—";
+        String bonusVal = bonus > 0 ? formatIndian(bonus) : "—";
+        String advLabel = advDed > 0 ? "Advance / Loan Deduction" : "—";
+        String advVal = advDed > 0 ? "- " + formatIndian(advDed) : "—";
+
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(bonusLabel, normal), themeEnum, true, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(bonusVal, normal), themeEnum, true, Element.ALIGN_RIGHT, scale));
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(advLabel, normal), themeEnum, true, Element.ALIGN_LEFT, scale));
+        details.addCell(DocumentThemeHelper.createDataCell(new Phrase(advVal, normal), themeEnum, true, Element.ALIGN_RIGHT, scale));
+
+        // Row 3: Totals
+        PdfPCell grossLabel = new PdfPCell(new Phrase("TOTAL GROSS EARNINGS", bold));
+        grossLabel.setPadding(6 * scale);
+        grossLabel.setBackgroundColor(lightTint);
+        grossLabel.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        details.addCell(grossLabel);
+
+        PdfPCell grossAmt = new PdfPCell(new Phrase("₹ " + formatIndian(grossEarnings), bold));
+        grossAmt.setPadding(6 * scale);
+        grossAmt.setBackgroundColor(lightTint);
+        grossAmt.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        grossAmt.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        details.addCell(grossAmt);
+
+        PdfPCell totDedLabel = new PdfPCell(new Phrase("TOTAL DEDUCTIONS", bold));
+        totDedLabel.setPadding(6 * scale);
+        totDedLabel.setBackgroundColor(lightTint);
+        totDedLabel.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        details.addCell(totDedLabel);
+
+        PdfPCell totDedAmt = new PdfPCell(new Phrase("₹ " + formatIndian(totalDeductions), bold));
+        totDedAmt.setPadding(6 * scale);
+        totDedAmt.setBackgroundColor(lightTint);
+        totDedAmt.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        totDedAmt.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        details.addCell(totDedAmt);
 
         doc.add(details);
-        doc.add(new Paragraph(" "));
 
-        // In Words
-        doc.add(new Paragraph("Amount in words: " + numberToWords(salary.getNetPaid()), small));
-        doc.add(new Paragraph(" "));
+        // --- Prominent Net Salary Payable Block ---
+        PdfPTable netTable = new PdfPTable(new float[]{1.5f, 1f});
+        netTable.setWidthPercentage(100);
+        netTable.setSpacingBefore(8 * scale);
+        netTable.setSpacingAfter(8 * scale);
 
-        // --- YTD Summary Table ---
+        PdfPCell netLeft = new PdfPCell();
+        netLeft.setBackgroundColor(lightTint);
+        netLeft.setBorder(Rectangle.BOX);
+        netLeft.setBorderColor(primaryColor);
+        netLeft.setBorderWidth(1.2f);
+        netLeft.setPadding(8 * scale);
+
+        Font netTitleFont = new Font(Font.HELVETICA, 11 * scale, Font.BOLD, primaryColor);
+        Font inWordsFont = new Font(Font.HELVETICA, 8.5f * scale, Font.ITALIC, DocumentThemeHelper.TEXT_DARK);
+        netLeft.addElement(new Paragraph("NET SALARY PAYABLE", netTitleFont));
+        netLeft.addElement(new Paragraph("Amount in Words: " + numberToWords(salary.getNetPaid()), inWordsFont));
+        netTable.addCell(netLeft);
+
+        PdfPCell netRight = new PdfPCell();
+        netRight.setBackgroundColor(lightTint);
+        netRight.setBorder(Rectangle.BOX);
+        netRight.setBorderColor(primaryColor);
+        netRight.setBorderWidth(1.2f);
+        netRight.setPadding(8 * scale);
+        netRight.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        netRight.setVerticalAlignment(Element.ALIGN_MIDDLE);
+
+        Font netAmountFont = new Font(Font.HELVETICA, 15 * scale, Font.BOLD, primaryColor);
+        Paragraph netAmtP = new Paragraph("₹ " + formatIndian(salary.getNetPaid()), netAmountFont);
+        netAmtP.setAlignment(Element.ALIGN_RIGHT);
+        netRight.addElement(netAmtP);
+        netTable.addCell(netRight);
+
+        doc.add(netTable);
+
+        // --- Year-to-Date (YTD) Financial Summary ---
         double ytdGross = 0;
         double ytdDeductions = 0;
         double ytdNet = 0;
@@ -262,7 +331,11 @@ public class EmployeePdfService {
             }
         }
 
-        doc.add(new Paragraph("Year-to-Date (YTD) Financial Summary (" + targetYear + ")", hFont));
+        Paragraph ytdTitle = new Paragraph("Year-to-Date (YTD) Financial Summary (" + targetYear + ")", hFont);
+        ytdTitle.setSpacingBefore(6 * scale);
+        ytdTitle.setSpacingAfter(4 * scale);
+        doc.add(ytdTitle);
+
         PdfPTable ytdTable = new PdfPTable(new float[]{2f, 1.5f, 1.5f, 1.5f});
         ytdTable.setWidthPercentage(100);
         ytdTable.setHeaderRows(1);
@@ -273,23 +346,35 @@ public class EmployeePdfService {
         }
 
         ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("Jan - " + salary.getMonthYear() + " (" + ytdCount + " mos)", normal), themeEnum, false, Element.ALIGN_CENTER, scale));
-        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatAmount(ytdGross), normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
-        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatAmount(ytdDeductions), normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
-        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatAmount(ytdNet), bold), themeEnum, false, Element.ALIGN_RIGHT, scale));
+        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatIndian(ytdGross), normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
+        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatIndian(ytdDeductions), normal), themeEnum, false, Element.ALIGN_RIGHT, scale));
+        ytdTable.addCell(DocumentThemeHelper.createDataCell(new Phrase("₹ " + formatIndian(ytdNet), bold), themeEnum, false, Element.ALIGN_RIGHT, scale));
 
         doc.add(ytdTable);
-        doc.add(new Paragraph(" "));
 
-        // Footer signature
+        // --- Footer Notice & Signatures ---
+        Paragraph noteP = new Paragraph("This is a computer-generated payslip from RupeeCRM and requires no physical signature.", small);
+        noteP.setAlignment(Element.ALIGN_CENTER);
+        noteP.setSpacingBefore(10 * scale);
+        doc.add(noteP);
+
         PdfPTable sig = new PdfPTable(new float[]{1f, 1f});
         sig.setWidthPercentage(100);
-        PdfPCell leftSig = new PdfPCell(new Phrase("\n\nFor " + firmName, normal));
+        sig.setSpacingBefore(16 * scale);
+
+        PdfPCell leftSig = new PdfPCell();
         leftSig.setBorder(Rectangle.NO_BORDER);
+        leftSig.addElement(new Paragraph("Employee Signature\n\n\n_______________________", normal));
         sig.addCell(leftSig);
-        PdfPCell rightSig = new PdfPCell(new Phrase("\n\nAuthorised Signatory", normal));
+
+        PdfPCell rightSig = new PdfPCell();
         rightSig.setBorder(Rectangle.NO_BORDER);
         rightSig.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        Paragraph rSigP = new Paragraph("For " + firmName + "\n\n\n_______________________\nAuthorised Signatory", normal);
+        rSigP.setAlignment(Element.ALIGN_RIGHT);
+        rightSig.addElement(rSigP);
         sig.addCell(rightSig);
+
         doc.add(sig);
 
         doc.close();
@@ -493,16 +578,72 @@ public class EmployeePdfService {
         return baos.toByteArray();
     }
 
-    private static String formatAmount(Double d) {
-        if (d == null) return "0.00";
-        return String.format("%.2f", d);
+    private void addInfoCell(PdfPTable table, String label, Font labelFont, String value, Font valueFont, float scale) {
+        PdfPCell lCell = new PdfPCell(new Phrase(label, labelFont));
+        lCell.setPadding(4f * scale);
+        lCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        lCell.setBackgroundColor(new Color(248, 250, 252));
+        table.addCell(lCell);
+
+        PdfPCell vCell = new PdfPCell(new Phrase(value, valueFont));
+        vCell.setPadding(4f * scale);
+        vCell.setBorderColor(DocumentThemeHelper.BORDER_LIGHT);
+        table.addCell(vCell);
+    }
+
+    private static String maskBankAccount(String acc) {
+        if (acc == null || acc.isBlank()) return "—";
+        String trimmed = acc.trim();
+        if (trimmed.length() <= 4) return trimmed;
+        String last4 = trimmed.substring(trimmed.length() - 4);
+        return "•••• •••• " + last4;
+    }
+
+    private static String formatMonthYear(String my) {
+        if (my == null || !my.contains("-")) return my != null ? my : "—";
+        try {
+            String[] parts = my.split("-");
+            if (parts.length == 2) {
+                int mo = Integer.parseInt(parts[0].trim());
+                int yr = Integer.parseInt(parts[1].trim());
+                java.time.Month m = java.time.Month.of(mo);
+                String name = m.name().substring(0, 1) + m.name().substring(1).toLowerCase();
+                return name + " " + yr;
+            }
+        } catch (Exception ignored) {}
+        return my;
+    }
+
+    public static String formatIndian(Double amount) {
+        if (amount == null) return "0.00";
+        long whole = (long) Math.floor(Math.abs(amount));
+        long paise = Math.round((Math.abs(amount) - whole) * 100);
+        String s = Long.toString(whole);
+        StringBuilder sb = new StringBuilder();
+        int len = s.length();
+        if (len <= 3) {
+            sb.append(s);
+        } else {
+            sb.append(s.substring(len - 3));
+            int i = len - 3;
+            while (i > 0) {
+                int start = Math.max(0, i - 2);
+                sb.insert(0, s.substring(start, i) + ",");
+                i -= 2;
+            }
+        }
+        return (amount < 0 ? "-" : "") + sb.toString() + "." + String.format("%02d", paise);
+    }
+
+    public static String formatAmount(Double d) {
+        return formatIndian(d);
     }
 
     /**
      * Simple number to words converter (Indian numbering).
      */
     private static String numberToWords(Double amount) {
-        if (amount == null) return "Zero Rupees";
+        if (amount == null) return "Zero Rupees Only";
         long wholePart = (long) Math.floor(Math.abs(amount));
         int decimalPart = (int) Math.round((Math.abs(amount) - wholePart) * 100);
         String words = wholePart == 0 ? "Zero" : convertToIndianWords(wholePart);
@@ -510,6 +651,7 @@ public class EmployeePdfService {
         if (decimalPart > 0) {
             result += " and " + convertToIndianWords(decimalPart) + " Paise";
         }
+        result += " Only";
         if (amount < 0) result = "Negative " + result;
         return result;
     }

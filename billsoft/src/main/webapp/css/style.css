@@ -1421,7 +1421,12 @@
   border: 1px solid var(--border) !important;
   background: var(--bg-card) !important;
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  -webkit-overflow-scrolling: touch;
 }
 
 :root.minimal thead th {
@@ -4540,6 +4545,12 @@ body.modal-open {
   overflow-y: auto;
 }
 
+.modal-content {
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
 .modal-lg {
   max-width: 800px;
 }
@@ -7247,6 +7258,97 @@ body.dark-mode .planner-card,
 [data-theme='dark'] .dashboard-segment-btn.active {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DASHBOARD RESPONSIVE HEADER BAR (GREETING & QUICK ACTIONS)
+   ════════════════════════════════════════════════════════════════ */
+.dashboard-header-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  width: 100%;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-light, rgba(0, 0, 0, 0.05));
+  box-sizing: border-box;
+}
+
+.dashboard-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 280px;
+  flex: 1 1 auto;
+}
+
+.dashboard-greeting-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+}
+
+.dashboard-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text, #0f172a);
+}
+
+.dashboard-subtitle {
+  font-size: 0.80rem;
+  color: var(--text-secondary, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dashboard-firm-pill {
+  font-weight: 600;
+  color: var(--primary, #059669);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+}
+
+.dashboard-quick-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-header-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .dashboard-header-left {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .dashboard-header-right {
+    justify-content: flex-start;
+    width: 100%;
+  }
 }
 
 

@@ -28,8 +28,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Validates that Snake Classic participates across all persistence, diagnostics,
- * and backup mechanisms while remaining 100% sandboxed from billing functionality.
+ * Validates that Snake Classic participates across all persistence,
+ * diagnostics,
+ * and backup mechanisms while remaining 100% sandboxed from billing
+ * functionality.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -59,6 +61,7 @@ public class SnakePersistenceAndBackupTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+            .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     @Test
@@ -114,7 +117,7 @@ public class SnakePersistenceAndBackupTest {
         // Run automated backup
         Map<String, Object> autoResult = autoBackupService.runAutoBackup();
         assertNotNull(autoResult);
-        assertEquals("HEALTHY", autoResult.get("status"));
+        assertEquals("HEALTHY", autoResult.get("status"), "AutoBackup error: " + autoResult.get("lastError"));
 
         File backupDir = autoBackupService.getBackupDirectory();
         File latestBackupFile = new File(backupDir, "autobackup_latest.json");
@@ -143,7 +146,8 @@ public class SnakePersistenceAndBackupTest {
         File latestBackupFile = new File(autoBackupService.getBackupDirectory(), "autobackup_latest.json");
         assertTrue(latestBackupFile.exists());
 
-        // 2. Simulate DataProtection encryption & decryption with a backup containing snake state
+        // 2. Simulate DataProtection encryption & decryption with a backup containing
+        // snake state
         BackupDTO rawBackup = objectMapper.readValue(latestBackupFile, BackupDTO.class);
         rawBackup.getAppConfigs().add(new AppConfig("SNAKE_GAME_STATE", testState));
         byte[] rawBytes = objectMapper.writeValueAsBytes(rawBackup);
@@ -195,7 +199,8 @@ public class SnakePersistenceAndBackupTest {
         entityManager.clear();
 
         List<Customer> restoredCustomers = customerRepo.findAll();
-        assertFalse(restoredCustomers.isEmpty(), "Customers must be successfully restored regardless of corrupt Snake state");
+        assertFalse(restoredCustomers.isEmpty(),
+                "Customers must be successfully restored regardless of corrupt Snake state");
     }
 
     @Test
@@ -206,7 +211,8 @@ public class SnakePersistenceAndBackupTest {
         assertEquals("HEALTHY", response.getOverallStatus());
 
         boolean hasSnakeCheck = response.getResults().stream()
-                .anyMatch(ep -> ep.getName().contains("Snake Classic") || (ep.getEndpoint() != null && ep.getEndpoint().contains("SNAKE_GAME_STATE")));
+                .anyMatch(ep -> ep.getName().contains("Snake Classic")
+                        || (ep.getEndpoint() != null && ep.getEndpoint().contains("SNAKE_GAME_STATE")));
         assertFalse(hasSnakeCheck, "Diagnostics suite must NOT include Snake Classic check");
     }
 }

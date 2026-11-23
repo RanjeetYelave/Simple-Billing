@@ -151,6 +151,9 @@ public class RupeeCrmCompleteFunctionalRegressionHarnessTest {
     @Autowired
     private TenantDataIntegrityAuditService auditService;
 
+    @Autowired
+    private com.billing.simple.billsoft.service.BackupService backupService;
+
     private Long primaryFirmId;
 
     @BeforeEach
@@ -872,5 +875,8 @@ public class RupeeCrmCompleteFunctionalRegressionHarnessTest {
         assertNotNull(audit);
         assertEquals("CLEAN", audit.get("status"), "Diagnostic tenant integrity audit must report CLEAN");
         assertEquals(0, audit.get("totalViolationsCount"), "There must be zero tenant referential violations across all entities");
+        if (backupService != null) {
+            backupService.factoryReset();
+        }
     }
 }

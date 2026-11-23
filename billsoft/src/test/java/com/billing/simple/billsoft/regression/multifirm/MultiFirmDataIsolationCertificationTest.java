@@ -274,7 +274,9 @@ public class MultiFirmDataIsolationCertificationTest {
         partyRepo.deleteAll();
         noteRepo.deleteAll();
         reminderRepo.deleteAll();
-        employeeRepo.deleteAll();
+        if (employeeA != null && employeeA.getId() != null) { try { employeeRepo.deleteById(employeeA.getId()); } catch (Exception ignored) {} }
+        if (employeeB != null && employeeB.getId() != null) { try { employeeRepo.deleteById(employeeB.getId()); } catch (Exception ignored) {} }
+        if (employeeC != null && employeeC.getId() != null) { try { employeeRepo.deleteById(employeeC.getId()); } catch (Exception ignored) {} }
         productRepo.deleteAll();
         customerRepo.deleteAll();
         firmRepo.deleteAll();

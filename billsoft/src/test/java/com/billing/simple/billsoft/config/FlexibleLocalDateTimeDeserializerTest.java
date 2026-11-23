@@ -64,4 +64,12 @@ class FlexibleLocalDateTimeDeserializerTest {
         assertNotNull(dto.getDueDate());
         assertEquals(LocalDateTime.of(2026, 9, 27, 9, 0, 0), dto.getDueDate());
     }
+
+    @Test
+    void testParseArrayTimestamp() throws Exception {
+        String json = "{\"dueDate\":[2026,9,27,15,30]}";
+        TestDto dto = objectMapper.readValue(json, TestDto.class);
+        assertNotNull(dto.getDueDate());
+        assertEquals(LocalDateTime.of(2026, 9, 27, 15, 30, 0), dto.getDueDate());
+    }
 }

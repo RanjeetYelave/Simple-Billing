@@ -28,6 +28,9 @@ public class FlexibleLocalDateTimeDeserializer extends JsonDeserializer<LocalDat
 
     @Override
     public LocalDateTime deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        if (p.isExpectedStartArrayToken()) {
+            return com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer.INSTANCE.deserialize(p, ctxt);
+        }
         String text = p.getText();
         if (text == null || text.trim().isEmpty()) {
             return null;

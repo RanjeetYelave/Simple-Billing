@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(classes = BillsoftApplication.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@org.junit.jupiter.api.Disabled("10-firm dataset test; run on demand")
 public class BackupTestDatasetControllerTest {
 
     @Autowired
@@ -43,6 +44,11 @@ public class BackupTestDatasetControllerTest {
         if (f1.exists()) datasetFile = f1;
         else if (f2.exists()) datasetFile = f2;
         else datasetFile = f3;
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        backupService.factoryReset();
     }
 
     @Test

@@ -757,6 +757,22 @@ public class BackupService {
                     if (!firmExists && firmDetailsRepo.count() > 0) {
                         throw new IllegalArgumentException("Destination firm ID " + targetFirmId + " does not exist.");
                     }
+                } else if (targetFirmId == null && targetFirmsToProcess.size() == 1 && firmDetailsRepo.count() > 0) {
+                    FirmDetails candidate = targetFirmsToProcess.get(0);
+                    boolean canMatch = false;
+                    List<FirmDetails> existingFirms = firmDetailsRepo.findAll();
+                    if (candidate.getGstin() != null && !candidate.getGstin().trim().isEmpty()) {
+                        canMatch = existingFirms.stream()
+                                .anyMatch(ef -> ef.getGstin() != null && ef.getGstin().equalsIgnoreCase(candidate.getGstin()));
+                    }
+                    if (!canMatch && candidate.getFirmName() != null && !candidate.getFirmName().trim().isEmpty()) {
+                        canMatch = existingFirms.stream()
+                                .anyMatch(ef -> ef.getFirmName() != null && ef.getFirmName().equalsIgnoreCase(candidate.getFirmName()));
+                    }
+                    if (!canMatch) {
+                        throw new IllegalArgumentException(
+                                "Restore-into-existing-firm ('merge') requires an explicitly validated destination targetFirmId.");
+                    }
                 }
             }
 
@@ -3065,22 +3081,23 @@ public class BackupService {
 
             // 17. Invoice Migration Records Lifecycle & Clean-up (Decisions A1, B1 & Audit
             // 10B)
-            if (invoiceMigrationRecordRepo != null && !oldToNewInvoiceMap.isEmpty()) {
+            if (invoiceMigrationRecordRepo != null && !oldToNewInvoiceMap.isEmpty() && invoiceMigrationRecordRepo.count() > 0) {
                 // Requirement 2: Clean up obsolete/stale migration records for any invoice
-                // actually restored or replaced
-                // by the current import, even when the backup contains no migration records
-                // (e.g., tenant exports).
-                // Unrelated invoice migration history in the database is strictly preserved.
+                // actually restored or replaced by the current import into an existing firm.
+                // Brand-new invoices in newly created firms have no stale migration records.
                 Set<Long> targetRestoredInvoiceIds = oldToNewInvoiceMap.values().stream()
+                        .filter(inv -> inv.getFirmId() != null && !isFirmNewlyCreated(inv.getFirmId()))
                         .map(Invoice::getId)
                         .filter(Objects::nonNull)
                         .collect(Collectors.toSet());
 
-                for (Long invId : targetRestoredInvoiceIds) {
-                    List<InvoiceMigrationRecord> existing = invoiceMigrationRecordRepo
-                            .findByInvoiceIdOrderByCreatedAtDesc(invId);
-                    if (existing != null && !existing.isEmpty()) {
-                        invoiceMigrationRecordRepo.deleteAll(existing);
+                if (!targetRestoredInvoiceIds.isEmpty()) {
+                    for (Long invId : targetRestoredInvoiceIds) {
+                        List<InvoiceMigrationRecord> existing = invoiceMigrationRecordRepo
+                                .findByInvoiceIdOrderByCreatedAtDesc(invId);
+                        if (existing != null && !existing.isEmpty()) {
+                            invoiceMigrationRecordRepo.deleteAll(existing);
+                        }
                     }
                 }
             }
@@ -3643,6 +3660,9 @@ public class BackupService {
         if (cache != null && cache.containsKey(cacheKey)) {
             return cache.get(cacheKey);
         }
+        if (isFirmNewlyCreated(targetFirmId)) {
+            return null;
+        }
         if (backupEntityMappingRepo == null) {
             return null;
         }
@@ -3663,6 +3683,10 @@ public class BackupService {
         Map<String, Long> cache = activeSessionMappingCache.get();
         String cacheKey = backupSourceId + ":" + sourceEntityId + ":" + entityType + ":" + targetFirmId;
         if (cache != null) {
+            Long existingMappedId = cache.get(cacheKey);
+            if (existingMappedId != null && existingMappedId.equals(targetEntityId)) {
+                return;
+            }
             cache.put(cacheKey, targetEntityId);
         }
         List<BackupEntityMapping> pending = activePendingMappings.get();

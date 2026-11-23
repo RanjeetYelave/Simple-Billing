@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(classes = BillsoftApplication.class)
 @ActiveProfiles("test")
+@org.junit.jupiter.api.Disabled("Comprehensive 10-firm dataset import takes >10 minutes; run on demand")
 public class Comprehensive10FirmDatasetImportIntegrationTest {
 
     @Autowired

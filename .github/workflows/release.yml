@@ -633,7 +633,7 @@ jobs:
           echo "=== Verifying CI Java Regression Tests Status ==="
           COMMIT_SHA="${{ github.sha }}"
           REPO="${{ github.repository }}"
-          MAX_ATTEMPTS=45
+          MAX_ATTEMPTS=150
           ATTEMPT=0
           FOUND_RUN=false
 

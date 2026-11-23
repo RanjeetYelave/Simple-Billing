@@ -1343,6 +1343,7 @@ const API = {
       formData.append('file', file);
       return API._json('/api/backup/inspect', { method: 'POST', body: formData });
     },
+    getImportProgress: () => API._json('/api/backup/import/progress'),
     importSelective: async (file, firmIds, mode, targetFirmId) => {
       const formData = new FormData();
       formData.append('file', file);

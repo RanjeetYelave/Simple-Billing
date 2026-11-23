@@ -35739,7 +35739,8 @@ function PartyDetailModal({
       const [inspection, setInspection] = useState(null);
       const [inspecting, setInspecting] = useState(false);
       const [selectedFirms, setSelectedFirms] = useState(new Set());
-      const [restoreMode, setRestoreMode] = useState('clone'); // 'clone' | 'merge' | 'clean_wipe'
+      const [restoreMode, setRestoreMode] = useState('clone'); // 'clone' | 'merge'
+      const [importProgress, setImportProgress] = useState(null);
       const [showRestoreModal, setShowRestoreModal] = useState(false);
       const [showRestoreConfirmModal, setShowRestoreConfirmModal] = useState(false);
 
@@ -35993,8 +35994,21 @@ function PartyDetailModal({
           return;
         }
         setLoading(true);
+        setImportProgress({ percent: 5, stage: 'Initializing', message: 'Starting restore...' });
+        let progressInterval = null;
         try {
-          const targetFid = restoreMode === 'merge' ? API.firmId : null;
+          progressInterval = setInterval(async () => {
+            try {
+              if (API && API.backup && API.backup.getImportProgress) {
+                const p = await API.backup.getImportProgress();
+                if (p && p.status && p.status !== 'IDLE') {
+                  setImportProgress(p);
+                }
+              }
+            } catch (_) {}
+          }, 350);
+
+          const targetFid = (restoreMode === 'merge' && selectedFirms.size === 1) ? API.firmId : null;
           const res = isAutoRestore
             ? await API.backup.restoreAuto(
               Array.from(selectedFirms),
@@ -36007,24 +36021,32 @@ function PartyDetailModal({
               restoreMode,
               targetFid
             );
+          if (progressInterval) clearInterval(progressInterval);
           if (res && res.error) {
             showToast(res.error, 'error');
             setLoading(false);
+            setImportProgress(null);
             return;
           }
+          setImportProgress({ percent: 100, stage: 'Done', message: res.message || 'Backup restored successfully!' });
           showToast(res.message || 'Backup restored successfully!', 'success');
-          setShowRestoreModal(false);
-          setShowRestoreConfirmModal(false);
-          setImportFile(null);
-          if (restoreMode === 'merge' && res && res.restoredFirms && res.restoredFirms.length > 0) {
-            API.firmId = res.restoredFirms[0].id;
-          } else if (!API.firmId && res && res.restoredFirms && res.restoredFirms.length > 0) {
-            API.firmId = res.restoredFirms[0].id;
-          }
-          setTimeout(() => window.location.reload(), 1200);
+          setTimeout(() => {
+            setShowRestoreModal(false);
+            setShowRestoreConfirmModal(false);
+            setImportFile(null);
+            setImportProgress(null);
+            if (restoreMode === 'merge' && res && res.restoredFirms && res.restoredFirms.length > 0) {
+              API.firmId = res.restoredFirms[0].id;
+            } else if (!API.firmId && res && res.restoredFirms && res.restoredFirms.length > 0) {
+              API.firmId = res.restoredFirms[0].id;
+            }
+            window.location.reload();
+          }, 1200);
         } catch (error) {
+          if (progressInterval) clearInterval(progressInterval);
           showToast('Failed to restore backup: ' + (error.message || 'Server error'), 'error');
           setLoading(false);
+          setImportProgress(null);
         }
       };
 
@@ -36506,28 +36528,21 @@ function PartyDetailModal({
                     React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.3 } }, 'Updates/merges data into matching firm profiles.')
                   )
                 ),
-                React.createElement('div', { style: { marginTop: 8 } },
-                  React.createElement('button', {
-                    type: 'button',
-                    onClick: () => setRestoreMode('clean_wipe'),
-                    style: {
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: 10,
-                      textAlign: 'left',
-                      border: restoreMode === 'clean_wipe' ? '2px solid var(--danger, #ef4444)' : '1px solid var(--border-light, #e2e8f0)',
-                      background: restoreMode === 'clean_wipe' ? 'rgba(239, 68, 68, 0.08)' : 'transparent',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }
-                  },
-                    React.createElement('div', null,
-                      React.createElement('span', { style: { fontWeight: 700, fontSize: '0.82rem', color: restoreMode === 'clean_wipe' ? 'var(--danger)' : 'var(--text)' } }, '🔴 Clean Slate System Restore '),
-                      React.createElement('span', { style: { fontSize: '0.74rem', color: 'var(--text-muted)' } }, '— Wipes current database and restores only selected firms cleanly.')
-                    )
-                  )
+                React.createElement('div', {
+                  style: {
+                    marginTop: 10,
+                    padding: '10px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(99, 102, 241, 0.05)',
+                    border: '1px dashed var(--border-light, #e2e8f0)',
+                    fontSize: '0.78rem',
+                    color: 'var(--text-secondary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }
+                },
+                  React.createElement('span', null, '💡 Need a completely clean slate? Use Factory Reset in Advanced Settings before restoring.')
                 )
               )
             ),
@@ -36562,7 +36577,7 @@ function PartyDetailModal({
               borderRadius: 16,
               overflow: 'hidden',
               boxShadow: '0 20px 40px rgba(0, 0, 0, 0.25)',
-              border: restoreMode === 'clean_wipe' ? '2px solid var(--danger, #ef4444)' : '1px solid var(--border-light, #e2e8f0)'
+              border: restoreMode === 'merge' ? '2px solid #d97706' : '1px solid var(--border-light, #e2e8f0)'
             },
             onClick: e => e.stopPropagation()
           },
@@ -36570,7 +36585,7 @@ function PartyDetailModal({
               className: 'modal-header',
               style: {
                 padding: '16px 22px',
-                background: restoreMode === 'clean_wipe' ? 'rgba(239, 68, 68, 0.08)' : (restoreMode === 'merge' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(99, 102, 241, 0.08)'),
+                background: restoreMode === 'merge' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(99, 102, 241, 0.08)',
                 borderBottom: '1px solid var(--border-light, #e2e8f0)',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -36585,35 +36600,19 @@ function PartyDetailModal({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  color: restoreMode === 'clean_wipe' ? 'var(--danger, #ef4444)' : (restoreMode === 'merge' ? '#d97706' : 'var(--primary, #6366f1)')
+                  color: restoreMode === 'merge' ? '#d97706' : 'var(--primary, #6366f1)'
                 }
               },
-                restoreMode === 'clean_wipe' ? '🚨 Confirm Clean System Restore' : (restoreMode === 'merge' ? '🟡 Confirm Data Merge' : '🟢 Confirm Clone & Restore')
+                restoreMode === 'merge' ? '🟡 Confirm Data Merge' : '🟢 Confirm Clone & Restore'
               ),
               React.createElement('button', {
                 className: 'modal-close',
+                disabled: loading,
                 onClick: () => !loading && setShowRestoreConfirmModal(false)
               }, '✕')
             ),
 
             React.createElement('div', { className: 'modal-body', style: { padding: '20px 24px' } },
-              restoreMode === 'clean_wipe' && React.createElement('div', {
-                style: {
-                  padding: '14px 16px',
-                  borderRadius: 10,
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  marginBottom: 16
-                }
-              },
-                React.createElement('div', { style: { fontWeight: 700, color: 'var(--danger, #ef4444)', fontSize: '0.92rem', marginBottom: 4 } }, '⚠️ Permanent Overwrite Warning'),
-                React.createElement('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-                  'Clean Slate System Restore will ',
-                  React.createElement('strong', { style: { color: 'var(--danger, #ef4444)' } }, 'wipe and delete all existing database data'),
-                  ' before restoring the selected firm(s). This action cannot be undone.'
-                )
-              ),
-
               restoreMode === 'merge' && React.createElement('div', {
                 style: {
                   padding: '14px 16px',
@@ -36625,7 +36624,7 @@ function PartyDetailModal({
               },
                 React.createElement('div', { style: { fontWeight: 700, color: '#d97706', fontSize: '0.92rem', marginBottom: 4 } }, 'ℹ️ Existing Profiles Will Be Updated'),
                 React.createElement('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 } },
-                  'Records will be merged into matching existing firm profiles by GSTIN or firm name.'
+                  'Records will be merged into matching existing firm profiles by GSTIN or firm name. If a firm does not exist, a new profile will be created.'
                 )
               ),
 
@@ -36678,6 +36677,46 @@ function PartyDetailModal({
                     )
                   )
                 )
+              ),
+
+              loading && importProgress && React.createElement('div', {
+                style: {
+                  marginTop: 14,
+                  padding: '12px 14px',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: 10,
+                  border: '1px solid var(--border-light, #e2e8f0)'
+                }
+              },
+                React.createElement('div', {
+                  style: { display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', fontWeight: 600, marginBottom: 6 }
+                },
+                  React.createElement('span', null, importProgress.currentStage || importProgress.stage || 'Restoring...'),
+                  React.createElement('span', { style: { color: 'var(--primary, #6366f1)' } }, `${importProgress.percent || 0}%`)
+                ),
+                React.createElement('div', {
+                  style: {
+                    width: '100%',
+                    height: 8,
+                    background: 'rgba(0,0,0,0.08)',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    marginBottom: 6
+                  }
+                },
+                  React.createElement('div', {
+                    style: {
+                      width: `${importProgress.percent || 0}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #6366f1, #3b82f6)',
+                      borderRadius: 4,
+                      transition: 'width 0.3s ease'
+                    }
+                  })
+                ),
+                React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-muted)' } },
+                  importProgress.message || 'Restoring records...'
+                )
               )
             ),
 
@@ -36697,11 +36736,11 @@ function PartyDetailModal({
                 onClick: () => setShowRestoreConfirmModal(false)
               }, 'Cancel'),
               React.createElement('button', {
-                className: restoreMode === 'clean_wipe' ? 'btn btn-danger' : (restoreMode === 'merge' ? 'btn btn-warning' : 'btn btn-primary'),
-                style: restoreMode === 'clean_wipe' ? { backgroundColor: 'var(--danger, #ef4444)', color: 'white' } : (restoreMode === 'merge' ? { backgroundColor: '#d97706', color: 'white' } : {}),
+                className: restoreMode === 'merge' ? 'btn btn-warning' : 'btn btn-primary',
+                style: restoreMode === 'merge' ? { backgroundColor: '#d97706', color: 'white' } : {},
                 disabled: loading,
                 onClick: executeSelectiveRestore
-              }, loading ? '⏳ Processing...' : (restoreMode === 'clean_wipe' ? `⚠️ Confirm Wipe & Restore (${selectedFirms.size})` : `Confirm & Restore (${selectedFirms.size})`))
+              }, loading ? '⏳ Restoring...' : `Confirm & Restore (${selectedFirms.size})`)
             )
           )
         ),

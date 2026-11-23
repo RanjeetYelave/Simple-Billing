@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(classes = BillsoftApplication.class)
 @ActiveProfiles("test")
-@org.junit.jupiter.api.Disabled("Comprehensive 10-firm dataset import takes >10 minutes; run on demand")
+// @org.junit.jupiter.api.Disabled("Comprehensive 10-firm dataset import takes >10 minutes; run on demand")
 public class Comprehensive10FirmDatasetImportIntegrationTest {
 
     @Autowired
@@ -252,5 +252,38 @@ public class Comprehensive10FirmDatasetImportIntegrationTest {
         assertEquals(300, productRepo.countByFirmId(f5Id));
         assertEquals(500, invoiceRepo.countByFirmId(f4Id));
         assertEquals(500, invoiceRepo.countByFirmId(f5Id));
+    }
+
+    @Test
+    @DisplayName("4. Multi-Firm Data Merge with Existing Match and New Candidate Creation")
+    public void testMultiFirmMergeWithMatchingAndNonMatchingFirms() throws Exception {
+        BackupDTO backup;
+        try (InputStream is = new FileInputStream(datasetFile)) {
+            backup = backupArchiveService.extractAndValidateBackup(is, datasetFile.getName());
+        }
+
+        FirmDetails sourceFirm1 = backup.getAllFirms().stream().filter(f -> f.getId().equals(1L)).findFirst().orElseThrow();
+
+        // Create an existing firm in DB with the exact same GSTIN and name as source Firm 1
+        FirmDetails existingFirm1 = new FirmDetails();
+        existingFirm1.setFirmName(sourceFirm1.getFirmName());
+        existingFirm1.setGstin(sourceFirm1.getGstin());
+        existingFirm1.setAddressLine1("Existing Address");
+        existingFirm1 = firmDetailsRepo.save(existingFirm1);
+        Long existingFirm1Id = existingFirm1.getId();
+
+        // Perform multi-firm merge for Firm 1 and Firm 2 with targetFirmId = null
+        Set<Long> selectedFirms = new HashSet<>(Arrays.asList(1L, 2L));
+        List<FirmDetails> restored = backupService.importSelectiveData(backup, selectedFirms, "merge", null);
+
+        // Verify Firm 1 merged into existingFirm1 and Firm 2 created as a new firm
+        assertEquals(2, restored.size());
+        assertEquals(2, firmDetailsRepo.count(), "Total firms in DB should be exactly 2 (existing matched + newly created)");
+
+        assertEquals(existingFirm1Id, restored.get(0).getId(), "Firm 1 must merge into the existing firm profile");
+        assertNotEquals(existingFirm1Id, restored.get(1).getId(), "Firm 2 must be created as a new firm");
+
+        assertEquals(150, customerRepo.countByFirmId(existingFirm1Id), "Existing Firm 1 must receive Firm 1's customers");
+        assertEquals(150, customerRepo.countByFirmId(restored.get(1).getId()), "Firm 2 must receive Firm 2's customers");
     }
 }

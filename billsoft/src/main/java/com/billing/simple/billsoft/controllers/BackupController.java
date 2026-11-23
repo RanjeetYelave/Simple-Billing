@@ -34,6 +34,8 @@ public class BackupController {
     private final AppConfigRepository appConfigRepo;
     private final AuthController authController;
     private final BackupArchiveService backupArchiveService;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.service.BackupImportTracker backupImportTracker;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper()
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -314,18 +316,23 @@ public class BackupController {
         String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
         Long currentFirmId = TenantContext.getCurrentFirmId();
         if ("merge".equals(normalizedMode)) {
-            if (targetFirmId == null) {
-                targetFirmId = currentFirmId;
-            }
-            if (targetFirmId == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Destination firm ID is required for merge mode");
-                return ResponseEntity.badRequest().body(response);
-            }
-            if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Cross-firm restore prohibited");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            boolean isMultiFirm = (firmIds != null && firmIds.size() > 1);
+            if (isMultiFirm) {
+                targetFirmId = null;
+            } else {
+                if (targetFirmId == null) {
+                    targetFirmId = currentFirmId;
+                }
+                if (targetFirmId == null) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error", "Destination firm ID is required for single-firm merge mode");
+                    return ResponseEntity.badRequest().body(response);
+                }
+                if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error", "Cross-firm restore prohibited");
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                }
             }
         } else {
             // In clone mode, destination is always a new firm. Target firm ID cannot
@@ -384,12 +391,13 @@ public class BackupController {
                     file.getOriginalFilename());
             boolean isDemoBackup = backup.getMetadata() != null &&
                     (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
-                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
-                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+                            Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                            "1.0-DEMO".equals(backup.getMetadata().get("version")));
             if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("status", "error");
-                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                response.put("error",
+                        "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
                 return ResponseEntity.badRequest().body(response);
             }
             com.billing.simple.billsoft.dto.BackupInspectionDTO inspection = backupService.inspectBackup(backup);
@@ -415,6 +423,16 @@ public class BackupController {
         }
     }
 
+    @GetMapping("/import/progress")
+    public ResponseEntity<com.billing.simple.billsoft.service.BackupImportTracker.ImportProgress> getImportProgress() {
+        if (backupImportTracker == null) {
+            com.billing.simple.billsoft.service.BackupImportTracker.ImportProgress idle = new com.billing.simple.billsoft.service.BackupImportTracker.ImportProgress();
+            idle.setStatus("IDLE");
+            return ResponseEntity.ok(idle);
+        }
+        return ResponseEntity.ok(backupImportTracker.getProgress());
+    }
+
     @PostMapping("/import/selective")
     public ResponseEntity<Map<String, Object>> importSelectiveBackup(
             HttpServletRequest request,
@@ -425,18 +443,23 @@ public class BackupController {
         String normalizedMode = mode != null ? mode.trim().toLowerCase() : "clone";
         Long currentFirmId = TenantContext.getCurrentFirmId();
         if ("merge".equals(normalizedMode)) {
-            if (targetFirmId == null) {
-                targetFirmId = currentFirmId;
-            }
-            if (targetFirmId == null) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Destination firm ID is required for merge mode");
-                return ResponseEntity.badRequest().body(response);
-            }
-            if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
-                Map<String, Object> response = new HashMap<>();
-                response.put("error", "Cross-firm selective restore prohibited");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+            boolean isMultiFirm = (firmIds != null && firmIds.size() > 1);
+            if (isMultiFirm) {
+                targetFirmId = null;
+            } else {
+                if (targetFirmId == null) {
+                    targetFirmId = currentFirmId;
+                }
+                if (targetFirmId == null) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error", "Destination firm ID is required for single-firm merge mode");
+                    return ResponseEntity.badRequest().body(response);
+                }
+                if (currentFirmId != null && !currentFirmId.equals(targetFirmId)) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error", "Cross-firm selective restore prohibited");
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                }
             }
         } else {
             // In clone mode, destination is always a new firm. Target firm ID cannot
@@ -449,12 +472,13 @@ public class BackupController {
                     file.getOriginalFilename());
             boolean isDemoBackup = backup.getMetadata() != null &&
                     (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
-                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
-                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+                            Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                            "1.0-DEMO".equals(backup.getMetadata().get("version")));
             if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
                 Map<String, Object> response = new HashMap<>();
                 response.put("status", "error");
-                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                response.put("error",
+                        "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
                 return ResponseEntity.badRequest().body(response);
             }
             java.util.Set<Long> selectedFirmIds = (firmIds != null && !firmIds.isEmpty())
@@ -615,12 +639,13 @@ public class BackupController {
                     file.getOriginalFilename());
             boolean isDemoBackup = backup.getMetadata() != null &&
                     (Boolean.TRUE.equals(backup.getMetadata().get("isDemoDataset")) ||
-                     Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
-                     "1.0-DEMO".equals(backup.getMetadata().get("version")));
+                            Boolean.TRUE.equals(backup.getMetadata().get("isDemoBackup")) ||
+                            "1.0-DEMO".equals(backup.getMetadata().get("version")));
             if (!com.billing.simple.billsoft.demo.EnvironmentModeContext.isDemoMode() && isDemoBackup) {
                 Map<String, String> response = new HashMap<>();
                 response.put("status", "error");
-                response.put("error", "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
+                response.put("error",
+                        "DEMO_BACKUP_REJECTED: Demo dataset backups cannot be restored into the production environment.");
                 return ResponseEntity.badRequest().body(response);
             }
             boolean isMultiFirm = backup.getAllFirms() != null && backup.getAllFirms().size() > 1;

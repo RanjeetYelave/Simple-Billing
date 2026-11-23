@@ -42,7 +42,7 @@ public class PlannerNotificationScheduler {
     @Autowired
     private PurchaseOrderRepository purchaseOrderRepository;
 
-    @Scheduled(fixedDelay = 10000) // Runs every 10 seconds
+    @Scheduled(fixedDelayString = "${app.planner.schedule.due-items-ms:10000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void checkDuePlannerItems() {
         LocalDateTime now = LocalDateTime.now();
@@ -82,7 +82,7 @@ public class PlannerNotificationScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = 15000) // Runs every 15 seconds
+    @Scheduled(fixedDelayString = "${app.planner.schedule.stock-alerts-ms:15000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void checkLowStockAlerts() {
         List<FirmDetails> firms = firmDetailsRepository.findAll();
@@ -291,7 +291,7 @@ public class PlannerNotificationScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds
+    @Scheduled(fixedDelayString = "${app.planner.schedule.overdue-invoices-ms:30000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void checkOverdueInvoices() {
         LocalDate today = LocalDate.now();
@@ -330,7 +330,7 @@ public class PlannerNotificationScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds
+    @Scheduled(fixedDelayString = "${app.planner.schedule.po-deliveries-ms:30000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void checkPendingPurchaseOrderDeliveries() {
         LocalDate today = LocalDate.now();
@@ -365,7 +365,7 @@ public class PlannerNotificationScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds
+    @Scheduled(fixedDelayString = "${app.planner.schedule.payroll-reminders-ms:30000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void checkPayrollMonthlyReminders() {
         LocalDateTime now = LocalDateTime.now();
@@ -385,7 +385,7 @@ public class PlannerNotificationScheduler {
         }
     }
 
-    @Scheduled(fixedDelay = 30000) // Runs every 30 seconds to reconcile expired snoozes
+    @Scheduled(fixedDelayString = "${app.planner.schedule.reconcile-snoozes-ms:30000}", initialDelayString = "${app.planner.schedule.initial-delay-ms:10000}")
     @Transactional
     public void reconcileSnoozedNotifications() {
         if (notificationService != null) {

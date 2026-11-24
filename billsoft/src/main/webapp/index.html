@@ -23429,74 +23429,74 @@ if (typeof window !== 'undefined') {
           )
         ) : React.createElement(Fragment, null,
           // Header & Quick Action Hierarchy (Level 4 Controls)
-          React.createElement('div', { className: 'manager-header rcrm-view-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 12 } },
-            React.createElement('div', { className: 'rcrm-view-header-title' },
-              React.createElement('h2', { className: 'card-title', style: { margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+          React.createElement('div', { className: 'manager-header rcrm-view-header inventory-top-toolbar', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 } },
+            React.createElement('div', { className: 'rcrm-view-header-title', style: { minWidth: 200 } },
+              React.createElement('h2', { className: 'card-title', style: { margin: 0, fontSize: '1.15rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 } },
                 Icons.package,
                 'Inventory & Stock Control'
               ),
-              React.createElement('p', { className: 'rcrm-view-header-desc', style: { margin: '2px 0 0', fontSize: '0.835rem', color: 'var(--text-secondary)' } },
+              React.createElement('p', { className: 'rcrm-view-header-desc', style: { margin: '1px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' } },
                 'Track live stock quantities, cost valuation, product catalog, and movement ledger.'
               )
             ),
-            React.createElement('div', { className: 'inventory-canonical-toolbar rcrm-action-cluster' },
-              React.createElement('div', { className: 'rcrm-action-group', style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
+            React.createElement('div', { className: 'inventory-canonical-toolbar rcrm-action-cluster', style: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
+              React.createElement('div', { className: 'rcrm-action-group', style: { display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' } },
                 React.createElement('button', {
                   id: 'btn-bulk-import',
                   className: 'btn btn-outline btn-sm',
                   onClick: openBulkImport,
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500, fontSize: '0.78rem', padding: '4px 8px' }
                 }, Icons.download, 'Bulk Import'),
                 React.createElement('button', {
                   className: 'btn btn-outline btn-sm',
                   onClick: () => setShowBulkAddModal(true),
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500, fontSize: '0.78rem', padding: '4px 8px' }
                 }, Icons.plus, 'Bulk Add'),
                 React.createElement('button', {
                   id: 'btn-inventory-bulk-edit',
                   className: 'btn btn-outline btn-sm',
                   onClick: () => setShowInventoryBulkEdit(true),
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500, fontSize: '0.78rem', padding: '4px 8px' }
                 }, Icons.edit, 'Bulk Edit'),
                 React.createElement('button', {
                   id: 'btn-duplicates-merge',
                   className: 'btn btn-outline btn-sm',
                   onClick: openDuplicates,
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500, fontSize: '0.78rem', padding: '4px 8px' }
                 }, Icons.search, 'Duplicates'),
                 React.createElement('button', {
                   className: 'btn btn-outline btn-sm',
                   onClick: () => openHistory(null),
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 500, fontSize: '0.78rem', padding: '4px 8px' }
                 }, Icons.barChart, 'Movement Ledger')
               ),
-              React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+              React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
                 React.createElement('button', {
                   className: 'btn btn-gold btn-sm',
                   onClick: () => setInventoryTab('SMART_REORDER'),
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.78rem', padding: '4px 10px' }
                 }, '⚡ Smart Reorder'),
                 React.createElement('button', {
                   className: 'btn btn-primary btn-sm',
                   onClick: openCreate,
-                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.78rem', padding: '4px 10px' }
                 }, Icons.plus, 'Add Product')
               )
             )
           ),
 
           // KPI Summary Ribbon (Refined High-Density Warm-Neutral Ribbon)
-          summary && React.createElement('div', { className: 'firm-kpi-ribbon' },
+          summary && React.createElement('div', { className: 'firm-kpi-ribbon inventory-kpi-ribbon', style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8, padding: '4px 10px', fontSize: '0.78rem' } },
             // Capsule 1: Total Products
-            React.createElement('div', { className: 'firm-kpi-ribbon-item' },
+            React.createElement('div', { className: 'firm-kpi-ribbon-item', style: { padding: '2px 8px' } },
               React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Total Products:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { fontVariantNumeric: 'tabular-nums', fontWeight: 700 } }, summary.totalProducts || 0),
-              React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+              React.createElement('span', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)' } },
                 `(${summary.totalStockUnits != null ? summary.totalStockUnits : 0} units)`
               )
             ),
             // Capsule 2: Valuation
-            React.createElement('div', { className: 'firm-kpi-ribbon-item' },
+            React.createElement('div', { className: 'firm-kpi-ribbon-item', style: { padding: '2px 8px' } },
               React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Valuation at Cost:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } },
                 BillsoftUtils.formatCurrency(summary.totalValuationAtCost != null ? summary.totalValuationAtCost : (summary.totalCostValue || 0))
@@ -23505,6 +23505,7 @@ if (typeof window !== 'undefined') {
             // Capsule 3: Low Stock Alerts (Click to filter)
             React.createElement('div', {
               className: `firm-kpi-ribbon-item clickable ${stockFilter === 'LOW_STOCK' ? 'active-filter' : ''}`,
+              style: { padding: '2px 8px' },
               onClick: () => setStockFilter(stockFilter === 'LOW_STOCK' ? 'ALL' : 'LOW_STOCK'),
               title: 'Click to filter Low Stock items'
             },
@@ -23512,7 +23513,7 @@ if (typeof window !== 'undefined') {
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--status-warning)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } }, summary.lowStockCount || 0),
               summary.lowStockCount > 0 && React.createElement('button', {
                 className: 'btn btn-xs btn-outline',
-                style: { borderColor: 'var(--status-warning-border)', color: 'var(--status-warning)', background: 'var(--status-warning-bg)', padding: '0 6px', fontSize: '0.68rem', marginLeft: 4, borderRadius: 4 },
+                style: { borderColor: 'var(--status-warning-border)', color: 'var(--status-warning)', background: 'var(--status-warning-bg)', padding: '0 4px', fontSize: '0.68rem', marginLeft: 4, borderRadius: 4, height: 18 },
                 onClick: (e) => { e.stopPropagation(); openSmartReorder(null); },
                 title: 'Open Smart Reorder for Low Stock'
               }, '⚡ Reorder')
@@ -23520,6 +23521,7 @@ if (typeof window !== 'undefined') {
             // Capsule 4: Out of Stock (Click to filter)
             React.createElement('div', {
               className: `firm-kpi-ribbon-item clickable ${stockFilter === 'OUT_OF_STOCK' ? 'active-filter' : ''}`,
+              style: { padding: '2px 8px' },
               onClick: () => setStockFilter(stockFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK'),
               title: 'Click to filter Out of Stock items'
             },
@@ -23527,7 +23529,7 @@ if (typeof window !== 'undefined') {
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--status-error)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } }, summary.outOfStockCount || 0)
             ),
             // Capsule 5: Estimated Gross Margin
-            React.createElement('div', { className: 'firm-kpi-ribbon-item' },
+            React.createElement('div', { className: 'firm-kpi-ribbon-item', style: { padding: '2px 8px' } },
               React.createElement('span', { style: { color: 'var(--text-muted)', fontWeight: 500 } }, 'Est. Margin:'),
               React.createElement('span', { className: 'firm-kpi-ribbon-val', style: { color: 'var(--text)', fontVariantNumeric: 'tabular-nums', fontWeight: 700 } },
                 `${summary.estimatedMarginPercent != null ? summary.estimatedMarginPercent : (summary.averageGrossMarginPercent || 0)}%`
@@ -23537,42 +23539,42 @@ if (typeof window !== 'undefined') {
 
           // Filter and Search Toolbar
           React.createElement('div', {
-            className: 'card',
+            className: 'card inventory-search-filter-card',
             style: {
-              padding: '8px 12px',
-              marginBottom: 10,
+              padding: '6px 10px',
+              marginBottom: 8,
               background: 'var(--bg-card)',
               border: '1px solid var(--border)',
-              borderRadius: 10,
+              borderRadius: 8,
               display: 'flex',
               flexWrap: 'wrap',
-              gap: 10,
+              gap: 8,
               alignItems: 'center',
               justifyContent: 'space-between'
             }
           },
             // Search & Filters Left
-            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', flex: 1 } },
+            React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', flex: 1 } },
               // Search Input
-              React.createElement('div', { style: { position: 'relative', minWidth: 240, flex: 1, maxWidth: 360 } },
+              React.createElement('div', { style: { position: 'relative', width: 220, minWidth: 180 } },
                 React.createElement('input', {
-                  className: 'input w-full',
-                  style: { paddingLeft: 32 },
-                  placeholder: 'Search name, HSN/SAC, barcode...',
+                  className: 'input input-sm w-full',
+                  style: { paddingLeft: 28, height: 30, fontSize: '0.80rem' },
+                  placeholder: 'Search name, HSN, barcode...',
                   value: searchQuery,
                   onChange: e => setSearchQuery(e.target.value)
                 }),
-                React.createElement('span', { style: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 } }, '🔍'),
+                React.createElement('span', { style: { position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', opacity: 0.6, fontSize: '0.80rem' } }, '🔍'),
                 searchQuery && React.createElement('button', {
-                  style: { position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6 },
+                  style: { position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.75rem' },
                   onClick: () => setSearchQuery('')
                 }, '✕')
               ),
 
               // Category Filter Dropdown
               React.createElement('select', {
-                className: 'select',
-                style: { minWidth: 150 },
+                className: 'select select-sm',
+                style: { width: 170, minWidth: 140, height: 30, padding: '2px 28px 2px 8px', fontSize: '0.80rem' },
                 value: selectedCategory,
                 onChange: e => setSelectedCategory(e.target.value)
               },
@@ -23582,7 +23584,7 @@ if (typeof window !== 'undefined') {
               ),
 
               // Stock Status Filter Segmented Controls
-              React.createElement('div', { className: 'rcrm-subtabs-track', style: { margin: 0, padding: 2 } },
+              React.createElement('div', { className: 'rcrm-subtabs-track', style: { margin: 0, padding: 2, height: 30, display: 'inline-flex', alignItems: 'center' } },
                 [
                   { id: 'ALL', label: 'All Items' },
                   { id: 'IN_STOCK', label: 'In Stock', dotColor: 'var(--status-success)' },
@@ -23591,17 +23593,22 @@ if (typeof window !== 'undefined') {
                   { id: 'SERVICES', label: 'Services', dotColor: 'var(--status-info)' }
                 ].map(tab => React.createElement('button', {
                   key: tab.id,
+                  type: 'button',
                   className: `rcrm-subtab-item ${stockFilter === tab.id ? 'active' : ''}`,
                   style: {
-                    padding: '4px 10px',
-                    fontSize: '0.78rem'
+                    padding: '2px 8px',
+                    fontSize: '0.75rem',
+                    height: 24,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4
                   },
                   onClick: () => setStockFilter(tab.id)
                 },
                   tab.dotColor && React.createElement('span', {
                     style: {
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       borderRadius: '50%',
                       backgroundColor: tab.dotColor,
                       display: 'inline-block'
@@ -23612,11 +23619,11 @@ if (typeof window !== 'undefined') {
               )
             ),
 
-          // Count Info Right
-          React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
-            `Showing ${filteredProducts.length} of ${products.length} products`
-          )
-        ),
+            // Count Info Right
+            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' } },
+              `Showing ${filteredProducts.length} of ${products.length} products`
+            )
+          ),
 
         // Inventory Intelligence Overview Banner
         inventorySummary && React.createElement('div', {
@@ -23624,35 +23631,35 @@ if (typeof window !== 'undefined') {
           style: {
             background: 'linear-gradient(90deg, rgba(79, 70, 229, 0.05) 0%, rgba(245, 158, 11, 0.05) 100%)',
             border: '1px solid rgba(79, 70, 229, 0.2)',
-            borderRadius: 10,
-            padding: '10px 16px',
-            marginBottom: 12,
+            borderRadius: 8,
+            padding: '4px 10px',
+            marginBottom: 8,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: 12
+            gap: 8,
+            minHeight: 34
           }
         },
           // Left: Intelligence KPIs
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-              React.createElement('span', { style: { fontSize: '1.25rem' } }, '⚡'),
-              React.createElement('div', null,
-                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' } }, 'Inventory Intelligence & Demand Forecasting'),
-                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } },
-                  `${inventorySummary.totalProducts || products.length} catalog items tracked with machine learning demand models`
-                )
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+            React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 5 } },
+              React.createElement('span', { style: { fontSize: '1rem' } }, '⚡'),
+              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.80rem', color: 'var(--text-primary)' } }, 'Inventory Intelligence:'),
+              React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                `(${inventorySummary.totalProducts || products.length} tracked items)`
               )
             ),
-            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+            React.createElement('div', { style: { display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' } },
               React.createElement('span', {
                 className: 'badge',
                 style: {
                   background: (inventorySummary.outOfStockCount || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-secondary)',
                   color: (inventorySummary.outOfStockCount || 0) > 0 ? 'var(--status-error)' : 'var(--text-secondary)',
                   fontWeight: 700,
-                  padding: '4px 8px'
+                  padding: '2px 7px',
+                  fontSize: '0.72rem'
                 }
               }, `🚫 ${inventorySummary.outOfStockCount || 0} Out of Stock`),
               React.createElement('span', {
@@ -23661,7 +23668,8 @@ if (typeof window !== 'undefined') {
                   background: (inventorySummary.criticalCount || 0) > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
                   color: (inventorySummary.criticalCount || 0) > 0 ? 'var(--status-warning)' : 'var(--text-secondary)',
                   fontWeight: 700,
-                  padding: '4px 8px'
+                  padding: '2px 7px',
+                  fontSize: '0.72rem'
                 }
               }, `⚠️ ${inventorySummary.criticalCount || 0} Critical Risks (<7d)`),
               React.createElement('span', {
@@ -23670,27 +23678,28 @@ if (typeof window !== 'undefined') {
                   background: 'rgba(99, 102, 241, 0.12)',
                   color: '#6366F1',
                   fontWeight: 700,
-                  padding: '4px 8px'
+                  padding: '2px 7px',
+                  fontSize: '0.72rem'
                 }
               }, `📦 ${inventorySummary.totalReplenishmentUnits || 0} Units Suggested`)
             )
           ),
           // Right: Quick Actions
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' } },
             React.createElement('button', {
-              className: 'btn btn-sm btn-outline',
+              className: 'btn btn-xs btn-outline',
               disabled: syncingForecasts,
               onClick: handleResyncForecasts,
-              style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.78rem' },
+              style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
               title: 'Resynchronise demand models and recalculate replenishment suggestions'
             },
-              syncingForecasts ? React.createElement(RupeeCRMLoader, { size: 14 }) : '🔄',
+              syncingForecasts ? React.createElement(RupeeCRMLoader, { size: 12 }) : '🔄',
               syncingForecasts ? 'Resyncing...' : 'Resync Forecasts'
             ),
             React.createElement('button', {
-              className: 'btn btn-sm btn-gold',
+              className: 'btn btn-xs btn-gold',
               onClick: () => setInventoryTab('SMART_REORDER'),
-              style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: '0.78rem' },
+              style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
               title: 'Open full Smart Reorder Queue'
             }, '⚡ Open Reorder Queue')
           )
@@ -23698,20 +23707,20 @@ if (typeof window !== 'undefined') {
 
         // Product Table
         loading ? React.createElement(RupeeCRMLoader, { message: 'Loading products & stock inventory...', size: 56, style: { minHeight: 280 } }) :
-          React.createElement('div', { className: 'card firm-table-card' },
+          React.createElement('div', { className: 'card firm-table-card inventory-table' },
             React.createElement('div', { className: 'table-container', tabIndex: 0, onKeyDown: handleScrollKeyDown, style: { outline: 'none' } },
-              React.createElement('table', { style: { width: '100%', margin: 0 } },
+              React.createElement('table', { style: { width: '100%', margin: 0, tableLayout: 'auto' } },
                 React.createElement('thead', null, React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '18%' } }, 'Product Name'),
-                  React.createElement('th', { style: { width: '9%' } }, 'HSN/SAC'),
-                  React.createElement('th', { style: { width: '10%' } }, 'Category'),
-                  React.createElement('th', { style: { width: '9%', textAlign: 'right' } }, 'Cost Price'),
-                  React.createElement('th', { style: { width: '10%', textAlign: 'right' } }, 'Selling Price'),
-                  React.createElement('th', { style: { width: '8%', textAlign: 'center' } }, 'Margin %'),
-                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, 'Stock on Hand'),
-                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, '30D Velocity & Coverage'),
-                  React.createElement('th', { style: { width: '9%', textAlign: 'center' } }, 'Urgency'),
-                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, 'Actions')
+                  React.createElement('th', { style: { width: '21%', minWidth: 180 } }, 'Product Name'),
+                  React.createElement('th', { style: { width: '7%', minWidth: 65, textAlign: 'center' } }, 'HSN/SAC'),
+                  React.createElement('th', { style: { width: '9%', minWidth: 80 } }, 'Category'),
+                  React.createElement('th', { style: { width: '8%', minWidth: 70, textAlign: 'right' } }, 'Cost Price'),
+                  React.createElement('th', { style: { width: '9%', minWidth: 80, textAlign: 'right' } }, 'Selling Price'),
+                  React.createElement('th', { style: { width: '6%', minWidth: 55, textAlign: 'right' } }, 'Margin %'),
+                  React.createElement('th', { style: { width: '12%', minWidth: 115, textAlign: 'center' } }, 'Stock on Hand'),
+                  React.createElement('th', { style: { width: '10%', minWidth: 95, textAlign: 'center' } }, '30D Velocity & Coverage'),
+                  React.createElement('th', { style: { width: '8%', minWidth: 70, textAlign: 'center' } }, 'Urgency'),
+                  React.createElement('th', { style: { width: '10%', minWidth: 130, textAlign: 'center' } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredProducts.length === 0 ? React.createElement('tr', null,
@@ -23768,42 +23777,42 @@ if (typeof window !== 'undefined') {
 
                       return React.createElement('tr', { key: p.id },
                         // Column 1: Product Name & Barcode
-                        React.createElement('td', null,
-                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                            React.createElement('span', { style: { fontSize: '1.1rem' } }, isService ? '🛠️' : '📦'),
-                            React.createElement('div', null,
-                              React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, p.name),
-                              p.barcode && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } }, `🏷️ ${p.barcode}`)
+                        React.createElement('td', { style: { verticalAlign: 'middle' } },
+                          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                            React.createElement('span', { style: { fontSize: '1rem', flexShrink: 0 } }, isService ? '🛠️' : '📦'),
+                            React.createElement('div', { style: { minWidth: 0, overflow: 'hidden' } },
+                              React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.25, fontSize: '0.82rem' } }, p.name),
+                              p.barcode && React.createElement('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 1, fontFamily: 'monospace' } }, `🏷️ ${p.barcode}`)
                             )
                           )
                         ),
 
                         // Column 2: HSN/SAC
-                        React.createElement('td', null,
-                          p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                        React.createElement('td', { style: { textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' } },
+                          p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.72rem', padding: '1px 5px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
                         ),
 
                         // Column 3: Category
-                        React.createElement('td', null,
-                          p.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem', padding: '2px 8px' } }, p.category) : '—'
+                        React.createElement('td', { style: { verticalAlign: 'middle', whiteSpace: 'nowrap' } },
+                          p.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem', padding: '1px 6px' } }, p.category) : '—'
                         ),
 
                         // Column 4: Cost Price
-                        React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } },
+                        React.createElement('td', { style: { textAlign: 'right', verticalAlign: 'middle', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } },
                           p.costPrice != null ? BillsoftUtils.formatCurrency(p.costPrice) : '—'
                         ),
 
                         // Column 5: Selling Price
-                        React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' } },
+                        React.createElement('td', { style: { textAlign: 'right', verticalAlign: 'middle', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } },
                           BillsoftUtils.formatCurrency(p.price),
-                          p.gstPercentage ? React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 } }, `+${p.gstPercentage}% GST`) : null
+                          p.gstPercentage ? React.createElement('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 400 } }, `+${p.gstPercentage}% GST`) : null
                         ),
 
                         // Column 6: Margin %
-                        React.createElement('td', { style: { textAlign: 'center' } },
+                        React.createElement('td', { style: { textAlign: 'right', verticalAlign: 'middle', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' } },
                           marginPct != null ? React.createElement('span', {
                             style: {
-                              fontSize: '0.78rem',
+                              fontSize: '0.76rem',
                               fontWeight: 600,
                               color: Number(marginPct) >= 30 ? 'var(--status-success)' : (Number(marginPct) > 0 ? 'var(--text-secondary)' : 'var(--status-error)')
                             }
@@ -23811,23 +23820,23 @@ if (typeof window !== 'undefined') {
                         ),
 
                         // Column 7: Stock on Hand (Direct Inline Quick Steppers & One-Click Edit)
-                        React.createElement('td', { style: { textAlign: 'center' } },
+                        React.createElement('td', { style: { textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' } },
                           isService ? (
                             React.createElement('span', {
                               className: 'badge',
-                              style: { ...stockBadgeStyle, padding: '4px 10px', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem' }
+                              style: { ...stockBadgeStyle, padding: '3px 8px', borderRadius: 4, fontWeight: 600, fontSize: '0.75rem' }
                             }, 'Service')
                           ) : (
                             editingStockId === p.id ? (
                               React.createElement('div', {
-                                style: { display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--bg-card)', padding: '2px 4px', borderRadius: 6, border: '1px solid var(--primary)', boxShadow: '0 0 0 2px rgba(59,130,246,0.2)' },
+                                style: { display: 'inline-flex', alignItems: 'center', gap: 3, background: 'var(--bg-card)', padding: '1px 3px', borderRadius: 6, border: '1px solid var(--primary)', boxShadow: '0 0 0 2px rgba(59,130,246,0.2)' },
                                 onClick: e => e.stopPropagation()
                               },
                                 React.createElement('input', {
                                   type: 'number',
                                   step: 'any',
                                   className: 'input input-sm',
-                                  style: { width: 72, textAlign: 'center', padding: '2px 4px', height: 26, fontSize: '0.85rem', fontWeight: 700 },
+                                  style: { width: 64, textAlign: 'center', padding: '1px 3px', height: 24, fontSize: '0.80rem', fontWeight: 700 },
                                   value: inlineStockVal,
                                   autoFocus: true,
                                   onChange: e => setInlineStockVal(e.target.value),
@@ -23838,26 +23847,26 @@ if (typeof window !== 'undefined') {
                                 }),
                                 React.createElement('button', {
                                   className: 'btn btn-sm btn-primary',
-                                  style: { padding: '2px 6px', height: 26, fontSize: '0.75rem' },
+                                  style: { padding: '1px 5px', height: 24, fontSize: '0.72rem' },
                                   title: 'Save (Enter)',
                                   disabled: inlineSavingId === p.id,
                                   onClick: () => handleSaveInlineStock(p)
                                 }, inlineSavingId === p.id ? '…' : '✓'),
                                 React.createElement('button', {
                                   className: 'btn btn-sm btn-ghost',
-                                  style: { padding: '2px 6px', height: 26, fontSize: '0.75rem' },
+                                  style: { padding: '1px 5px', height: 24, fontSize: '0.72rem' },
                                   title: 'Cancel (Esc)',
                                   onClick: () => setEditingStockId(null)
                                 }, '✕')
                               )
                             ) : (
                               React.createElement('div', {
-                                style: { display: 'inline-flex', alignItems: 'center', gap: 3, background: 'var(--bg-secondary)', padding: '2px 4px', borderRadius: 8, border: '1px solid var(--border)' }
+                                style: { display: 'inline-flex', alignItems: 'center', gap: 2, background: 'var(--bg-secondary)', padding: '1px 3px', borderRadius: 6, border: '1px solid var(--border)' }
                               },
                                 // Quick -1 Stepper Button
                                 React.createElement('button', {
                                   className: 'btn btn-sm btn-ghost',
-                                  style: { padding: '0 6px', height: 22, minWidth: 22, fontSize: '0.85rem', fontWeight: 700, borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' },
+                                  style: { padding: '0 4px', height: 20, minWidth: 18, fontSize: '0.80rem', fontWeight: 700, borderRadius: 3, color: 'var(--text-secondary)', cursor: 'pointer' },
                                   title: 'Quick −1 unit',
                                   disabled: inlineSavingId === p.id || stock <= 0,
                                   onClick: () => handleQuickStep(p, -1)
@@ -23867,15 +23876,15 @@ if (typeof window !== 'undefined') {
                                   className: 'badge',
                                   style: {
                                     ...stockBadgeStyle,
-                                    padding: '3px 8px',
-                                    borderRadius: 6,
+                                    padding: '2px 6px',
+                                    borderRadius: 4,
                                     fontWeight: 700,
-                                    fontSize: '0.82rem',
+                                    fontSize: '0.76rem',
                                     cursor: 'pointer',
                                     userSelect: 'none',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: 4
+                                    gap: 3
                                   },
                                   title: 'Click to directly type exact quantity',
                                   onClick: () => {
@@ -23884,12 +23893,12 @@ if (typeof window !== 'undefined') {
                                   }
                                 },
                                   stockLabel,
-                                  React.createElement('span', { style: { fontSize: '0.65rem', opacity: 0.6 } }, '✏️')
+                                  React.createElement('span', { style: { fontSize: '0.62rem', opacity: 0.6 } }, '✏️')
                                 ),
                                 // Quick +1 Stepper Button
                                 React.createElement('button', {
                                   className: 'btn btn-sm btn-ghost',
-                                  style: { padding: '0 6px', height: 22, minWidth: 22, fontSize: '0.85rem', fontWeight: 700, borderRadius: 4, color: 'var(--text-secondary)', cursor: 'pointer' },
+                                  style: { padding: '0 4px', height: 20, minWidth: 18, fontSize: '0.80rem', fontWeight: 700, borderRadius: 3, color: 'var(--text-secondary)', cursor: 'pointer' },
                                   title: 'Quick +1 unit',
                                   disabled: inlineSavingId === p.id,
                                   onClick: () => handleQuickStep(p, 1)
@@ -23900,13 +23909,13 @@ if (typeof window !== 'undefined') {
                         ),
 
                         // Column 8: 30D Velocity & Coverage
-                        React.createElement('td', { style: { textAlign: 'center' } },
+                        React.createElement('td', { style: { textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' } },
                           isService ? React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—') : (
-                            itemIntel ? React.createElement('div', { style: { fontSize: '0.78rem' } },
+                            itemIntel ? React.createElement('div', { style: { fontSize: '0.74rem', lineHeight: 1.2 } },
                               React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
                                 `${sales30d || 0} ${p.unit || 'pcs'} / 30d`
                               ),
-                              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                              React.createElement('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 1 } },
                                 daysCov != null ? (daysCov >= 999 ? 'Coverage: 90+ days' : `Coverage: ${daysCov}d`) : (dailyVel ? `${dailyVel}/day` : 'No recent sales')
                               )
                             ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
@@ -23914,58 +23923,58 @@ if (typeof window !== 'undefined') {
                         ),
 
                         // Column 9: Urgency / Reorder
-                        React.createElement('td', { style: { textAlign: 'center' } },
-                          isService ? React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}` } }, urgLabel) : (
-                            itemIntel ? React.createElement('div', { style: { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
-                              React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem', padding: '2px 6px', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}`, fontWeight: 700 } }, urgLabel),
-                              recQty > 0 && React.createElement('span', { style: { fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' } }, `+${recQty} ${p.unit || 'pcs'}`),
-                              incomingQty > 0 && React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--status-success)', fontWeight: 600 } }, `(+${incomingQty} PO)`)
+                        React.createElement('td', { style: { textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' } },
+                          isService ? React.createElement('span', { className: 'badge', style: { fontSize: '0.70rem', padding: '1px 5px', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}` } }, urgLabel) : (
+                            itemIntel ? React.createElement('div', { style: { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 1 } },
+                              React.createElement('span', { className: 'badge', style: { fontSize: '0.70rem', padding: '1px 5px', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}`, fontWeight: 700 } }, urgLabel),
+                              recQty > 0 && React.createElement('span', { style: { fontSize: '0.68rem', fontWeight: 600, color: 'var(--primary)' } }, `+${recQty} ${p.unit || 'pcs'}`),
+                              incomingQty > 0 && React.createElement('span', { style: { fontSize: '0.66rem', color: 'var(--status-success)', fontWeight: 600 } }, `(+${incomingQty} PO)`)
                             ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
                           )
                         ),
 
                         // Column 10: Actions
-                        React.createElement('td', { style: { textAlign: 'center' } },
-                          React.createElement('div', { style: { display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' } },
+                        React.createElement('td', { style: { textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' } },
+                          React.createElement('div', { style: { display: 'inline-flex', gap: 1, justifyContent: 'center', alignItems: 'center', whiteSpace: 'nowrap' } },
                             // Demand Forecast Insights Modal button
                             !isService && React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'View Demand Forecast & Inventory Intelligence',
-                              style: { color: 'var(--primary)', padding: '2px 4px' },
+                              style: { color: 'var(--primary)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               onClick: () => setSelectedDetailProdId(p.id)
                             }, '📊'),
                             // Quick Reorder PO button
                             !isService && React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: recQty > 0 ? `Create PO for ${recQty} ${p.unit || 'pcs'}` : 'Create Purchase Order for this item',
-                              style: { color: recQty > 0 ? 'var(--accent-gold, #D4AF37)' : 'var(--text-secondary)', padding: '2px 4px' },
+                              style: { color: recQty > 0 ? 'var(--accent-gold, #D4AF37)' : 'var(--text-secondary)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               onClick: () => handleUseReorderRecommendation(p.id, recQty > 0 ? recQty : 10)
                             }, '🛒'),
                             // Quick Stock Adjust Modal button (for bulk Add / Deduct / Set with notes)
                             !isService && React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'Quick Adjust Modal (Bulk Add/Deduct with audit note)',
-                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
+                              style: { color: 'var(--text-secondary)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               onClick: () => openQuickAdjust(p)
                             }, '⚡'),
                             // Movement History button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'View Movement Ledger',
-                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
+                              style: { color: 'var(--text-secondary)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               onClick: () => openHistory(p)
                             }, '📜'),
                             // Edit button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'Edit Full Product Details',
-                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
+                              style: { color: 'var(--text-secondary)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               onClick: () => openEdit(p)
                             }, Icons.edit),
                             // Archive button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
-                              style: { color: 'var(--status-error)', padding: '2px 4px' },
+                              style: { color: 'var(--status-error)', padding: '1px 2px', height: 22, minWidth: 20, fontSize: '0.78rem' },
                               title: 'Archive Product',
                               onClick: () => handleDelete(p.id)
                             }, Icons.trash)
@@ -23976,7 +23985,7 @@ if (typeof window !== 'undefined') {
                 )
               )
             ),
-            React.createElement('div', { style: { padding: '2px 16px 8px 16px' } },
+            React.createElement('div', { style: { padding: '0 12px 6px 12px' } },
               React.createElement(PaginationControls, {
                 currentPage: safeProductPage,
                 totalPages: totalProductPages,

@@ -6492,6 +6492,37 @@ body.dark .rcrm-subtab-item.active {
   min-height: 32px;
 }
 
+/* High-Density Compact Inventory Table & Layout Optimization */
+.firm-table-card.inventory-table thead th,
+:root.minimal .firm-table-card.inventory-table thead th,
+:root.minimal-dark .firm-table-card.inventory-table thead th,
+:root.classic .firm-table-card.inventory-table thead th,
+:root.classic-dark .firm-table-card.inventory-table thead th,
+:root .firm-table-card.inventory-table thead th {
+  padding: 6px 10px !important;
+  font-size: 0.72rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em;
+  white-space: nowrap !important;
+  line-height: 1.2 !important;
+}
+
+.firm-table-card.inventory-table tbody td,
+:root.minimal .firm-table-card.inventory-table tbody td,
+:root.minimal-dark .firm-table-card.inventory-table tbody td,
+:root.classic .firm-table-card.inventory-table tbody td,
+:root.classic-dark .firm-table-card.inventory-table tbody td,
+:root .firm-table-card.inventory-table tbody td {
+  padding: 5px 10px !important;
+  font-size: 0.80rem !important;
+  vertical-align: middle !important;
+  line-height: 1.25 !important;
+}
+
+.inventory-search-filter-card select.select {
+  width: auto;
+}
+
 /* Compact Stock Stepper */
 .compact-stock-stepper {
   display: inline-flex;

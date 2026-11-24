@@ -9586,7 +9586,9 @@ th.sortable svg {
 .app-layout.focused-workspace .main-content {
   margin-left: 0 !important;
   max-width: 100vw !important;
+  max-width: 100% !important;
   width: 100% !important;
+  box-sizing: border-box !important;
   transition: margin-left 0.25s ease !important;
 }
 
@@ -9605,6 +9607,10 @@ th.sortable svg {
 }
 
 .app-layout.focused-workspace .invoice-form-bottom-actions {
+  left: 0 !important;
+}
+
+.app-layout.focused-workspace .bottom-status-bar {
   left: 0 !important;
 }
 
@@ -14229,6 +14235,102 @@ body.dark-mode .wa-target-btn.active {
   }
 }
 
+/* ============================================================
+   FOCUS MODE TOPBAR LAUNCHER & CONTROLS
+   ============================================================ */
+
+.topbar-focus-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  min-height: 36px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.80rem;
+  font-weight: 500;
+  line-height: 1;
+  transition: all 0.18s ease;
+  user-select: none;
+  white-space: nowrap;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.topbar-focus-button:hover {
+  background: var(--bg-hover, #EFF4EE);
+  border-color: var(--border-light, #EAF0E9);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(23, 32, 27, 0.04);
+}
+
+.topbar-focus-button:active {
+  transform: scale(0.97);
+}
+
+.topbar-focus-button svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  opacity: 0.85;
+  flex-shrink: 0;
+  transition: opacity 0.18s ease, stroke 0.18s ease;
+}
+
+.topbar-focus-button:hover svg {
+  opacity: 1;
+  stroke: var(--primary);
+}
+
+.topbar-focus-button.active {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+:root.dark-1 .topbar-focus-button,
+:root[data-theme='dark']:not(.classic):not(.classic-dark) .topbar-focus-button {
+  background: transparent;
+  border-color: transparent;
+  color: #97A69E;
+}
+
+:root.dark-1 .topbar-focus-button:hover,
+:root[data-theme='dark']:not(.classic):not(.classic-dark) .topbar-focus-button:hover {
+  background: #1B2520;
+  border-color: #28362E;
+  color: var(--primary, #D4AF37);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+:root.dark-1 .topbar-focus-button:hover svg,
+:root[data-theme='dark']:not(.classic):not(.classic-dark) .topbar-focus-button:hover svg {
+  stroke: var(--primary, #D4AF37);
+}
+
+:root.dark-1 .topbar-focus-button.active,
+:root[data-theme='dark']:not(.classic):not(.classic-dark) .topbar-focus-button.active {
+  background: rgba(212, 175, 55, 0.15);
+  border-color: rgba(212, 175, 55, 0.3);
+  color: var(--primary, #D4AF37);
+}
+
+@media (max-width: 768px) {
+  .topbar-focus-button {
+    padding: 0 6px;
+  }
+
+  .topbar-focus-button .focus-btn-label {
+    display: none;
+  }
+}
+
 /* Casio Keypad Animation & Focus Highlights */
 .casio-btn:focus-visible {
   outline: 2px solid #6366f1;
@@ -15128,8 +15230,15 @@ body.dark-mode .wa-target-btn.active {
 }
 
 @keyframes modalScaleIn {
-  from { opacity: 0; transform: scale(0.96) translateY(8px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .forecast-drawer-header {

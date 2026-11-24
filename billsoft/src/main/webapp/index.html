@@ -1073,6 +1073,12 @@
         React.createElement('path', { d: 'M12 18h.01' }),
         React.createElement('path', { d: 'M8 18h.01' })
       ),
+      maximize: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3' })
+      ),
+      minimize: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('path', { d: 'M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M20 10h-6m0 0V4m0 6l7-7M4 10h6m0 0V4m0 6L3 3' })
+      ),
       edit: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
         React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
         React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })
@@ -6819,6 +6825,12 @@
 
       const activeTab = normalizeFirmTab(tab);
 
+      useEffect(() => {
+        window.dispatchEvent(new CustomEvent('billsoft:active-subtab', {
+          detail: { page: 'firm', tab: activeTab }
+        }));
+      }, [activeTab]);
+
       const firmNavTabs = [
         { id: 'inventory', label: 'Inventory', icon: Icons.package },
         { id: 'products', label: 'Products', icon: React.createElement('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 17, height: 17, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }, React.createElement('path', { d: 'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z' }), React.createElement('line', { x1: 7, y1: 7, x2: 7.01, y2: 7 })) },
@@ -12510,6 +12522,69 @@
     }
     if (typeof module !== 'undefined' && module.exports) {
       module.exports = RupeeFeedbackService;
+    }
+
+    // ─── RUPEECRM APPLICATION-WIDE FOCUS MODE POLICY ───
+    const FocusModePolicy = {
+      PREFERENCE_KEY: 'rupeecrm_focus_mode_preference',
+      UNSUPPORTED_PAGES: ['dashboard', 'inbox', 'settings'],
+      SUPPORTED_PAGES: [
+        'invoices',
+        'firm',
+        'statements',
+        'ledgers',
+        'orders',
+        'purchases',
+        'hr',
+        'employees',
+        'planner',
+        'letters',
+        'letter-pad',
+        'paperwork'
+      ],
+      UNSUPPORTED_FIRM_TABS: ['profile', 'business', 'details', 'settings'],
+      isSupported(page, firmTab) {
+        if (!page) return false;
+        const normPage = String(page).toLowerCase().trim();
+        if (this.UNSUPPORTED_PAGES.indexOf(normPage) !== -1) {
+          return false;
+        }
+        if (normPage === 'firm') {
+          if (!firmTab) return true;
+          const normTab = String(firmTab).toLowerCase().trim();
+          if (this.UNSUPPORTED_FIRM_TABS.indexOf(normTab) !== -1) {
+            return false;
+          }
+          return true;
+        }
+        return this.SUPPORTED_PAGES.indexOf(normPage) !== -1;
+      },
+      getSavedPreference() {
+        try {
+          if (typeof localStorage !== 'undefined') {
+            return localStorage.getItem(this.PREFERENCE_KEY) === 'true';
+          }
+        } catch (e) {
+          // Ignore
+        }
+        return false;
+      },
+      setSavedPreference(enabled) {
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(this.PREFERENCE_KEY, String(Boolean(enabled)));
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.FocusModePolicy = FocusModePolicy;
+    }
+    if (typeof module !== 'undefined' && module.exports) {
+      module.exports.FocusModePolicy = FocusModePolicy;
     }
 
     // ─── QUICK ADD AUDIO FEEDBACK ENGINE (DELEGATES TO CENTRALIZED FEEDBACK SERVICE) ───
@@ -40527,6 +40602,37 @@ function PartyDetailModal({
       const [pendingNav, setPendingNav] = useState(null);
       const [showUnsavedModal, setShowUnsavedModal] = useState(false);
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
+      const [isFocusModePreferred, setIsFocusModePreferred] = useState(() => {
+        return typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : (localStorage.getItem('rupeecrm_focus_mode_preference') === 'true');
+      });
+
+      useEffect(() => {
+        const handleFocusToggle = (e) => {
+          if (e && e.detail && typeof e.detail.active === 'boolean') {
+            setIsFocusModePreferred(e.detail.active);
+          } else {
+            setIsFocusModePreferred(typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : (localStorage.getItem('rupeecrm_focus_mode_preference') === 'true'));
+          }
+        };
+        window.addEventListener('billsoft:focus-mode-toggle', handleFocusToggle);
+        return () => window.removeEventListener('billsoft:focus-mode-toggle', handleFocusToggle);
+      }, []);
+
+      const handleToggleFocusModePreference = (e) => {
+        const next = e.target.checked;
+        setIsFocusModePreferred(next);
+        if (typeof FocusModePolicy !== 'undefined') {
+          FocusModePolicy.setSavedPreference(next);
+        } else {
+          localStorage.setItem('rupeecrm_focus_mode_preference', String(next));
+        }
+        window.dispatchEvent(new CustomEvent('billsoft:focus-mode-toggle', {
+          detail: { active: next }
+        }));
+        if (typeof RupeeFeedbackService !== 'undefined') {
+          RupeeFeedbackService.playSound('toggle');
+        }
+      };
 
       // Sounds & Haptics state (Settings -> Appearance -> Sounds & Haptics)
       const [soundEnabled, setSoundEnabled] = useState(() => RupeeFeedbackService.isSoundEnabled());
@@ -41510,6 +41616,36 @@ function PartyDetailModal({
               onClick: handlePreviewFeedback,
               style: { display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontSize: '0.82rem' }
             }, '🔔 Preview Feedback')
+          )
+        ),
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // SECTION 9: APPLICATION-WIDE FOCUS MODE TOGGLE CARD
+        // ══════════════════════════════════════════════════════════════════════════
+        React.createElement('div', { className: 'card', id: 'settings-focus-mode', style: { padding: '24px 28px' } },
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+            React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
+                React.createElement('span', null, '🖥️ Fullscreen / Focus Mode')
+              ),
+              React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
+                'Automatically expand your working workspace across data-heavy screens (Invoices, Inventory, Products, Orders, Ledgers, HR, and Planner) by collapsing the side navigation bar.'
+              ),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-muted, #888)', marginTop: 4 } },
+                'Keyboard shortcut: Alt+F (Option+F on Mac) or F10 to quickly toggle. Use Escape or topbar button to exit.'
+              )
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: 'switch' },
+                React.createElement('input', {
+                  type: 'checkbox',
+                  id: 'settings-focus-mode-toggle',
+                  checked: isFocusModePreferred,
+                  onChange: handleToggleFocusModePreference
+                }),
+                React.createElement('span', { className: 'slider' })
+              )
+            )
           )
         )
       );
@@ -51228,6 +51364,8 @@ function PartyDetailModal({
 
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
       const [isFocusedWorkspace, setIsFocusedWorkspace] = useState(false);
+      const [isManualFocusMode, setIsManualFocusMode] = useState(() => FocusModePolicy.getSavedPreference());
+      const [firmSubTab, setFirmSubTab] = useState('inventory');
 
       useEffect(() => {
         const handler = (e) => {
@@ -51249,7 +51387,89 @@ function PartyDetailModal({
         return () => window.removeEventListener('billsoft:focused-workspace', handler);
       }, []);
 
-      const isFocusedActive = (page === 'invoices' && isFocusedWorkspace);
+      useEffect(() => {
+        const handler = (e) => {
+          if (e && e.detail && typeof e.detail.active === 'boolean') {
+            setIsManualFocusMode(e.detail.active);
+          } else {
+            setIsManualFocusMode(FocusModePolicy.getSavedPreference());
+          }
+        };
+        window.addEventListener('billsoft:focus-mode-toggle', handler);
+        return () => window.removeEventListener('billsoft:focus-mode-toggle', handler);
+      }, []);
+
+      useEffect(() => {
+        const handler = (e) => {
+          if (e && e.detail && e.detail.tab) {
+            setFirmSubTab(e.detail.tab);
+          }
+        };
+        window.addEventListener('billsoft:active-subtab', handler);
+        return () => window.removeEventListener('billsoft:active-subtab', handler);
+      }, []);
+
+      const handleToggleManualFocusMode = useCallback((explicitValue) => {
+        setIsManualFocusMode(prev => {
+          const nextVal = (typeof explicitValue === 'boolean') ? explicitValue : !prev;
+          FocusModePolicy.setSavedPreference(nextVal);
+          window.dispatchEvent(new CustomEvent('billsoft:focus-mode-toggle', {
+            detail: { active: nextVal }
+          }));
+          if (typeof RupeeFeedbackService !== 'undefined') {
+            RupeeFeedbackService.playSound('toggle');
+          }
+          return nextVal;
+        });
+      }, []);
+
+      const isSupportedWorkspace = FocusModePolicy.isSupported(page, firmSubTab);
+      const isInvoiceAutoFocused = (page === 'invoices' && isFocusedWorkspace);
+      const isEffectiveFocusMode = isInvoiceAutoFocused || (isManualFocusMode && isSupportedWorkspace);
+      // Maintained for backward compatibility: const isFocusedActive = (page === 'invoices' && isFocusedWorkspace);
+      const isFocusedActive = isEffectiveFocusMode;
+
+      useEffect(() => {
+        const handleKeyDown = (e) => {
+          const isModalOpen = Boolean(document.querySelector('.modal-backdrop, .modal-overlay, .modal.show, .swal2-container, .dropdown-menu.show, #rupeecrm-global-search'));
+
+          if (e.key === 'Escape') {
+            if (isModalOpen) return;
+            const activeEl = document.activeElement;
+            const tag = activeEl && activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl && activeEl.isContentEditable)) return;
+            if (activeEl && typeof activeEl.closest === 'function' && activeEl.closest('.compact-grid-cell, .compact-grid-table, .sheet-cell')) return;
+
+            if (isManualFocusMode) {
+              e.preventDefault();
+              handleToggleManualFocusMode(false);
+            }
+            return;
+          }
+
+          const isAltF = (e.altKey && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF'));
+          const isF10 = (e.key === 'F10');
+
+          if (isAltF || isF10) {
+            const activeEl = document.activeElement;
+            const tag = activeEl && activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
+            if (tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl && activeEl.isContentEditable)) {
+              return;
+            }
+            if (activeEl && typeof activeEl.closest === 'function' && activeEl.closest('.compact-grid-cell, .compact-grid-table, .sheet-cell')) {
+              return;
+            }
+
+            if (isSupportedWorkspace || isEffectiveFocusMode) {
+              e.preventDefault();
+              handleToggleManualFocusMode();
+            }
+          }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+      }, [isManualFocusMode, isSupportedWorkspace, isEffectiveFocusMode, handleToggleManualFocusMode]);
 
       if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', licenseInfo: licenseInfo, onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
       if (!appLoaded) return React.createElement(RupeeCRMLoader, { message: 'Initializing RupeeCRM...', size: 72, fullScreen: true });
@@ -51364,6 +51584,18 @@ function PartyDetailModal({
             },
               Icons.calculator,
               React.createElement('span', { className: 'calc-btn-label' }, 'Calculator')
+            ),
+            // Standalone Application-Wide Focus Mode Toggle Button
+            isSupportedWorkspace && React.createElement('button', {
+              type: 'button',
+              id: 'topbar-focus-mode-btn',
+              className: `topbar-focus-button${isEffectiveFocusMode ? ' active' : ''}`,
+              onClick: () => handleToggleManualFocusMode(),
+              title: isEffectiveFocusMode ? 'Exit Focus Mode (Alt+F / ⌥F)' : 'Expand Workspace / Focus Mode (Alt+F / ⌥F)',
+              'aria-label': isEffectiveFocusMode ? 'Exit Focus Mode' : 'Expand Workspace / Focus Mode'
+            },
+              isEffectiveFocusMode ? Icons.minimize : Icons.maximize,
+              React.createElement('span', { className: 'focus-btn-label' }, isEffectiveFocusMode ? 'Exit Focus' : 'Focus')
             ),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
               // ── CLUSTER 1: Status Capsule (License Tier + Network Telemetry) ──

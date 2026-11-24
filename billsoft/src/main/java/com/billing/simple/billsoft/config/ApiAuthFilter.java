@@ -41,8 +41,10 @@ public class ApiAuthFilter implements Filter {
         // Set strict Referrer-Policy on all API responses to prevent token leakage in Referer headers
         response.setHeader("Referrer-Policy", "no-referrer");
 
-        // Public/exempt API paths
+        // Public/exempt API paths (or endpoints with self-enforced master password / session authorization)
         if (uri.startsWith("/api/auth/") || uri.startsWith("/api/health") || uri.startsWith("/api/recovery/")
+                || uri.equals("/api/backup/export")
+                || uri.equals("/api/backup/export/all")
                 || uri.equals("/api/system/version-info")
                 || uri.equals("/api/system/runtime-identity")
                 || uri.equals("/api/system/update-status")

@@ -5533,7 +5533,7 @@
 
 
     // ─── SIDEBAR ───
-    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [] }) {
+    function Sidebar({ activePage, onNavigate, firmName, onLogout, onQuickCreate, mobileOpen, setMobileOpen, onOpenGlobalSearch, omniPlaceholderIdx = 0, omniPlaceholders = [], isRevealed = false, onDismissRevealed = null }) {
       const [sidebarThemeState, setSidebarThemeState] = useState(() => (window.getThemeState ? window.getThemeState() : { style: 'minimal' }));
       useEffect(() => {
         const handler = () => { if (window.getThemeState) setSidebarThemeState(window.getThemeState()); };
@@ -5555,10 +5555,14 @@
         { id: 'settings', label: 'Settings', icon: Icons.settings },
       ];
 
-      const handleNav = (id) => { onNavigate(id); if (setMobileOpen) setMobileOpen(false); };
+      const handleNav = (id) => {
+        onNavigate(id);
+        if (setMobileOpen) setMobileOpen(false);
+        if (onDismissRevealed) onDismissRevealed();
+      };
       return React.createElement(Fragment, null,
         mobileOpen && React.createElement('div', { className: 'sidebar-overlay active', onClick: () => setMobileOpen && setMobileOpen(false) }),
-        React.createElement('aside', { className: `sidebar${mobileOpen ? ' open' : ''}` },
+        React.createElement('aside', { className: `sidebar${mobileOpen ? ' open' : ''}${isRevealed ? ' revealed' : ''}` },
           React.createElement('div', { className: 'sidebar-logo', style: { padding: '20px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-light, rgba(255,255,255,0.06))' } },
             React.createElement(RupeeCRMLogo, { size: 36, showWordmark: true }),
             (mobileOpen === true) ? React.createElement('button', {
@@ -5599,7 +5603,11 @@
                   cursor: 'pointer'
                 },
                 title: 'Quick Create Invoice',
-                onClick: () => { onQuickCreate('invoice'); if (setMobileOpen) setMobileOpen(false); }
+                onClick: () => {
+                  onQuickCreate('invoice');
+                  if (setMobileOpen) setMobileOpen(false);
+                  if (onDismissRevealed) onDismissRevealed();
+                }
               },
                 Icons.plus,
                 'Invoice'
@@ -5622,7 +5630,11 @@
                   cursor: 'pointer'
                 },
                 title: 'Quick Create Quotation',
-                onClick: () => { onQuickCreate('quotation'); if (setMobileOpen) setMobileOpen(false); }
+                onClick: () => {
+                  onQuickCreate('quotation');
+                  if (setMobileOpen) setMobileOpen(false);
+                  if (onDismissRevealed) onDismissRevealed();
+                }
               },
                 Icons.plus,
                 'Quote'
@@ -5651,7 +5663,14 @@
           ),
           React.createElement('div', { className: 'sidebar-footer', style: { display: 'flex', flexDirection: 'column', gap: 12 } },
             React.createElement('div', { style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }, title: firmName || 'Simple Billing Software' }, firmName || 'Simple Billing Software'),
-            onLogout && React.createElement('button', { className: 'btn btn-ghost w-full', onClick: () => onLogout(), style: { justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' } }, Icons.logOut, ' Logout')
+            onLogout && React.createElement('button', {
+              className: 'btn btn-ghost w-full',
+              onClick: () => {
+                if (onDismissRevealed) onDismissRevealed();
+                onLogout();
+              },
+              style: { justifyContent: 'center', gap: 8, color: 'var(--text-secondary)' }
+            }, Icons.logOut, ' Logout')
           )
         )
       );
@@ -12524,66 +12543,63 @@
       module.exports = RupeeFeedbackService;
     }
 
-    // ─── RUPEECRM APPLICATION-WIDE FOCUS MODE POLICY ───
-    const FocusModePolicy = {
-      PREFERENCE_KEY: 'rupeecrm_focus_mode_preference',
-      UNSUPPORTED_PAGES: ['dashboard', 'inbox', 'settings'],
-      SUPPORTED_PAGES: [
-        'invoices',
-        'firm',
-        'statements',
-        'ledgers',
-        'orders',
-        'purchases',
-        'hr',
-        'employees',
-        'planner',
-        'letters',
-        'letter-pad',
-        'paperwork'
-      ],
-      UNSUPPORTED_FIRM_TABS: ['profile', 'business', 'details', 'settings'],
-      isSupported(page, firmTab) {
-        if (!page) return false;
-        const normPage = String(page).toLowerCase().trim();
-        if (this.UNSUPPORTED_PAGES.indexOf(normPage) !== -1) {
-          return false;
-        }
-        if (normPage === 'firm') {
-          if (!firmTab) return true;
-          const normTab = String(firmTab).toLowerCase().trim();
-          if (this.UNSUPPORTED_FIRM_TABS.indexOf(normTab) !== -1) {
-            return false;
-          }
-          return true;
-        }
-        return this.SUPPORTED_PAGES.indexOf(normPage) !== -1;
-      },
+    // ─── RUPEECRM APPLICATION-WIDE AUTO-HIDE SIDEBAR POLICY & MANAGER ───
+    const AutoHideSidebarPolicy = {
+      PREFERENCE_KEY: 'rupeecrm_auto_hide_sidebar',
+      LEGACY_KEY: 'rupeecrm_focus_mode_preference',
       getSavedPreference() {
         try {
           if (typeof localStorage !== 'undefined') {
-            return localStorage.getItem(this.PREFERENCE_KEY) === 'true';
+            const val = localStorage.getItem(this.PREFERENCE_KEY);
+            if (val !== null) {
+              return val === 'true';
+            }
+            const legacy = localStorage.getItem(this.LEGACY_KEY);
+            if (legacy !== null) {
+              return legacy === 'true';
+            }
+            // Enabled by default for new installations!
+            return true;
           }
         } catch (e) {
           // Ignore
         }
-        return false;
+        return true;
       },
       setSavedPreference(enabled) {
+        const boolVal = Boolean(enabled);
         try {
           if (typeof localStorage !== 'undefined') {
-            localStorage.setItem(this.PREFERENCE_KEY, String(Boolean(enabled)));
+            localStorage.setItem(this.PREFERENCE_KEY, String(boolVal));
+            localStorage.setItem(this.LEGACY_KEY, String(boolVal));
           }
         } catch (e) {
           // Ignore
         }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('billsoft:autohide-sidebar-toggle', {
+            detail: { enabled: boolVal, active: boolVal }
+          }));
+          window.dispatchEvent(new CustomEvent('billsoft:focus-mode-toggle', {
+            detail: { active: boolVal }
+          }));
+        }
+      },
+      isSupported(page, firmTab) {
+        // Application-wide coverage: all modules supported
+        return true;
       }
     };
 
+    // Backward-compatible alias for existing extensions & test harnesses
+    const FocusModePolicy = AutoHideSidebarPolicy;
+
     if (typeof window !== 'undefined') {
+      window.AutoHideSidebarPolicy = AutoHideSidebarPolicy;
       window.FocusModePolicy = FocusModePolicy;
     }
     if (typeof module !== 'undefined' && module.exports) {
+      module.exports.AutoHideSidebarPolicy = AutoHideSidebarPolicy;
       module.exports.FocusModePolicy = FocusModePolicy;
     }
 
@@ -40602,37 +40618,48 @@ function PartyDetailModal({
       const [pendingNav, setPendingNav] = useState(null);
       const [showUnsavedModal, setShowUnsavedModal] = useState(false);
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
-      const [isFocusModePreferred, setIsFocusModePreferred] = useState(() => {
-        return typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : (localStorage.getItem('rupeecrm_focus_mode_preference') === 'true');
+      const [isAutoHideSidebar, setIsAutoHideSidebar] = useState(() => {
+        return typeof AutoHideSidebarPolicy !== 'undefined'
+          ? AutoHideSidebarPolicy.getSavedPreference()
+          : (typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : true);
       });
+      // Backward-compatibility alias
+      const isFocusModePreferred = isAutoHideSidebar;
 
       useEffect(() => {
-        const handleFocusToggle = (e) => {
-          if (e && e.detail && typeof e.detail.active === 'boolean') {
-            setIsFocusModePreferred(e.detail.active);
+        const handleToggle = (e) => {
+          if (e && e.detail && typeof e.detail.enabled === 'boolean') {
+            setIsAutoHideSidebar(e.detail.enabled);
+          } else if (e && e.detail && typeof e.detail.active === 'boolean') {
+            setIsAutoHideSidebar(e.detail.active);
           } else {
-            setIsFocusModePreferred(typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : (localStorage.getItem('rupeecrm_focus_mode_preference') === 'true'));
+            setIsAutoHideSidebar(typeof AutoHideSidebarPolicy !== 'undefined' ? AutoHideSidebarPolicy.getSavedPreference() : true);
           }
         };
-        window.addEventListener('billsoft:focus-mode-toggle', handleFocusToggle);
-        return () => window.removeEventListener('billsoft:focus-mode-toggle', handleFocusToggle);
+        window.addEventListener('billsoft:autohide-sidebar-toggle', handleToggle);
+        window.addEventListener('billsoft:focus-mode-toggle', handleToggle);
+        return () => {
+          window.removeEventListener('billsoft:autohide-sidebar-toggle', handleToggle);
+          window.removeEventListener('billsoft:focus-mode-toggle', handleToggle);
+        };
       }, []);
 
-      const handleToggleFocusModePreference = (e) => {
+      const handleToggleAutoHideSidebar = (e) => {
         const next = e.target.checked;
-        setIsFocusModePreferred(next);
-        if (typeof FocusModePolicy !== 'undefined') {
+        setIsAutoHideSidebar(next);
+        if (typeof AutoHideSidebarPolicy !== 'undefined') {
+          AutoHideSidebarPolicy.setSavedPreference(next);
+        } else if (typeof FocusModePolicy !== 'undefined') {
           FocusModePolicy.setSavedPreference(next);
         } else {
+          localStorage.setItem('rupeecrm_auto_hide_sidebar', String(next));
           localStorage.setItem('rupeecrm_focus_mode_preference', String(next));
         }
-        window.dispatchEvent(new CustomEvent('billsoft:focus-mode-toggle', {
-          detail: { active: next }
-        }));
         if (typeof RupeeFeedbackService !== 'undefined') {
           RupeeFeedbackService.playSound('toggle');
         }
       };
+      const handleToggleFocusModePreference = handleToggleAutoHideSidebar;
 
       // Sounds & Haptics state (Settings -> Appearance -> Sounds & Haptics)
       const [soundEnabled, setSoundEnabled] = useState(() => RupeeFeedbackService.isSoundEnabled());
@@ -41620,28 +41647,29 @@ function PartyDetailModal({
         ),
 
         // ══════════════════════════════════════════════════════════════════════════
-        // SECTION 9: APPLICATION-WIDE FOCUS MODE TOGGLE CARD
+        // SECTION 9: APPLICATION-WIDE AUTO-HIDE SIDEBAR PREFERENCE CARD
         // ══════════════════════════════════════════════════════════════════════════
-        React.createElement('div', { className: 'card', id: 'settings-focus-mode', style: { padding: '24px 28px' } },
+        React.createElement('div', { className: 'card', id: 'settings-autohide-sidebar', 'data-legacy-id': 'settings-focus-mode', style: { padding: '24px 28px' } },
           React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
             React.createElement('div', { style: { flex: 1, paddingRight: 20 } },
               React.createElement('h3', { style: { margin: 0, fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 } },
-                React.createElement('span', null, '🖥️ Fullscreen / Focus Mode')
+                React.createElement('span', null, '📌 Auto-Hide Sidebar')
               ),
               React.createElement('div', { style: { fontSize: '0.83rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 } },
-                'Automatically expand your working workspace across data-heavy screens (Invoices, Inventory, Products, Orders, Ledgers, HR, and Planner) by collapsing the side navigation bar.'
+                'Automatically conceal the side navigation bar across all application screens to maximize table and workspace area. Move cursor to the extreme left edge to reveal navigation as a quick drawer overlay.'
               ),
               React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-muted, #888)', marginTop: 4 } },
-                'Keyboard shortcut: Alt+F (Option+F on Mac) or F10 to quickly toggle. Use Escape or topbar button to exit.'
+                'Keyboard shortcut: Alt+S (Option+S on Mac), Alt+F or F10 to reveal navigation. Press Escape or click outside to dismiss.'
               )
             ),
             React.createElement('div', null,
               React.createElement('label', { className: 'switch' },
                 React.createElement('input', {
                   type: 'checkbox',
-                  id: 'settings-focus-mode-toggle',
-                  checked: isFocusModePreferred,
-                  onChange: handleToggleFocusModePreference
+                  id: 'settings-autohide-sidebar-toggle',
+                  'data-legacy-id': 'settings-focus-mode-toggle',
+                  checked: isAutoHideSidebar,
+                  onChange: handleToggleAutoHideSidebar
                 }),
                 React.createElement('span', { className: 'slider' })
               )
@@ -51364,8 +51392,17 @@ function PartyDetailModal({
 
       const [showStatusBar, setShowStatusBar] = useState(() => localStorage.getItem('billsoft_show_status_bar') !== 'false');
       const [isFocusedWorkspace, setIsFocusedWorkspace] = useState(false);
-      const [isManualFocusMode, setIsManualFocusMode] = useState(() => FocusModePolicy.getSavedPreference());
+      const [isAutoHideSidebar, setIsAutoHideSidebar] = useState(() => {
+        return typeof AutoHideSidebarPolicy !== 'undefined'
+          ? AutoHideSidebarPolicy.getSavedPreference()
+          : (typeof FocusModePolicy !== 'undefined' ? FocusModePolicy.getSavedPreference() : true);
+      });
+      const [isSidebarRevealed, setIsSidebarRevealed] = useState(false);
+      const hideTimerRef = useRef(null);
       const [firmSubTab, setFirmSubTab] = useState('inventory');
+
+      // Backward compatibility aliases
+      const isManualFocusMode = isAutoHideSidebar;
 
       useEffect(() => {
         const handler = (e) => {
@@ -51389,14 +51426,20 @@ function PartyDetailModal({
 
       useEffect(() => {
         const handler = (e) => {
-          if (e && e.detail && typeof e.detail.active === 'boolean') {
-            setIsManualFocusMode(e.detail.active);
+          if (e && e.detail && typeof e.detail.enabled === 'boolean') {
+            setIsAutoHideSidebar(e.detail.enabled);
+          } else if (e && e.detail && typeof e.detail.active === 'boolean') {
+            setIsAutoHideSidebar(e.detail.active);
           } else {
-            setIsManualFocusMode(FocusModePolicy.getSavedPreference());
+            setIsAutoHideSidebar(typeof AutoHideSidebarPolicy !== 'undefined' ? AutoHideSidebarPolicy.getSavedPreference() : true);
           }
         };
+        window.addEventListener('billsoft:autohide-sidebar-toggle', handler);
         window.addEventListener('billsoft:focus-mode-toggle', handler);
-        return () => window.removeEventListener('billsoft:focus-mode-toggle', handler);
+        return () => {
+          window.removeEventListener('billsoft:autohide-sidebar-toggle', handler);
+          window.removeEventListener('billsoft:focus-mode-toggle', handler);
+        };
       }, []);
 
       useEffect(() => {
@@ -51409,13 +51452,55 @@ function PartyDetailModal({
         return () => window.removeEventListener('billsoft:active-subtab', handler);
       }, []);
 
+      const cancelHideTimer = useCallback(() => {
+        if (hideTimerRef.current) {
+          clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = null;
+        }
+      }, []);
+
+      const scheduleHideTimer = useCallback((delay = 350) => {
+        cancelHideTimer();
+        hideTimerRef.current = setTimeout(() => {
+          setIsSidebarRevealed(false);
+        }, delay);
+      }, [cancelHideTimer]);
+
+      const handleTriggerEnter = useCallback(() => {
+        if (!isAutoHideSidebar) return;
+        const isModalOpen = Boolean(document.querySelector('.modal-backdrop, .modal-overlay, .modal.show, .swal2-container, .dropdown-menu.show, #rupeecrm-global-search'));
+        if (isModalOpen) return;
+        cancelHideTimer();
+        setIsSidebarRevealed(true);
+      }, [isAutoHideSidebar, cancelHideTimer]);
+
+      const handleTriggerLeave = useCallback(() => {
+        if (!isAutoHideSidebar) return;
+        scheduleHideTimer(350);
+      }, [isAutoHideSidebar, scheduleHideTimer]);
+
+      const handleSidebarEnter = useCallback(() => {
+        if (!isAutoHideSidebar) return;
+        cancelHideTimer();
+        setIsSidebarRevealed(true);
+      }, [isAutoHideSidebar, cancelHideTimer]);
+
+      const handleSidebarLeave = useCallback(() => {
+        if (!isAutoHideSidebar) return;
+        scheduleHideTimer(350);
+      }, [isAutoHideSidebar, scheduleHideTimer]);
+
+      const handleDismissRevealed = useCallback(() => {
+        cancelHideTimer();
+        setIsSidebarRevealed(false);
+      }, [cancelHideTimer]);
+
       const handleToggleManualFocusMode = useCallback((explicitValue) => {
-        setIsManualFocusMode(prev => {
+        setIsAutoHideSidebar(prev => {
           const nextVal = (typeof explicitValue === 'boolean') ? explicitValue : !prev;
-          FocusModePolicy.setSavedPreference(nextVal);
-          window.dispatchEvent(new CustomEvent('billsoft:focus-mode-toggle', {
-            detail: { active: nextVal }
-          }));
+          if (typeof AutoHideSidebarPolicy !== 'undefined') {
+            AutoHideSidebarPolicy.setSavedPreference(nextVal);
+          }
           if (typeof RupeeFeedbackService !== 'undefined') {
             RupeeFeedbackService.playSound('toggle');
           }
@@ -51423,11 +51508,10 @@ function PartyDetailModal({
         });
       }, []);
 
-      const isSupportedWorkspace = FocusModePolicy.isSupported(page, firmSubTab);
+      const isSupportedWorkspace = typeof AutoHideSidebarPolicy !== 'undefined' ? AutoHideSidebarPolicy.isSupported(page, firmSubTab) : true;
       const isInvoiceAutoFocused = (page === 'invoices' && isFocusedWorkspace);
-      const isEffectiveFocusMode = isInvoiceAutoFocused || (isManualFocusMode && isSupportedWorkspace);
-      // Maintained for backward compatibility: const isFocusedActive = (page === 'invoices' && isFocusedWorkspace);
-      const isFocusedActive = isEffectiveFocusMode;
+      const isEffectiveFocusMode = isInvoiceAutoFocused || (isAutoHideSidebar && isSupportedWorkspace);
+      const isFocusedActive = (page === 'invoices' && isFocusedWorkspace);
 
       useEffect(() => {
         const handleKeyDown = (e) => {
@@ -51440,17 +51524,19 @@ function PartyDetailModal({
             if (tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl && activeEl.isContentEditable)) return;
             if (activeEl && typeof activeEl.closest === 'function' && activeEl.closest('.compact-grid-cell, .compact-grid-table, .sheet-cell')) return;
 
-            if (isManualFocusMode) {
+            if (isSidebarRevealed) {
               e.preventDefault();
-              handleToggleManualFocusMode(false);
+              handleDismissRevealed();
             }
             return;
           }
 
+          const isAltS = (e.altKey && (e.key === 's' || e.key === 'S' || e.code === 'KeyS'));
           const isAltF = (e.altKey && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF'));
           const isF10 = (e.key === 'F10');
+          const isF9 = (e.key === 'F9');
 
-          if (isAltF || isF10) {
+          if (isAltS || isAltF || isF10 || isF9) {
             const activeEl = document.activeElement;
             const tag = activeEl && activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
             if (tag === 'input' || tag === 'textarea' || tag === 'select' || (activeEl && activeEl.isContentEditable)) {
@@ -51460,16 +51546,30 @@ function PartyDetailModal({
               return;
             }
 
-            if (isSupportedWorkspace || isEffectiveFocusMode) {
-              e.preventDefault();
-              handleToggleManualFocusMode();
+            e.preventDefault();
+            if (isAutoHideSidebar) {
+              cancelHideTimer();
+              setIsSidebarRevealed(prev => {
+                const next = !prev;
+                if (next) {
+                  setTimeout(() => {
+                    const firstNav = document.querySelector('.sidebar .nav-item');
+                    if (firstNav && typeof firstNav.focus === 'function') {
+                      firstNav.focus();
+                    }
+                  }, 50);
+                }
+                return next;
+              });
+            } else {
+              setIsSidebarRevealed(true);
             }
           }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [isManualFocusMode, isSupportedWorkspace, isEffectiveFocusMode, handleToggleManualFocusMode]);
+      }, [isAutoHideSidebar, isSidebarRevealed, cancelHideTimer, handleDismissRevealed]);
 
       if (!isEulaAccepted) return React.createElement('div', { id: 'eula-gate-root', style: { minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, React.createElement(EulaGateModal, { isOpen: true, isRevoked: eulaStatus.status === 'REVOKED', licenseInfo: licenseInfo, onAccept: () => { if (typeof EulaService !== 'undefined') { EulaService.accept(); setEulaStatus(EulaService.getStatus()); } } }), React.createElement(Toast, { toasts, removeToast }));
       if (!appLoaded) return React.createElement(RupeeCRMLoader, { message: 'Initializing RupeeCRM...', size: 72, fullScreen: true });
@@ -51477,8 +51577,25 @@ function PartyDetailModal({
       if (licenseStatus === 'expired' || licenseStatus === 'EXPIRED' || licenseStatus === 'SUSPENDED' || licenseStatus === 'REVOKED') return React.createElement(Fragment, null, React.createElement(TrialExpiredComponent, { onComplete: () => { API.license.status().then(lic => { setLicenseInfo(lic); setLicenseStatus(lic.isValid && lic.status === 'ACTIVE' ? 'ACTIVE' : lic.status); }); } }), React.createElement(Toast, { toasts, removeToast }));
       if (!isAuthenticated) return React.createElement(Fragment, null, React.createElement(Login, { onLogin: handleLogin }), React.createElement(Toast, { toasts, removeToast }));
 
-      return React.createElement('div', { className: `app-layout${isFocusedActive ? ' focused-workspace' : ''}` },
-        React.createElement('div', { className: 'sidebar-container' },
+      const appLayoutClasses = `app-layout${isFocusedActive ? ' focused-workspace' : ''}` + (isAutoHideSidebar ? ' auto-hide-sidebar' : '');
+      return React.createElement('div', { className: appLayoutClasses },
+        // Extreme Left Edge Hover Activation Strip
+        isAutoHideSidebar && React.createElement('div', {
+          className: 'sidebar-hover-trigger',
+          onMouseEnter: handleTriggerEnter,
+          onMouseLeave: handleTriggerLeave,
+          'aria-hidden': 'true'
+        }),
+        // Subtle backdrop when revealed to allow clicking outside to dismiss
+        isAutoHideSidebar && isSidebarRevealed && React.createElement('div', {
+          className: 'sidebar-autohide-backdrop active',
+          onClick: handleDismissRevealed
+        }),
+        React.createElement('div', {
+          className: 'sidebar-container',
+          onMouseEnter: handleSidebarEnter,
+          onMouseLeave: handleSidebarLeave
+        },
           React.createElement(Sidebar, {
             activePage: page,
             onNavigate: navigate,
@@ -51489,7 +51606,9 @@ function PartyDetailModal({
             setMobileOpen: setMobileSidebarOpen,
             onOpenGlobalSearch: () => setShowGlobalSearch(true),
             omniPlaceholderIdx,
-            omniPlaceholders
+            omniPlaceholders,
+            isRevealed: isSidebarRevealed,
+            onDismissRevealed: handleDismissRevealed
           })
         ),
         React.createElement('main', { className: 'main-content', style: { paddingBottom: showStatusBar ? 26 : 0 } },
@@ -51584,18 +51703,6 @@ function PartyDetailModal({
             },
               Icons.calculator,
               React.createElement('span', { className: 'calc-btn-label' }, 'Calculator')
-            ),
-            // Standalone Application-Wide Focus Mode Toggle Button
-            isSupportedWorkspace && React.createElement('button', {
-              type: 'button',
-              id: 'topbar-focus-mode-btn',
-              className: `topbar-focus-button${isEffectiveFocusMode ? ' active' : ''}`,
-              onClick: () => handleToggleManualFocusMode(),
-              title: isEffectiveFocusMode ? 'Exit Focus Mode (Alt+F / ⌥F)' : 'Expand Workspace / Focus Mode (Alt+F / ⌥F)',
-              'aria-label': isEffectiveFocusMode ? 'Exit Focus Mode' : 'Expand Workspace / Focus Mode'
-            },
-              isEffectiveFocusMode ? Icons.minimize : Icons.maximize,
-              React.createElement('span', { className: 'focus-btn-label' }, isEffectiveFocusMode ? 'Exit Focus' : 'Focus')
             ),
             React.createElement('div', { className: 'topbar-right', style: { display: 'flex', alignItems: 'center', gap: 10 } },
               // ── CLUSTER 1: Status Capsule (License Tier + Network Telemetry) ──

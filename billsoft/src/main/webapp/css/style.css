@@ -9560,27 +9560,130 @@ th.sortable svg {
 }
 
 /* ============================================================
-   FOCUSED WORKSPACE MODE (INVOICES, QUOTATIONS & FOCUSED BILLING)
+   APPLICATION-WIDE AUTO-HIDE SIDEBAR (DRAWER OVERLAY SYSTEM)
    ============================================================ */
-.app-layout.focused-workspace .sidebar:not(.open) {
-  transform: translateX(-100%) !important;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+
+/* Extreme Left Edge Hover Activation Zone */
+.sidebar-hover-trigger {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 1040;
+  background: transparent;
+  pointer-events: auto;
+  user-select: none;
 }
 
+/* When auto-hide is disabled (permanently visible sidebar), trigger is inactive */
+.app-layout:not(.auto-hide-sidebar) .sidebar-hover-trigger {
+  display: none !important;
+  pointer-events: none !important;
+}
+
+/* Suppress hover trigger during modals, dialogs, dropdowns, and global search */
+body.modal-open .sidebar-hover-trigger,
+body:has(.modal.show) .sidebar-hover-trigger,
+body:has(.modal-backdrop) .sidebar-hover-trigger,
+body:has(#rupeecrm-global-search) .sidebar-hover-trigger {
+  pointer-events: none !important;
+  display: none !important;
+}
+
+/* Layout when Auto-Hide Sidebar is enabled */
+.app-layout.auto-hide-sidebar .sidebar-container {
+  width: 0 !important;
+  min-width: 0 !important;
+  z-index: 1050 !important;
+}
+
+.app-layout.auto-hide-sidebar .main-content {
+  margin-left: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: margin-left 0.22s ease !important;
+}
+
+/* Sidebar hidden state in auto-hide mode (not revealed) */
+.app-layout.auto-hide-sidebar .sidebar:not(.revealed):not(.open) {
+  transform: translateX(-100%) !important;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease !important;
+}
+
+/* Sidebar revealed state in auto-hide mode (drawer overlaying workspace) */
+.app-layout.auto-hide-sidebar .sidebar.revealed,
+.app-layout.auto-hide-sidebar .sidebar.open {
+  transform: translateX(0) !important;
+  z-index: 1050 !important;
+  box-shadow: 6px 0 28px rgba(0, 0, 0, 0.16), 1px 0 3px rgba(0, 0, 0, 0.08) !important;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease !important;
+}
+
+:root[data-theme='dark'] .app-layout.auto-hide-sidebar .sidebar.revealed,
+:root[data-theme='dark'] .app-layout.auto-hide-sidebar .sidebar.open,
+:root.dark-1 .app-layout.auto-hide-sidebar .sidebar.revealed {
+  box-shadow: 8px 0 36px rgba(0, 0, 0, 0.55), 1px 0 2px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Subtle overlay veil when revealed via keyboard / mobile */
+.app-layout.auto-hide-sidebar .sidebar-autohide-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(1px);
+  z-index: 1045;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.app-layout.auto-hide-sidebar .sidebar-autohide-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-layout.auto-hide-sidebar .mobile-toggle-btn {
+  display: inline-flex !important;
+}
+
+.app-layout.auto-hide-sidebar .topbar {
+  padding: 8px 24px !important;
+  height: 50px !important;
+  min-height: 50px !important;
+}
+
+.app-layout.auto-hide-sidebar .invoice-form-bottom-actions {
+  left: 0 !important;
+}
+
+.app-layout.auto-hide-sidebar .bottom-status-bar {
+  left: 0 !important;
+}
+
+/* Legacy Focused Workspace support for invoice editor & backward compatibility */
+.app-layout.focused-workspace .sidebar:not(.open),
+.app-layout.focused-workspace .sidebar:not(.revealed):not(.open) {
+  transform: translateX(-100%) !important;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.app-layout.focused-workspace .sidebar.revealed,
 .app-layout.focused-workspace .sidebar.open {
   transform: translateX(0) !important;
-  z-index: 1001 !important;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25) !important;
+  z-index: 1050 !important;
+  box-shadow: 6px 0 28px rgba(0, 0, 0, 0.16) !important;
 }
 
 .app-layout.focused-workspace .sidebar-container {
   width: 0 !important;
   min-width: 0 !important;
-  z-index: 1000 !important;
+  z-index: 1050 !important;
 }
 
 .app-layout.focused-workspace .sidebar-overlay {
-  z-index: 1000 !important;
+  z-index: 1045 !important;
 }
 
 .app-layout.focused-workspace .main-content {
@@ -9589,7 +9692,7 @@ th.sortable svg {
   max-width: 100% !important;
   width: 100% !important;
   box-sizing: border-box !important;
-  transition: margin-left 0.25s ease !important;
+  transition: margin-left 0.22s ease !important;
 }
 
 .app-layout.focused-workspace .mobile-toggle-btn {

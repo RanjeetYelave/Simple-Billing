@@ -62,6 +62,7 @@
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
   <script src="js/omnisearchCapabilities.js?v=20260919_v1"></script>
   <script src="js/calculator.js?v=20260919_v1"></script>
+  <script src="js/components/CompactEditableGrid.js?v=20261124_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/featureLock.js"></script>
   <script src="js/modalLayerManager.js?v=20261112_v1"></script>
@@ -22423,6 +22424,7 @@ if (typeof window !== 'undefined') {
       // Create / Edit Modal State
       const [showModal, setShowModal] = useState(false);
       const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+      const [showInventoryBulkEdit, setShowInventoryBulkEdit] = useState(false);
       const [editItem, setEditItem] = useState(null);
       const [form, setForm] = useState({
         name: '',
@@ -23359,6 +23361,12 @@ if (typeof window !== 'undefined') {
                   onClick: () => setShowBulkAddModal(true),
                   style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
                 }, Icons.plus, 'Bulk Add'),
+                React.createElement('button', {
+                  id: 'btn-inventory-bulk-edit',
+                  className: 'btn btn-outline btn-sm',
+                  onClick: () => setShowInventoryBulkEdit(true),
+                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                }, Icons.edit, 'Bulk Edit'),
                 React.createElement('button', {
                   id: 'btn-duplicates-merge',
                   className: 'btn btn-outline btn-sm',
@@ -24622,6 +24630,15 @@ if (typeof window !== 'undefined') {
           onClose: () => setShowBulkAddModal(false),
           onSuccess: () => load(),
           existingCategories: categories
+        }),
+        showInventoryBulkEdit && typeof InventoryBulkEditModal !== 'undefined' && React.createElement(InventoryBulkEditModal, {
+          products: products,
+          categories: categories,
+          onClose: () => setShowInventoryBulkEdit(false),
+          onSuccess: () => {
+            setShowInventoryBulkEdit(false);
+            load();
+          }
         }),
         selectedDetailProdId && typeof ProductDetailDrawer !== 'undefined' && React.createElement(ProductDetailDrawer, {
           productId: selectedDetailProdId,

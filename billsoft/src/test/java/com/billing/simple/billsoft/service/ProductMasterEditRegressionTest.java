@@ -365,4 +365,179 @@ class ProductMasterEditRegressionTest {
         });
         assertTrue(ex.getMessage().contains("Selling price cannot be negative"));
     }
+
+    @Test
+    void testBulkUpdatePhysicalStockCountReconciliationUpward() {
+        Product p = Product.builder()
+                .id(201L)
+                .name("Steel Bolts")
+                .firmId(FIRM_ID)
+                .stockQuantity(new BigDecimal("10.000"))
+                .unit("pcs")
+                .inInventory(true)
+                .build();
+
+        when(repo.findByIdInAndFirmId(any(), eq(FIRM_ID))).thenReturn(Collections.singletonList(p));
+        when(repo.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(201L)
+                        .physicalStockCount(new BigDecimal("25.000"))
+                        .build()
+        );
+
+        ProductBulkUpdateResponseDto resp = service.updateBulk(dtos, FIRM_ID);
+        assertNotNull(resp);
+        assertEquals(new BigDecimal("25.000"), p.getStockQuantity());
+
+        org.mockito.ArgumentCaptor<StockMovement> captor = org.mockito.ArgumentCaptor.forClass(StockMovement.class);
+        verify(stockMovementRepo, atLeastOnce()).save(captor.capture());
+
+        StockMovement savedMovement = captor.getValue();
+        assertEquals(201L, savedMovement.getProductId());
+        assertEquals(FIRM_ID, savedMovement.getFirmId());
+        assertEquals("MANUAL_ADJUSTMENT", savedMovement.getMovementType());
+        assertEquals("BULK_RECONCILE", savedMovement.getReferenceType());
+        assertEquals(new BigDecimal("15.000"), savedMovement.getQuantityChange());
+        assertEquals(new BigDecimal("10.000"), savedMovement.getPreviousStock());
+        assertEquals(new BigDecimal("25.000"), savedMovement.getNewStock());
+    }
+
+    @Test
+    void testBulkUpdatePhysicalStockCountReconciliationDownward() {
+        Product p = Product.builder()
+                .id(202L)
+                .name("Copper Wire")
+                .firmId(FIRM_ID)
+                .stockQuantity(new BigDecimal("50.000"))
+                .unit("meters")
+                .inInventory(true)
+                .build();
+
+        when(repo.findByIdInAndFirmId(any(), eq(FIRM_ID))).thenReturn(Collections.singletonList(p));
+        when(repo.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(202L)
+                        .physicalStockCount(new BigDecimal("35.000"))
+                        .build()
+        );
+
+        service.updateBulk(dtos, FIRM_ID);
+        assertEquals(new BigDecimal("35.000"), p.getStockQuantity());
+
+        org.mockito.ArgumentCaptor<StockMovement> captor = org.mockito.ArgumentCaptor.forClass(StockMovement.class);
+        verify(stockMovementRepo, atLeastOnce()).save(captor.capture());
+
+        StockMovement savedMovement = captor.getValue();
+        assertEquals(new BigDecimal("-15.000"), savedMovement.getQuantityChange());
+        assertEquals(new BigDecimal("50.000"), savedMovement.getPreviousStock());
+        assertEquals(new BigDecimal("35.000"), savedMovement.getNewStock());
+    }
+
+    @Test
+    void testBulkUpdatePhysicalStockCountUnchangedDoesNotCreateMovement() {
+        Product p = Product.builder()
+                .id(203L)
+                .name("Brass Screws")
+                .firmId(FIRM_ID)
+                .stockQuantity(new BigDecimal("100.000"))
+                .unit("pcs")
+                .inInventory(true)
+                .build();
+
+        when(repo.findByIdInAndFirmId(any(), eq(FIRM_ID))).thenReturn(Collections.singletonList(p));
+        when(repo.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(203L)
+                        .physicalStockCount(new BigDecimal("100.000"))
+                        .build()
+        );
+
+        service.updateBulk(dtos, FIRM_ID);
+        assertEquals(new BigDecimal("100.000"), p.getStockQuantity());
+        verify(stockMovementRepo, never()).save(any(StockMovement.class));
+    }
+
+    @Test
+    void testBulkUpdatePhysicalStockCountNegativeRejection() {
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(204L)
+                        .physicalStockCount(new BigDecimal("-5.000"))
+                        .build()
+        );
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> {
+            service.updateBulk(dtos, FIRM_ID);
+        });
+        assertTrue(ex.getMessage().contains("Physical stock count cannot be negative"));
+    }
+
+    @Test
+    void testBulkUpdateConcurrencyConflictRejection() {
+        Product p = Product.builder()
+                .id(205L)
+                .name("Paint Can 1L")
+                .firmId(FIRM_ID)
+                .stockQuantity(new BigDecimal("12.000")) // Actual DB stock has moved to 12
+                .unit("cans")
+                .inInventory(true)
+                .build();
+
+        when(repo.findByIdInAndFirmId(any(), eq(FIRM_ID))).thenReturn(Collections.singletonList(p));
+
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(205L)
+                        .expectedCurrentStock(new BigDecimal("10.000")) // User saw 10 when loading grid
+                        .physicalStockCount(new BigDecimal("15.000"))
+                        .build()
+        );
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            service.updateBulk(dtos, FIRM_ID);
+        });
+        assertTrue(ex.getMessage().contains("Stock balance was modified concurrently"));
+        verify(repo, never()).saveAll(anyList());
+        verify(stockMovementRepo, never()).save(any(StockMovement.class));
+    }
+
+    @Test
+    void testBulkUpdatePreservesSkuAndBarcodeWhenOmitted() {
+        Product p = Product.builder()
+                .id(206L)
+                .name("Original Name")
+                .sku("SKU-ORIG-99")
+                .barcode("890999999999")
+                .firmId(FIRM_ID)
+                .price(new BigDecimal("100.00"))
+                .costPrice(new BigDecimal("70.00"))
+                .build();
+
+        when(repo.findByIdInAndFirmId(any(), eq(FIRM_ID))).thenReturn(Collections.singletonList(p));
+        when(repo.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+
+        // DTO updates price and costPrice, but sku and barcode are null (omitted)
+        List<ProductBulkUpdateItemDto> dtos = Collections.singletonList(
+                ProductBulkUpdateItemDto.builder()
+                        .productId(206L)
+                        .price(new BigDecimal("125.00"))
+                        .costPrice(new BigDecimal("85.00"))
+                        .sku(null)
+                        .barcode(null)
+                        .build()
+        );
+
+        service.updateBulk(dtos, FIRM_ID);
+
+        assertEquals(new BigDecimal("125.00"), p.getPrice());
+        assertEquals(new BigDecimal("85.00"), p.getCostPrice());
+        assertEquals("SKU-ORIG-99", p.getSku(), "SKU must remain completely untouched when omitted");
+        assertEquals("890999999999", p.getBarcode(), "Barcode must remain completely untouched when omitted");
+    }
 }

@@ -796,6 +796,10 @@ public class ProductService {
 			if (row.getOpeningStock() != null && row.getOpeningStock().compareTo(BigDecimal.ZERO) < 0) {
 				throw new IllegalArgumentException("Row " + rowNum + ": Opening stock cannot be negative");
 			}
+			if (row.getPhysicalStockCount() != null && row.getPhysicalStockCount().compareTo(BigDecimal.ZERO) < 0
+					&& !isAllowNegativeStock(targetFirmId)) {
+				throw new IllegalArgumentException("Row " + rowNum + ": Physical stock count cannot be negative");
+			}
 		}
 
 		List<Product> products = repo.findByIdInAndFirmId(productIds, targetFirmId);
@@ -893,6 +897,60 @@ public class ProductService {
 			if (shouldTrack) {
 				applyInventoryOnboarding(existing, row.getOpeningStock(),
 						"Initial opening stock recorded on bulk product edit");
+			}
+
+			// Physical Stock Reconciliation (Authoritative Stock Ledger Audit Trail)
+			if (row.getPhysicalStockCount() != null) {
+				BigDecimal currentStock = existing.getStockQuantity() != null ? existing.getStockQuantity() : BigDecimal.ZERO;
+
+				// Concurrency Protection: verify current stock has not shifted if expected stock was provided
+				if (row.getExpectedCurrentStock() != null && row.getExpectedCurrentStock().compareTo(currentStock) != 0) {
+					throw new IllegalStateException("Row " + rowNum + " ('" + existing.getName()
+							+ "'): Stock balance was modified concurrently by another transaction (expected: "
+							+ row.getExpectedCurrentStock().stripTrailingZeros().toPlainString() + ", actual: "
+							+ currentStock.stripTrailingZeros().toPlainString() + "). Please refresh and review before reconciling.");
+				}
+
+				BigDecimal newPhysicalCount = row.getPhysicalStockCount();
+				if (newPhysicalCount.compareTo(currentStock) != 0) {
+					BigDecimal delta = newPhysicalCount.subtract(currentStock);
+					existing.setStockQuantity(newPhysicalCount);
+					existing.setInInventory(true);
+
+					if (newPhysicalCount.compareTo(BigDecimal.ZERO) > 0 && existing.getStockAlertSnoozedUntil() != null) {
+						existing.setStockAlertSnoozedUntil(null);
+					}
+					if (notificationService != null && newPhysicalCount.compareTo(BigDecimal.ZERO) > 0) {
+						try {
+							notificationService.resolveByEventKey(targetFirmId, "inventory:stock:item:" + existing.getId());
+						} catch (Exception ignored) {
+						}
+					}
+
+					String note = row.getReconciliationNote() != null && !row.getReconciliationNote().trim().isEmpty()
+							? row.getReconciliationNote().trim()
+							: "Bulk inventory reconciliation adjustment: "
+									+ (delta.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+									+ delta.stripTrailingZeros().toPlainString() + " "
+									+ (existing.getUnit() != null ? existing.getUnit() : "units")
+									+ " (Previous: " + currentStock.stripTrailingZeros().toPlainString()
+									+ ", Physical Count: " + newPhysicalCount.stripTrailingZeros().toPlainString() + ")";
+
+					StockMovement movement = StockMovement.builder()
+							.productId(existing.getId())
+							.productName(existing.getName())
+							.firmId(targetFirmId)
+							.movementType("MANUAL_ADJUSTMENT")
+							.quantityChange(delta)
+							.previousStock(currentStock)
+							.newStock(newPhysicalCount)
+							.referenceType("BULK_RECONCILE")
+							.referenceId("BULK_INVENTORY_ADJUSTMENT")
+							.note(note)
+							.createdAt(LocalDateTime.now())
+							.build();
+					stockMovementRepo.save(movement);
+				}
 			}
 		}
 

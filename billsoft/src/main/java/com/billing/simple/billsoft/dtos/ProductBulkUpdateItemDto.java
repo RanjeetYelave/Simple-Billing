@@ -27,4 +27,7 @@ public class ProductBulkUpdateItemDto {
     private Boolean inInventory;
     private Boolean trackInInventory;
     private BigDecimal openingStock;
+    private BigDecimal physicalStockCount;
+    private BigDecimal expectedCurrentStock;
+    private String reconciliationNote;
 }

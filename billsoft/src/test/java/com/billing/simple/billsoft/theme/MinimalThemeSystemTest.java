@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -77,20 +78,20 @@ public class MinimalThemeSystemTest {
         assertTrue(css.contains(":root.minimal-dark"), "Minimal dark selector must be defined");
 
         // Minimal Light tokens
-        assertTrue(css.contains("--bg:                      #F6F6F4;"), "Minimal light canvas must be #F6F6F4");
-        assertTrue(css.contains("--bg-card:                 #FFFFFF;"), "Minimal light card must be #FFFFFF");
-        assertTrue(css.contains("--border:                  #EBEBE9;"), "Minimal light border must be #EBEBE9");
-        assertTrue(css.contains("--primary:                 #168B45;"), "Minimal light primary must be #168B45");
+        assertTrue(Pattern.compile("--bg:\\s*#F6F6F4;").matcher(css).find(), "Minimal light canvas must be #F6F6F4");
+        assertTrue(Pattern.compile("--bg-card:\\s*#FFFFFF;").matcher(css).find(), "Minimal light card must be #FFFFFF");
+        assertTrue(Pattern.compile("--border:\\s*#EBEBE9;").matcher(css).find(), "Minimal light border must be #EBEBE9");
+        assertTrue(Pattern.compile("--primary:\\s*#168B45;").matcher(css).find(), "Minimal light primary must be #168B45");
 
         // Minimal Dark tokens
-        assertTrue(css.contains("--bg:                      #0F1111;"), "Minimal dark canvas must be #0F1111");
-        assertTrue(css.contains("--bg-card:                 #181B1B;"), "Minimal dark card must be #181B1B");
-        assertTrue(css.contains("--border:                  #272C2C;"), "Minimal dark border must be #272C2C");
-        assertTrue(css.contains("--primary:                 #22C55E;"), "Minimal dark primary must be #22C55E");
+        assertTrue(Pattern.compile("--bg:\\s*#0F1111;").matcher(css).find(), "Minimal dark canvas must be #0F1111");
+        assertTrue(Pattern.compile("--bg-card:\\s*#181B1B;").matcher(css).find(), "Minimal dark card must be #181B1B");
+        assertTrue(Pattern.compile("--border:\\s*#272C2C;").matcher(css).find(), "Minimal dark border must be #272C2C");
+        assertTrue(Pattern.compile("--primary:\\s*#22C55E;").matcher(css).find(), "Minimal dark primary must be #22C55E");
 
         // Geometry (24px cards, 9999px pills)
-        assertTrue(css.contains("--radius-card:        24px;"), "Card radius must be 24px");
-        assertTrue(css.contains("--radius-pill:        9999px;"), "Pill radius must be 9999px");
+        assertTrue(Pattern.compile("--radius-card:\\s*24px;").matcher(css).find(), "Card radius must be 24px");
+        assertTrue(Pattern.compile("--radius-pill:\\s*9999px;").matcher(css).find(), "Pill radius must be 9999px");
 
         // Component rules
         assertTrue(css.contains(":root.minimal .kpi-card"), "Minimal KPI card rules must exist");

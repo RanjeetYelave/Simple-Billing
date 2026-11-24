@@ -1671,7 +1671,14 @@ const API = {
     getConfig: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/config`)),
     updateConfig: (productId, payload) => API._json(API._qs(`/api/forecast/products/${productId}/config`), { method: 'PUT', body: payload }),
     getRecommendations: (params = {}) => API._json(API._qs('/api/forecast/restock/recommendations', params)),
-    adminSync: () => API._json(API._qs('/api/forecast/admin/sync'), { method: 'POST' })
+    adminSync: (targetFirmId) => {
+      const fid = targetFirmId || API.firmId;
+      return API._json(API._qs('/api/forecast/admin/sync', fid ? { firmId: fid } : {}), {
+        method: 'POST',
+        headers: fid ? { 'X-Firm-Id': String(fid) } : {}
+      });
+    },
+    syncService: typeof window !== 'undefined' ? window.ForecastSyncService : null
   },
 
   // ─── Demo Mode ───

@@ -30,6 +30,8 @@ public class ForecastController {
     private final ForecastAggregationService aggregationService;
     private final ForecastEngineService engineService;
 
+    private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.locks.ReentrantLock> firmSyncLocks = new java.util.concurrent.ConcurrentHashMap<>();
+
     private Long resolveFirmId(Long firmIdHeader, Long firmIdParam) {
         if (firmIdHeader != null && firmIdHeader > 0) {
             return firmIdHeader;
@@ -210,6 +212,23 @@ public class ForecastController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
         }
 
+        java.util.concurrent.locks.ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new java.util.concurrent.locks.ReentrantLock());
+        if (!lock.tryLock()) {
+            log.info("Forecast synchronization already in progress for firm {}. Returning concurrent-safe status.", firmId);
+            ForecastAdminSyncResponse inProgressResponse = ForecastAdminSyncResponse.builder()
+                    .success(true)
+                    .firmId(firmId)
+                    .invoicesProcessed(0)
+                    .returnsProcessed(0)
+                    .productsAggregated(0)
+                    .forecastsGenerated(0)
+                    .recommendationsGenerated(0)
+                    .executionDurationMs(0L)
+                    .message("Forecast synchronization is currently in progress for firm " + firmId + ".")
+                    .build();
+            return ResponseEntity.ok(inProgressResponse);
+        }
+
         long start = System.currentTimeMillis();
         try {
             int inv = ingestionService.syncAllInvoicesForFirm(firmId);
@@ -242,6 +261,8 @@ public class ForecastController {
                     .message("Sync failed: " + e.getMessage())
                     .build();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        } finally {
+            lock.unlock();
         }
     }
 }

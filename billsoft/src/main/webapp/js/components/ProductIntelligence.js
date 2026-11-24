@@ -804,17 +804,43 @@
       loadProducts();
     }, [loadProducts]);
 
+    useEffect(() => {
+      const handleSyncState = (e) => {
+        if (e && e.detail) {
+          const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+          if (!e.detail.firmId || String(e.detail.firmId) === String(activeFid)) {
+            setSyncing(Boolean(e.detail.isSyncing));
+          }
+        }
+      };
+      const handleForecastSynced = () => {
+        try { loadProducts(); } catch (e) {}
+      };
+      window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
+      window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
+      return () => {
+        window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
+        window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
+      };
+    }, [loadProducts]);
+
     const handleSync = async () => {
+      if (syncing) return;
       setSyncing(true);
       try {
-        const res = await API.forecast.adminSync();
-        if (typeof showToast === 'function') {
-          showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+        const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+        if (typeof window !== 'undefined' && window.ForecastSyncService) {
+          await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false });
+        } else {
+          const res = await API.forecast.adminSync(activeFid);
+          if (typeof showToast === 'function') {
+            showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+          }
         }
         loadProducts();
       } catch (err) {
         console.error(err);
-        if (typeof showToast === 'function') showToast('Failed to trigger forecast sync', 'error');
+        if (typeof showToast === 'function') showToast('Failed to trigger forecast sync: ' + (err.message || 'Network error'), 'error');
       } finally {
         setSyncing(false);
       }
@@ -1145,6 +1171,9 @@
     // Session duplicate tracker
     const [recentlyOrderedMap, setRecentlyOrderedMap] = useState({});
 
+    // Forecast synchronisation state (mirrored from ForecastSyncService)
+    const [syncing, setSyncing] = useState(() => (typeof window !== 'undefined' && window.ForecastSyncService ? window.ForecastSyncService.isSyncing() : false));
+
     const [pageSize, setPageSize] = useState(4);
     const [totalElements, setTotalElements] = useState(0);
 
@@ -1170,6 +1199,58 @@
     useEffect(() => {
       loadRecommendations();
     }, [loadRecommendations]);
+
+    // Synchronisation state and event listeners
+    useEffect(() => {
+      const handleSyncState = (e) => {
+        if (e && e.detail) {
+          const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+          if (!e.detail.firmId || String(e.detail.firmId) === String(activeFid)) {
+            setSyncing(Boolean(e.detail.isSyncing));
+          }
+        }
+      };
+      const handleForecastSynced = (e) => {
+        try {
+          loadRecommendations();
+        } catch (err) {}
+      };
+      window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
+      window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
+      return () => {
+        window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
+        window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
+      };
+    }, [loadRecommendations]);
+
+    // Resync Forecasts button handler inside Smart Reorder Queue
+    const handleResyncForecasts = async () => {
+      if (syncing) return;
+      const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+      if (!activeFid) {
+        if (typeof showToast === 'function') showToast('Active firm ID is required to sync forecasts.', 'error');
+        return;
+      }
+      setSyncing(true);
+      try {
+        if (typeof window !== 'undefined' && window.ForecastSyncService) {
+          await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false });
+        } else {
+          const res = await API.forecast.adminSync(activeFid);
+          if (typeof showToast === 'function') {
+            showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+          }
+        }
+        loadRecommendations();
+      } catch (err) {
+        console.error('Manual forecast sync error:', err);
+        if (typeof showToast === 'function') {
+          showToast('Failed to trigger forecast sync: ' + (err.message || 'Network error'), 'error');
+        }
+      } finally {
+        setSyncing(false);
+      }
+    };
 
     // Ensure table rows never exceed pageSize even if backend returned an unpaginated array
     const displayedRecommendations = useMemo(() => {
@@ -1909,6 +1990,27 @@
                 onClick: () => { setUrgencyFilter(f.id); setPage(0); }
               }, f.label)
             )
+          ),
+
+          // Resync Forecasts Action inside Smart Reorder Queue
+          React.createElement('button', {
+            id: 'btn-resync-forecasts-queue',
+            type: 'button',
+            className: 'btn btn-outline',
+            onClick: handleResyncForecasts,
+            disabled: syncing,
+            title: syncing ? 'Synchronising demand models and restock queue...' : 'Resynchronise demand forecasts and restock queue',
+            style: {
+              fontWeight: 600,
+              padding: '6px 14px',
+              fontSize: '0.8125rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6
+            }
+          },
+            React.createElement('span', null, syncing ? '⏳' : '🔄'),
+            syncing ? 'Computing Forecasts...' : 'Resync Forecasts'
           ),
 
           // Single Unified Primary Action
@@ -4777,17 +4879,43 @@
       loadProducts();
     }, [loadProducts]);
 
+    useEffect(() => {
+      const handleSyncState = (e) => {
+        if (e && e.detail) {
+          const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+          if (!e.detail.firmId || String(e.detail.firmId) === String(activeFid)) {
+            setSyncing(Boolean(e.detail.isSyncing));
+          }
+        }
+      };
+      const handleForecastSynced = () => {
+        try { loadProducts(); } catch (e) {}
+      };
+      window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
+      window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
+      return () => {
+        window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
+        window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
+      };
+    }, [loadProducts]);
+
     const handleSync = async () => {
+      if (syncing) return;
       setSyncing(true);
       try {
-        const res = await API.forecast.adminSync();
-        if (typeof showToast === 'function') {
-          showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+        const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+        if (typeof window !== 'undefined' && window.ForecastSyncService) {
+          await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false });
+        } else {
+          const res = await API.forecast.adminSync(activeFid);
+          if (typeof showToast === 'function') {
+            showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+          }
         }
         loadProducts();
       } catch (err) {
         console.error(err);
-        if (typeof showToast === 'function') showToast('Failed to trigger forecast sync', 'error');
+        if (typeof showToast === 'function') showToast('Failed to trigger forecast sync: ' + (err.message || 'Network error'), 'error');
       } finally {
         setSyncing(false);
       }
@@ -5239,6 +5367,7 @@
           }, '📥 Export CSV'),
 
           hubTab === 'INTELLIGENCE' && React.createElement('button', {
+            id: 'btn-resync-forecasts-intelligence',
             className: 'btn btn-outline',
             onClick: handleSync,
             disabled: syncing,

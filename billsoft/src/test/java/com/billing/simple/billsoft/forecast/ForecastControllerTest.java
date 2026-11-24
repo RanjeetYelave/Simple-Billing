@@ -182,6 +182,38 @@ class ForecastControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/forecast/admin/sync safely handles concurrent requests on same firm")
+    void testConcurrentSyncSafelyReturnsInProgress() throws Exception {
+        java.util.concurrent.CountDownLatch startedLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch blockLatch = new java.util.concurrent.CountDownLatch(1);
+
+        when(ingestionService.syncAllInvoicesForFirm(firmId)).thenAnswer(invocation -> {
+            startedLatch.countDown();
+            blockLatch.await(5, java.util.concurrent.TimeUnit.SECONDS);
+            return 10;
+        });
+
+        java.util.concurrent.CompletableFuture<ResponseEntity<?>> firstCall = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+            controller.triggerFirmSync(firmId, null)
+        );
+
+        assertTrue(startedLatch.await(3, java.util.concurrent.TimeUnit.SECONDS));
+
+        // Second call while first is in progress
+        ResponseEntity<?> resConcurrent = controller.triggerFirmSync(firmId, null);
+        assertNotNull(resConcurrent);
+        assertEquals(200, resConcurrent.getStatusCode().value());
+        ForecastAdminSyncResponse concurrentBody = (ForecastAdminSyncResponse) resConcurrent.getBody();
+        assertNotNull(concurrentBody);
+        assertTrue(concurrentBody.isSuccess());
+        assertTrue(concurrentBody.getMessage().contains("in progress"));
+
+        blockLatch.countDown();
+        ResponseEntity<?> firstRes = firstCall.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(200, firstRes.getStatusCode().value());
+    }
+
+    @Test
     @DisplayName("Tenant Isolation: Missing Firm ID returns 400 Bad Request")
     void testMissingFirmIdReturnsBadRequest() {
         ResponseEntity<?> res = controller.getProductInsights(productId, null, null);

@@ -56,6 +56,7 @@
   <script src="js/vendor/qrcode.min.js"></script>
 
   <script src="js/api.js?v=20260914_licensing_v2"></script>
+  <script src="js/forecastSyncService.js?v=20261124_v1"></script>
   <script src="js/utils.js?v=20261025_payment_terms_v2"></script>
   <script src="js/dataSync.js?v=20261107_v1"></script>
   <script src="js/omnibarPipeline.js?v=20260912_v1"></script>
@@ -48754,6 +48755,10 @@ function PartyDetailModal({
           } else {
             setIsSessionLocked(false);
             setShowReauthModal(false);
+            const activeFid = (typeof API !== 'undefined' ? API.firmId : null);
+            if (typeof window.ForecastSyncService !== 'undefined' && activeFid) {
+              window.ForecastSyncService.onLogin(activeFid);
+            }
           }
         } catch (err) {
           console.error("Initialization error:", err);
@@ -48829,6 +48834,12 @@ function PartyDetailModal({
         window.dispatchEvent(new CustomEvent('billsoft:reset-session-timer'));
         if (firmId) API.firmId = firmId;
         setFirmLoadKey(k => k + 1);
+
+        // Automatic forecast check & resynchronisation on every successful user login
+        const targetFirmId = firmId || (typeof API !== 'undefined' ? API.firmId : null);
+        if (typeof window.ForecastSyncService !== 'undefined' && targetFirmId) {
+          window.ForecastSyncService.onLogin(targetFirmId);
+        }
       };
       const handleLogout = (reason) => {
         setIsAuthenticated(false);
@@ -48844,6 +48855,9 @@ function PartyDetailModal({
         localStorage.removeItem('billsoft_last_activity');
         API.token = null;
         API.firmId = null;
+        if (typeof window.ForecastSyncService !== 'undefined') {
+          window.ForecastSyncService.onLogout();
+        }
         setReminders([]);
         setNotes([]);
         setExpenses([]);
@@ -49265,6 +49279,9 @@ function PartyDetailModal({
         API.firm.list().then(list => setFirms(list)).catch(() => { });
         window.dispatchEvent(new CustomEvent('billsoft:firm-changed', { detail: { firmId, prevId } }));
         showToast('Switched firm', 'success');
+        if (typeof window.ForecastSyncService !== 'undefined') {
+          window.ForecastSyncService.onFirmChanged(firmId);
+        }
       };
       // Handle browser back button (popstate)
       useEffect(() => {
@@ -51254,6 +51271,10 @@ function PartyDetailModal({
             localStorage.setItem('isAuthenticated', 'true');
             window.dispatchEvent(new CustomEvent('billsoft:reset-session-timer'));
             setFirmLoadKey(k => k + 1);
+            const activeFid = (typeof API !== 'undefined' ? API.firmId : null);
+            if (typeof window.ForecastSyncService !== 'undefined' && activeFid) {
+              window.ForecastSyncService.onLogin(activeFid);
+            }
           }
         }),
         React.createElement(BackgroundUpdateProgressWidget, {

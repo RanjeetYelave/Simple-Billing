@@ -530,4 +530,55 @@ class ForecastIngestionServiceTest {
         assertEquals(0.0, tx.getFulfilledQty().doubleValue(), 1e-6);
         assertEquals(0.0, tx.getShortageQty().doubleValue(), 1e-6);
     }
+
+    @Test
+    @DisplayName("Scenario 13: Hard-deleted invoice -> purges forecast SALE facts for that firm and invoice")
+    void testScenario13_HardDeletedInvoice_PurgesForecastSalesTransactions() {
+        Long firmId = 1L;
+        Long invoiceId = 99L;
+
+        ingestionService.handleInvoiceDeleted(firmId, invoiceId);
+
+        verify(transactionRepo).deleteAllByFirmIdAndSourceTypeAndSourceHeaderId(firmId, "SALE", invoiceId);
+    }
+
+    @Test
+    @DisplayName("Scenario 14: Cancelled invoice -> purges prior SALE facts and does not persist new demand")
+    void testScenario14_CancelledInvoice_PurgesPriorSaleFacts() {
+        Long firmId = 1L;
+        Long invoiceId = 100L;
+        Invoice inv = new Invoice();
+        inv.setId(invoiceId);
+        inv.setFirmId(firmId);
+        inv.setInvoiceNumber("INV-100");
+        inv.setStatus(InvoiceStatus.CANCELLED);
+
+        InvoiceItem item = new InvoiceItem();
+        item.setProduct(goodsProductA);
+        item.setQty(10);
+        inv.setItems(Collections.singletonList(item));
+
+        ingestionService.syncInvoice(inv);
+
+        // Deletes existing SALE facts atomically
+        verify(transactionRepo).deleteAllByFirmIdAndSourceTypeAndSourceHeaderId(firmId, "SALE", invoiceId);
+        // Does NOT save any new sales transactions
+        verify(transactionRepo, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("Scenario 15: Repeated cancellation and deletion -> idempotent and safe")
+    void testScenario15_RepeatedDeletionAndCancellation_Idempotent() {
+        Long firmId = 1L;
+        Long invoiceId = 105L;
+
+        assertDoesNotThrow(() -> {
+            ingestionService.handleInvoiceDeleted(firmId, invoiceId);
+            ingestionService.handleInvoiceDeleted(firmId, invoiceId);
+            ingestionService.handleInvoiceDeleted(null, invoiceId);
+            ingestionService.handleInvoiceDeleted(firmId, null);
+        });
+
+        verify(transactionRepo, times(2)).deleteAllByFirmIdAndSourceTypeAndSourceHeaderId(firmId, "SALE", invoiceId);
+    }
 }

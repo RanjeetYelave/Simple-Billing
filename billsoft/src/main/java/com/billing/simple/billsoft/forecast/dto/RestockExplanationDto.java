@@ -49,7 +49,10 @@ public class RestockExplanationDto {
     private LocalDate expectedStockoutDate;
     private String urgencyStatus;
     private String confidenceLevel;
-    private BigDecimal confidenceScore;
+    private BigDecimal confidenceScore; // 0 - 100 confidence score
+    private BigDecimal wape;            // Historical backtested WAPE error
+    private BigDecimal rmse;            // Historical backtested RMSE
+    private BigDecimal mae;             // Historical backtested MAE
     private String selectedModel;
     private String explanationText;
     private LocalDateTime generatedAt;

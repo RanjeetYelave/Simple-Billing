@@ -23,6 +23,7 @@ public class RollingOriginBacktester {
                     .mae(0.0)
                     .foldsEvaluated(0)
                     .validationHorizonDays(0)
+                    .hasSufficientHistory(false)
                     .build();
         }
 
@@ -76,6 +77,7 @@ public class RollingOriginBacktester {
                     .mae(0.0)
                     .foldsEvaluated(0)
                     .validationHorizonDays(horizon)
+                    .hasSufficientHistory(false)
                     .build();
         }
 
@@ -90,6 +92,7 @@ public class RollingOriginBacktester {
                 .mae(mae)
                 .foldsEvaluated(foldsCompleted)
                 .validationHorizonDays(horizon)
+                .hasSufficientHistory(true)
                 .build();
     }
 }

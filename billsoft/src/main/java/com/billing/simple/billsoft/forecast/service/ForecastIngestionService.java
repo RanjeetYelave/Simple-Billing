@@ -207,6 +207,13 @@ public class ForecastIngestionService {
     }
 
     @Transactional
+    public void handleInvoiceDeleted(Long firmId, Long invoiceId) {
+        if (firmId == null || invoiceId == null) return;
+        transactionRepo.deleteAllByFirmIdAndSourceTypeAndSourceHeaderId(firmId, "SALE", invoiceId);
+        log.info("Purged forecast SALE facts for deleted invoice {} in firm {}", invoiceId, firmId);
+    }
+
+    @Transactional
     public int reconcileHardDeletedInvoices(Long firmId) {
         int purged = transactionRepo.purgeOrphanedSaleTransactionsForDeletedInvoices(firmId);
         if (purged > 0) {

@@ -16,4 +16,6 @@ public class BacktestResult {
     private double mae;
     private int foldsEvaluated;
     private int validationHorizonDays;
+    @Builder.Default
+    private boolean hasSufficientHistory = true;
 }

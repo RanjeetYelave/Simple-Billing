@@ -3,12 +3,17 @@ package com.billing.simple.billsoft.forecast.selection;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Deterministic demand classification based on Syntetos-Boylan Matrix:
  * ADI (Average Demand Interval) threshold: 1.32
  * CV^2 (Coefficient of Variation squared) threshold: 0.49
+ *
+ * Censored observation support: Stockout periods where zero demand was observed due to
+ * physical inventory unavailability are excluded from total observation intervals so they
+ * do not artificially inflate the ADI.
  */
 @Component
 public class DemandPatternClassifier {
@@ -19,6 +24,10 @@ public class DemandPatternClassifier {
     public static final int MIN_OBSERVATIONS_FOR_HOLT_WINTERS = 60;
 
     public DemandClassification classify(List<Double> historicalDailyDemand) {
+        return classify(historicalDailyDemand, Collections.emptyList());
+    }
+
+    public DemandClassification classify(List<Double> historicalDailyDemand, List<Boolean> stockoutFlags) {
         if (historicalDailyDemand == null || historicalDailyDemand.size() < MIN_OBSERVATIONS_FOR_CLASSIFICATION) {
             int n = historicalDailyDemand != null ? historicalDailyDemand.size() : 0;
             return DemandClassification.builder()
@@ -27,6 +36,8 @@ public class DemandPatternClassifier {
                     .cv2(0.0)
                     .nonZeroCount(0)
                     .totalObservations(n)
+                    .uncensoredObservations(n)
+                    .stockoutDaysCount(0)
                     .recommendedModel("HISTORICAL_MEAN")
                     .build();
         }
@@ -34,14 +45,22 @@ public class DemandPatternClassifier {
         int totalObservations = historicalDailyDemand.size();
         List<Double> nonZeroDemands = new ArrayList<>();
         int nonZeroCount = 0;
+        int stockoutDaysCount = 0;
 
-        for (Double d : historicalDailyDemand) {
+        for (int i = 0; i < totalObservations; i++) {
+            Double d = historicalDailyDemand.get(i);
             double y = d != null ? Math.max(0.0, d) : 0.0;
+            boolean isStockout = (stockoutFlags != null && i < stockoutFlags.size() && Boolean.TRUE.equals(stockoutFlags.get(i)));
+
             if (y > 0.0) {
                 nonZeroDemands.add(y);
                 nonZeroCount++;
+            } else if (isStockout) {
+                stockoutDaysCount++;
             }
         }
+
+        int uncensoredObservations = Math.max(nonZeroCount, totalObservations - stockoutDaysCount);
 
         if (nonZeroCount == 0) {
             return DemandClassification.builder()
@@ -50,11 +69,14 @@ public class DemandPatternClassifier {
                     .cv2(0.0)
                     .nonZeroCount(0)
                     .totalObservations(totalObservations)
+                    .uncensoredObservations(uncensoredObservations)
+                    .stockoutDaysCount(stockoutDaysCount)
                     .recommendedModel("HISTORICAL_MEAN")
                     .build();
         }
 
-        double adi = (double) totalObservations / (double) nonZeroCount;
+        // ADI uses uncensored in-stock observation periods so stockouts do not artificially inflate demand intervals
+        double adi = (double) uncensoredObservations / (double) nonZeroCount;
 
         // Calculate mean and variance of non-zero observations
         double sum = 0.0;
@@ -92,6 +114,8 @@ public class DemandPatternClassifier {
                 .cv2(cv2)
                 .nonZeroCount(nonZeroCount)
                 .totalObservations(totalObservations)
+                .uncensoredObservations(uncensoredObservations)
+                .stockoutDaysCount(stockoutDaysCount)
                 .recommendedModel(recommendedModel)
                 .build();
     }

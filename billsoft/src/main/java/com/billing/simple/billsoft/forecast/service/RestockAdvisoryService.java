@@ -44,8 +44,15 @@ public class RestockAdvisoryService {
     private final ForecastSalesTransactionRepository transactionRepo;
     private final ForecastModuleProperties properties;
 
+    public record IncomingPoSlot(Long poId, String poNumber, BigDecimal quantity, LocalDate expectedArrivalDate, boolean isOverdue) {}
+
     @Transactional
     public ProductRestockRecommendation calculateRecommendation(Long firmId, Long productId, Long modelRunId) {
+        return calculateRecommendation(firmId, productId, modelRunId, null);
+    }
+
+    @Transactional
+    public ProductRestockRecommendation calculateRecommendation(Long firmId, Long productId, Long modelRunId, List<PurchaseOrder> preloadedPos) {
         Product product = productRepo.findByIdAndFirmId(productId, firmId).orElse(null);
         if (product == null) {
             return null;
@@ -68,7 +75,7 @@ public class RestockAdvisoryService {
                         existing.setRecommendationStatus("SUPERSEDED");
                         restockRepo.save(existing);
                     });
-            return calculateRecommendation(firmId, product.getCanonicalProductId(), modelRunId);
+            return calculateRecommendation(firmId, product.getCanonicalProductId(), modelRunId, preloadedPos);
         }
 
         ForecastProduct config = configService.getOrCreateConfig(firmId, productId);
@@ -84,8 +91,20 @@ public class RestockAdvisoryService {
         BigDecimal currentStock = (product != null && product.getStockQuantity() != null)
                 ? product.getStockQuantity() : BigDecimal.ZERO;
 
-        // 2. Incoming stock from ISSUED Purchase Orders
-        BigDecimal incomingStock = calculateIncomingIssuedPoStock(firmId, productId);
+        // 2. Incoming stock from ISSUED Purchase Orders with Time-Phased Delivery Slots
+        List<IncomingPoSlot> incomingSlots = getIncomingPoSlots(firmId, productId, leadTime, preloadedPos);
+        BigDecimal incomingStock = BigDecimal.ZERO;
+        StringBuilder slotsSummary = new StringBuilder();
+        for (IncomingPoSlot slot : incomingSlots) {
+            incomingStock = incomingStock.add(slot.quantity());
+            if (slotsSummary.length() > 0) slotsSummary.append(", ");
+            slotsSummary.append(slot.poNumber() != null ? slot.poNumber() : "PO#" + slot.poId())
+                        .append(": ")
+                        .append(slot.quantity().stripTrailingZeros().toPlainString())
+                        .append(" due ")
+                        .append(slot.expectedArrivalDate())
+                        .append(slot.isOverdue() ? " [OVERDUE]" : "");
+        }
         BigDecimal netInventoryPosition = currentStock.add(incomingStock);
 
         // 3. Forecast demand trajectory over planning horizon
@@ -148,19 +167,19 @@ public class RestockAdvisoryService {
             finalRecommendedQty = packs.multiply(packSize);
         }
 
-        // 10. Expected stock-out date projection
-        LocalDate stockoutDate = calculateExpectedStockoutDate(currentStock, incomingStock, forecasts);
+        // 10. Expected stock-out date time-phased projection
+        LocalDate stockoutDate = calculateExpectedStockoutDate(currentStock, incomingSlots, forecasts);
 
         // 11. Urgency determination
         String urgency;
         if (currentStock.compareTo(BigDecimal.ZERO) <= 0) {
             urgency = "OUT_OF_STOCK";
+        } else if (finalRecommendedQty.compareTo(BigDecimal.ZERO) <= 0) {
+            urgency = "HEALTHY";
         } else if (stockoutDate != null && !stockoutDate.isAfter(LocalDate.now().plusDays(leadTime))) {
             urgency = "CRITICAL";
-        } else if (finalRecommendedQty.compareTo(BigDecimal.ZERO) > 0) {
-            urgency = "REORDER_NEEDED";
         } else {
-            urgency = "HEALTHY";
+            urgency = "REORDER_NEEDED";
         }
 
         String confidenceLevel = (modelRun != null && !forecasts.isEmpty())
@@ -181,11 +200,15 @@ public class RestockAdvisoryService {
             reasonStr = "Healthy";
         }
 
-        // 12. Formulate explainability text
+        // 12. Formulate explainability text with time-phased PO visibility
+        String poArrivalNote = incomingSlots.isEmpty()
+                ? "No incoming POs."
+                : String.format("Incoming POs: %s (%s).", incomingStock.stripTrailingZeros().toPlainString(), slotsSummary);
+
         String explanation = String.format(
                 "Forecast recommendation: %s units (Horizon demand: %s, Safety stock: %s). " +
                 "Minimum stock requirement: %s units (Configured min: %s). " +
-                "Current stock: %s, Incoming PO: %s (Net Position: %s). " +
+                "Current stock: %s. %s (Net Position: %s). " +
                 "Primary driver: %s. Final recommended order: %s units%s%s.",
                 rawForecastShortfall.setScale(2, RoundingMode.HALF_UP).toPlainString(),
                 totalHorizonDemand.setScale(2, RoundingMode.HALF_UP).toPlainString(),
@@ -193,7 +216,7 @@ public class RestockAdvisoryService {
                 rawThresholdShortfall.setScale(2, RoundingMode.HALF_UP).toPlainString(),
                 minStockLevel.stripTrailingZeros().toPlainString(),
                 currentStock.stripTrailingZeros().toPlainString(),
-                incomingStock.stripTrailingZeros().toPlainString(),
+                poArrivalNote,
                 netInventoryPosition.stripTrailingZeros().toPlainString(),
                 reasonStr,
                 finalRecommendedQty.stripTrailingZeros().toPlainString(),
@@ -234,9 +257,52 @@ public class RestockAdvisoryService {
         return restockRepo.save(rec);
     }
 
-    private BigDecimal calculateIncomingIssuedPoStock(Long firmId, Long productId) {
-        List<PurchaseOrder> issuedPos = purchaseOrderRepo.findByFirmIdAndStatusOrderByPoDateDescIdDesc(
-                firmId, PurchaseOrderStatus.ISSUED);
+    public List<IncomingPoSlot> getIncomingPoSlots(Long firmId, Long productId, int defaultLeadTime) {
+        return getIncomingPoSlots(firmId, productId, defaultLeadTime, null);
+    }
+
+    public List<IncomingPoSlot> getIncomingPoSlots(Long firmId, Long productId, int defaultLeadTime, List<PurchaseOrder> preloadedPos) {
+        List<PurchaseOrder> issuedPos = preloadedPos != null ? preloadedPos :
+                purchaseOrderRepo.findByFirmIdAndStatusOrderByPoDateDescIdDesc(firmId, PurchaseOrderStatus.ISSUED);
+        List<IncomingPoSlot> slots = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        for (PurchaseOrder po : issuedPos) {
+            if (po.getItems() == null) continue;
+            for (PurchaseOrderItem it : po.getItems()) {
+                if (it.getProductId() != null && it.getProductId().equals(productId)) {
+                    BigDecimal qty = it.getQuantity() != null ? it.getQuantity() : BigDecimal.ZERO;
+                    if (qty.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    LocalDate arrivalDate;
+                    boolean overdue = false;
+                    if (po.getExpectedDeliveryDate() != null) {
+                        arrivalDate = po.getExpectedDeliveryDate();
+                    } else if (po.getPoDate() != null) {
+                        arrivalDate = po.getPoDate().plusDays(defaultLeadTime);
+                    } else {
+                        arrivalDate = today.plusDays(defaultLeadTime);
+                    }
+
+                    if (arrivalDate.isBefore(today)) {
+                        arrivalDate = today;
+                        overdue = true;
+                    }
+
+                    slots.add(new IncomingPoSlot(po.getId(), po.getPoNumber(), qty, arrivalDate, overdue));
+                }
+            }
+        }
+        return slots;
+    }
+
+    public BigDecimal calculateIncomingIssuedPoStock(Long firmId, Long productId) {
+        return calculateIncomingIssuedPoStock(firmId, productId, null);
+    }
+
+    public BigDecimal calculateIncomingIssuedPoStock(Long firmId, Long productId, List<PurchaseOrder> preloadedPos) {
+        List<PurchaseOrder> issuedPos = preloadedPos != null ? preloadedPos :
+                purchaseOrderRepo.findByFirmIdAndStatusOrderByPoDateDescIdDesc(firmId, PurchaseOrderStatus.ISSUED);
         BigDecimal sum = BigDecimal.ZERO;
         for (PurchaseOrder po : issuedPos) {
             if (po.getItems() != null) {
@@ -251,38 +317,67 @@ public class RestockAdvisoryService {
         return sum;
     }
 
-    private LocalDate calculateExpectedStockoutDate(BigDecimal currentStock, BigDecimal incomingStock, List<ProductDemandForecast> forecasts) {
-        if (currentStock.compareTo(BigDecimal.ZERO) <= 0) {
+    public LocalDate calculateExpectedStockoutDate(BigDecimal currentStock, List<IncomingPoSlot> incomingSlots, List<ProductDemandForecast> forecasts) {
+        if (currentStock == null || currentStock.compareTo(BigDecimal.ZERO) <= 0) {
             return LocalDate.now();
         }
         if (forecasts == null || forecasts.isEmpty()) {
             return null;
         }
 
-        BigDecimal available = currentStock.add(incomingStock);
-        BigDecimal cumDemand = BigDecimal.ZERO;
+        Map<LocalDate, BigDecimal> incomingByDate = new HashMap<>();
+        if (incomingSlots != null) {
+            for (IncomingPoSlot slot : incomingSlots) {
+                incomingByDate.merge(slot.expectedArrivalDate(), slot.quantity(), BigDecimal::add);
+            }
+        }
+
+        BigDecimal runningInventory = currentStock;
 
         for (ProductDemandForecast pt : forecasts) {
-            BigDecimal d = pt.getPredictedDemand() != null ? pt.getPredictedDemand() : BigDecimal.ZERO;
-            cumDemand = cumDemand.add(d);
-            if (cumDemand.compareTo(available) >= 0) {
-                return pt.getForecastDate();
+            LocalDate fDate = pt.getForecastDate();
+
+            if (incomingByDate.containsKey(fDate)) {
+                runningInventory = runningInventory.add(incomingByDate.get(fDate));
+            }
+
+            BigDecimal dayDemand = pt.getPredictedDemand() != null ? pt.getPredictedDemand() : BigDecimal.ZERO;
+            runningInventory = runningInventory.subtract(dayDemand);
+
+            if (runningInventory.compareTo(BigDecimal.ZERO) <= 0) {
+                return fDate;
             }
         }
         return null; // Stockout beyond 365 days
     }
 
+    public LocalDate calculateExpectedStockoutDate(BigDecimal currentStock, BigDecimal incomingStock, List<ProductDemandForecast> forecasts) {
+        if (currentStock == null || currentStock.compareTo(BigDecimal.ZERO) <= 0) {
+            return LocalDate.now();
+        }
+        if (forecasts == null || forecasts.isEmpty()) {
+            return null;
+        }
+        List<IncomingPoSlot> slots = new ArrayList<>();
+        if (incomingStock != null && incomingStock.compareTo(BigDecimal.ZERO) > 0) {
+            slots.add(new IncomingPoSlot(null, "PO-BULK", incomingStock, LocalDate.now(), false));
+        }
+        return calculateExpectedStockoutDate(currentStock, slots, forecasts);
+    }
+
     @Transactional
     public int generateCatalogRecommendations(Long firmId) {
         List<Product> products = productRepo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseOrderByNameAsc(firmId);
+        List<PurchaseOrder> activePos = purchaseOrderRepo.findByFirmIdAndStatusOrderByPoDateDescIdDesc(
+                firmId, PurchaseOrderStatus.ISSUED);
         int count = 0;
         for (Product p : products) {
             Optional<ForecastModelRun> lastRun = modelRunRepo.findTopByFirmIdAndProductIdOrderByRunTimestampDesc(firmId, p.getId());
             Long runId = lastRun.map(ForecastModelRun::getId).orElse(null);
-            calculateRecommendation(firmId, p.getId(), runId);
+            calculateRecommendation(firmId, p.getId(), runId, activePos);
             count++;
         }
-        log.info("Generated replenishment recommendations for {} products in firm {}", count, firmId);
+        log.info("Generated replenishment recommendations for {} products in firm {} (Preloaded {} active POs)", count, firmId, activePos.size());
         return count;
     }
 
@@ -432,6 +527,112 @@ public class RestockAdvisoryService {
     }
 
     @Transactional(readOnly = true)
+    public InventoryIntelligenceSummaryDto getInventoryIntelligenceSummary(Long firmId) {
+        List<Product> products = productRepo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseOrderByNameAsc(firmId);
+        List<ProductRestockRecommendation> activeRecs = restockRepo.findAllByFirmIdAndRecommendationStatus(firmId, "ACTIVE");
+        Map<Long, ProductRestockRecommendation> recMap = new HashMap<>();
+        for (ProductRestockRecommendation r : activeRecs) {
+            recMap.put(r.getProductId(), r);
+        }
+
+        LocalDate since = LocalDate.now().minusDays(30);
+        List<Object[]> salesAgg = transactionRepo.sumSalesByProductSince(firmId, since);
+        Map<Long, BigDecimal> sales30Map = new HashMap<>();
+        for (Object[] row : salesAgg) {
+            if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                sales30Map.put((Long) row[0], (BigDecimal) row[1]);
+            }
+        }
+
+        int outOfStock = 0;
+        int critical = 0;
+        int reorderNeeded = 0;
+        int healthy = 0;
+        BigDecimal totalReplenish = BigDecimal.ZERO;
+        Map<Long, InventoryIntelligenceSummaryDto.ItemSummary> itemMap = new HashMap<>();
+
+        for (Product p : products) {
+            BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
+            BigDecimal minStock = p.getMinStockLevel() != null ? p.getMinStockLevel() : BigDecimal.ZERO;
+            BigDecimal sales30 = sales30Map.getOrDefault(p.getId(), BigDecimal.ZERO);
+            BigDecimal dailyVelocity = sales30.divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP);
+
+            Integer daysCoverage = null;
+            if (dailyVelocity.compareTo(BigDecimal.ZERO) > 0) {
+                daysCoverage = stock.divide(dailyVelocity, 0, RoundingMode.DOWN).intValue();
+                if (daysCoverage < 0) daysCoverage = 0;
+            } else if (stock.compareTo(BigDecimal.ZERO) > 0) {
+                daysCoverage = 999;
+            } else {
+                daysCoverage = 0;
+            }
+
+            ProductRestockRecommendation rec = recMap.get(p.getId());
+            String urgency;
+            BigDecimal recQty = BigDecimal.ZERO;
+            BigDecimal incoming = BigDecimal.ZERO;
+            LocalDate stockoutDate = null;
+            String conf = "LOW";
+
+            if (rec != null) {
+                urgency = rec.getUrgencyStatus();
+                recQty = rec.getRecommendedOrderQty() != null ? rec.getRecommendedOrderQty() : BigDecimal.ZERO;
+                incoming = rec.getIncomingStock() != null ? rec.getIncomingStock() : BigDecimal.ZERO;
+                stockoutDate = rec.getExpectedStockoutDate();
+                conf = rec.getConfidenceLevel();
+            } else {
+                if (stock.compareTo(BigDecimal.ZERO) <= 0) {
+                    urgency = "OUT_OF_STOCK";
+                } else if (minStock.compareTo(BigDecimal.ZERO) > 0 && stock.compareTo(minStock) <= 0) {
+                    urgency = "REORDER_NEEDED";
+                    recQty = minStock.subtract(stock);
+                } else {
+                    urgency = "HEALTHY";
+                }
+            }
+
+            if ("OUT_OF_STOCK".equalsIgnoreCase(urgency)) {
+                outOfStock++;
+            } else if ("CRITICAL".equalsIgnoreCase(urgency)) {
+                critical++;
+            } else if ("REORDER_NEEDED".equalsIgnoreCase(urgency)) {
+                reorderNeeded++;
+            } else {
+                healthy++;
+            }
+
+            if (recQty.compareTo(BigDecimal.ZERO) > 0) {
+                totalReplenish = totalReplenish.add(recQty);
+            }
+
+            itemMap.put(p.getId(), InventoryIntelligenceSummaryDto.ItemSummary.builder()
+                    .productId(p.getId())
+                    .productName(p.getName())
+                    .currentStock(stock)
+                    .minStockLevel(minStock)
+                    .sales30d(sales30)
+                    .dailyVelocity(dailyVelocity)
+                    .daysOfCoverage(daysCoverage)
+                    .urgencyStatus(urgency)
+                    .recommendedOrderQty(recQty)
+                    .incomingStock(incoming)
+                    .expectedStockoutDate(stockoutDate)
+                    .confidenceLevel(conf)
+                    .build());
+        }
+
+        return InventoryIntelligenceSummaryDto.builder()
+                .totalProducts(products.size())
+                .outOfStockCount(outOfStock)
+                .criticalCount(critical)
+                .reorderNeededCount(reorderNeeded)
+                .healthyCount(healthy)
+                .totalReplenishmentUnits(totalReplenish)
+                .items(itemMap)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public HistoricalTrendsResponse getTrends(Long firmId, Long productId, String range) {
         productRepo.findByIdAndFirmId(productId, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
@@ -557,6 +758,22 @@ public class RestockAdvisoryService {
         }
 
         ProductRestockRecommendation r = latestRec.get();
+
+        BigDecimal actualConfidenceScore = null;
+        if (latestRun.isPresent()) {
+            List<ProductDemandForecast> pts = forecastRepo.findAllByFirmIdAndProductIdAndModelRunIdOrderByForecastDateAsc(
+                    firmId, productId, latestRun.get().getId());
+            if (!pts.isEmpty() && pts.get(0).getConfidenceScore() != null) {
+                actualConfidenceScore = pts.get(0).getConfidenceScore();
+            }
+        }
+        if (actualConfidenceScore == null) {
+            String lvl = r.getConfidenceLevel();
+            actualConfidenceScore = "HIGH".equalsIgnoreCase(lvl) ? BigDecimal.valueOf(85.0)
+                    : ("MEDIUM".equalsIgnoreCase(lvl) ? BigDecimal.valueOf(65.0)
+                    : ("LOW".equalsIgnoreCase(lvl) ? BigDecimal.valueOf(35.0) : BigDecimal.valueOf(25.0)));
+        }
+
         return RestockExplanationDto.builder()
                 .productId(productId)
                 .productName(p.getName())
@@ -581,7 +798,10 @@ public class RestockAdvisoryService {
                 .expectedStockoutDate(r.getExpectedStockoutDate())
                 .urgencyStatus(r.getUrgencyStatus())
                 .confidenceLevel(r.getConfidenceLevel())
-                .confidenceScore(latestRun.map(ForecastModelRun::getWape).orElse(null))
+                .confidenceScore(actualConfidenceScore)
+                .wape(latestRun.map(ForecastModelRun::getWape).orElse(null))
+                .rmse(latestRun.map(ForecastModelRun::getRmse).orElse(null))
+                .mae(latestRun.map(ForecastModelRun::getMae).orElse(null))
                 .selectedModel(latestRun.map(ForecastModelRun::getModelName).orElse("NONE"))
                 .explanationText(r.getExplanationText())
                 .generatedAt(r.getGeneratedAt())

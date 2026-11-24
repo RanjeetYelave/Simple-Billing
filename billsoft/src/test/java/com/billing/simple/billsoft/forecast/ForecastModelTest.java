@@ -70,6 +70,28 @@ class ForecastModelTest {
     }
 
     @Test
+    @DisplayName("Damped HoltWintersModel prevents explosive divergence across 365-day horizon")
+    void testDampedHoltWintersLongHorizonStability() {
+        HoltWintersModel model = new HoltWintersModel();
+        List<Double> history = Arrays.asList(
+                10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0,
+                24.0, 26.0, 28.0, 30.0, 32.0, 34.0, 36.0,
+                38.0, 40.0, 42.0, 44.0, 46.0, 48.0, 50.0
+        );
+        // Horizon 365 days
+        List<Double> forecast365 = model.forecast(history, 365);
+
+        assertEquals(365, forecast365.size());
+        // Under standard Holt-Winters, day 365 would explode to > 700 units.
+        // Under damped trend (phi=0.90), the trend contribution is bounded by ~9.0 * b_t.
+        // Day 365 prediction should remain sane (< 100 units).
+        Double day365 = forecast365.get(364);
+        assertNotNull(day365);
+        assertTrue(day365 < 100.0, "Damped forecast at day 365 should be bounded < 100 but was " + day365);
+        assertTrue(day365 >= 0.0);
+    }
+
+    @Test
     @DisplayName("CrostonModel produces non-negative non-zero forecast for intermittent demand")
     void testCrostonModel() {
         CrostonModel model = new CrostonModel();

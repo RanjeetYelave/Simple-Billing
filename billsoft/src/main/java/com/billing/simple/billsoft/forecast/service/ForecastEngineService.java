@@ -13,6 +13,7 @@ import com.billing.simple.billsoft.forecast.repository.ProductDemandForecastRepo
 import com.billing.simple.billsoft.forecast.repository.ProductSalesMetricsRepository;
 import com.billing.simple.billsoft.forecast.selection.DemandClassification;
 import com.billing.simple.billsoft.forecast.selection.DemandPatternClassifier;
+import com.billing.simple.billsoft.entities.Product;
 import com.billing.simple.billsoft.repo.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,8 @@ public class ForecastEngineService {
     private final DemandPatternClassifier classifier;
     private final RollingOriginBacktester backtester;
     private final ForecastConfidenceCalculator confidenceCalculator;
+    private final com.billing.simple.billsoft.repo.StockMovementRepository stockMovementRepo;
+    private final com.billing.simple.billsoft.forecast.repository.ForecastRealizationLogRepository realizationLogRepo;
 
     // Algorithm beans
     private final HistoricalMeanModel historicalMeanModel;
@@ -61,14 +64,18 @@ public class ForecastEngineService {
             return Optional.empty();
         }
 
+        Product prod = productRepo.findByIdAndFirmId(productId, firmId).orElse(null);
         long startTime = System.currentTimeMillis();
 
-        // 1. Build contiguous daily net demand series from metrics
+        // 1. Build contiguous daily net demand series from metrics with stockout timeline awareness
         List<ProductSalesMetrics> metrics = metricsRepo.findAllByFirmIdAndProductIdOrderByMetricDateAsc(firmId, productId);
-        List<Double> dailyDemandSeries = buildContiguousDailyDemandSeries(metrics);
+        LocalDate firstDate = (metrics != null && !metrics.isEmpty()) ? metrics.get(0).getMetricDate() : LocalDate.now();
+        LocalDate lastDate = LocalDate.now();
+        List<Boolean> stockoutFlags = buildDailyStockoutTimeline(firmId, productId, firstDate, lastDate, metrics, prod);
+        List<Double> dailyDemandSeries = buildContiguousDailyDemandSeries(metrics, stockoutFlags);
 
-        // 2. Classify demand pattern
-        DemandClassification classification = classifier.classify(dailyDemandSeries);
+        // 2. Classify demand pattern with censored stockout observation handling
+        DemandClassification classification = classifier.classify(dailyDemandSeries, stockoutFlags);
 
         // 3. Select algorithm
         TimeSeriesDemandModel model = selectModel(classification.getRecommendedModel(), config.getModelOverride());
@@ -85,7 +92,7 @@ public class ForecastEngineService {
         }
         double zeroDemandRate = historyDays > 0 ? (zeroCount / historyDays) : 1.0;
         ForecastConfidenceCalculator.ConfidenceResult confidence = confidenceCalculator.calculate(
-                backtest.getWape(), zeroDemandRate, classification.getCv2(), historyDays);
+                backtest.getWape(), zeroDemandRate, classification.getCv2(), historyDays, backtest.isHasSufficientHistory());
 
         // 6. Generate 365-day forecast trajectory
         int horizon = 365;
@@ -100,7 +107,7 @@ public class ForecastEngineService {
                 .runTimestamp(LocalDateTime.now())
                 .modelName(model.getModelName())
                 .modelVersion(model.getModelVersion())
-                .hyperparametersJson("{\"alpha\":0.2,\"beta\":0.1,\"gamma\":0.2}")
+                .hyperparametersJson("{\"alpha\":0.2,\"beta\":0.1,\"gamma\":0.2,\"phi\":0.90}")
                 .demandPattern(classification.getPattern())
                 .adi(BigDecimal.valueOf(classification.getAdi()).setScale(4, RoundingMode.HALF_UP))
                 .cv2(BigDecimal.valueOf(classification.getCv2()).setScale(4, RoundingMode.HALF_UP))
@@ -140,6 +147,29 @@ public class ForecastEngineService {
         }
         forecastRepo.saveAll(forecastPoints);
 
+        // 9. Persist realization tracking points across evaluation horizons
+        if (realizationLogRepo != null) {
+            for (int h : new int[]{1, 7, 14, 30, 60, 90}) {
+                if (h <= horizon && h - 1 < dailyPredictions.size()) {
+                    LocalDate targetDate = LocalDate.now().plusDays(h);
+                    double pred = Math.max(0.0, dailyPredictions.get(h - 1));
+                    com.billing.simple.billsoft.forecast.entity.ForecastRealizationLog logEntry =
+                            com.billing.simple.billsoft.forecast.entity.ForecastRealizationLog.builder()
+                                    .firmId(firmId)
+                                    .productId(productId)
+                                    .modelRunId(savedRun.getId())
+                                    .originDate(LocalDate.now())
+                                    .targetDate(targetDate)
+                                    .horizonDays(h)
+                                    .predictedDemand(BigDecimal.valueOf(pred).setScale(4, RoundingMode.HALF_UP))
+                                    .modelName(model.getModelName())
+                                    .evaluationStatus("PENDING")
+                                    .build();
+                    realizationLogRepo.save(logEntry);
+                }
+            }
+        }
+
         log.info("Generated 365-day forecast for product {} in firm {} using {} (Confidence: {}/100, WAPE: {})",
                 productId, firmId, model.getModelName(), confidence.getScore(), backtest.getWape());
 
@@ -147,6 +177,10 @@ public class ForecastEngineService {
     }
 
     private List<Double> buildContiguousDailyDemandSeries(List<ProductSalesMetrics> metrics) {
+        return buildContiguousDailyDemandSeries(metrics, Collections.emptyList());
+    }
+
+    private List<Double> buildContiguousDailyDemandSeries(List<ProductSalesMetrics> metrics, List<Boolean> stockoutFlags) {
         if (metrics == null || metrics.isEmpty()) {
             return Collections.emptyList();
         }
@@ -156,19 +190,107 @@ public class ForecastEngineService {
         if (lastDate.isBefore(firstDate)) lastDate = firstDate;
 
         Map<LocalDate, Double> demandByDate = new HashMap<>();
+        double totalDemand = 0.0;
+        int nonZeroDays = 0;
+
         for (ProductSalesMetrics m : metrics) {
             double netDemand = m.getNetRequestedQty() != null
                     ? Math.max(0.0, m.getNetRequestedQty().doubleValue()) : 0.0;
             demandByDate.put(m.getMetricDate(), netDemand);
+            if (netDemand > 0.0) {
+                totalDemand += netDemand;
+                nonZeroDays++;
+            }
         }
+
+        double inStockAvgDailyDemand = nonZeroDays > 0 ? (totalDemand / nonZeroDays) : 0.0;
 
         List<Double> series = new ArrayList<>();
         LocalDate curr = firstDate;
+        int dayIdx = 0;
+        int consecutiveStockoutDays = 0;
+
         while (!curr.isAfter(lastDate)) {
-            series.add(demandByDate.getOrDefault(curr, 0.0));
+            boolean isStockout = (stockoutFlags != null && dayIdx < stockoutFlags.size() && Boolean.TRUE.equals(stockoutFlags.get(dayIdx)));
+            Double recordedDemand = demandByDate.get(curr);
+
+            if (recordedDemand != null && recordedDemand > 0.0) {
+                series.add(recordedDemand);
+                consecutiveStockoutDays = 0;
+            } else if (isStockout) {
+                consecutiveStockoutDays++;
+                // Statistically defensible handling: for brief stockout gaps (<= 7 days) with proven historical demand,
+                // impute baseline in-stock mean to prevent artificial trend collapse, while leaving extended stockouts at 0.0
+                if (consecutiveStockoutDays <= 7 && inStockAvgDailyDemand > 0.0) {
+                    series.add(inStockAvgDailyDemand);
+                } else {
+                    series.add(0.0);
+                }
+            } else {
+                // Genuine zero-demand day
+                series.add(0.0);
+                consecutiveStockoutDays = 0;
+            }
+
             curr = curr.plusDays(1);
+            dayIdx++;
         }
         return series;
+    }
+
+    private List<Boolean> buildDailyStockoutTimeline(Long firmId, Long productId, LocalDate firstDate, LocalDate lastDate, List<ProductSalesMetrics> metrics, Product prod) {
+        if (firstDate == null || lastDate == null || firstDate.isAfter(lastDate)) {
+            return Collections.emptyList();
+        }
+        if (prod != null && "SERVICE".equalsIgnoreCase(prod.getItemType())) {
+            int days = (int) java.time.temporal.ChronoUnit.DAYS.between(firstDate, lastDate) + 1;
+            return new ArrayList<>(Collections.nCopies(days, false));
+        }
+
+        Map<LocalDate, Double> demandByDate = new HashMap<>();
+        if (metrics != null) {
+            for (ProductSalesMetrics m : metrics) {
+                double net = m.getNetRequestedQty() != null ? m.getNetRequestedQty().doubleValue() : 0.0;
+                if (net > 0.0) {
+                    demandByDate.put(m.getMetricDate(), net);
+                }
+            }
+        }
+
+        List<com.billing.simple.billsoft.entities.StockMovement> movements = (stockMovementRepo != null && firmId != null && productId != null)
+                ? stockMovementRepo.findByProductIdAndFirmIdOrderByCreatedAtDesc(productId, firmId)
+                : Collections.emptyList();
+
+        List<com.billing.simple.billsoft.entities.StockMovement> sortedMovs = new ArrayList<>(movements);
+        sortedMovs.sort(Comparator.comparing(com.billing.simple.billsoft.entities.StockMovement::getCreatedAt));
+
+        List<Boolean> stockoutFlags = new ArrayList<>();
+        LocalDate curr = firstDate;
+        int movIdx = 0;
+        BigDecimal runningStock = BigDecimal.ZERO;
+        if (!sortedMovs.isEmpty()) {
+            runningStock = sortedMovs.get(0).getPreviousStock() != null ? sortedMovs.get(0).getPreviousStock() : BigDecimal.ZERO;
+        } else if (prod != null && prod.getStockQuantity() != null) {
+            runningStock = prod.getStockQuantity();
+        }
+
+        while (!curr.isAfter(lastDate)) {
+            LocalDateTime endOfDay = curr.atTime(23, 59, 59);
+            while (movIdx < sortedMovs.size() && !sortedMovs.get(movIdx).getCreatedAt().isAfter(endOfDay)) {
+                runningStock = sortedMovs.get(movIdx).getNewStock() != null ? sortedMovs.get(movIdx).getNewStock() : BigDecimal.ZERO;
+                movIdx++;
+            }
+
+            boolean hasObservedDemand = demandByDate.containsKey(curr);
+            boolean isOutOfStock = runningStock.compareTo(BigDecimal.ZERO) <= 0;
+
+            // If out of stock and no demand was recorded, this is a censored stockout observation
+            boolean isCensoredStockout = isOutOfStock && !hasObservedDemand;
+            stockoutFlags.add(isCensoredStockout);
+
+            curr = curr.plusDays(1);
+        }
+        return stockoutFlags;
     }
 
     private TimeSeriesDemandModel selectModel(String recommendedModel, String modelOverride) {

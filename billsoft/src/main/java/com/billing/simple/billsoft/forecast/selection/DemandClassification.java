@@ -15,5 +15,7 @@ public class DemandClassification {
     private double cv2;     // Coefficient of Variation squared
     private int nonZeroCount;
     private int totalObservations;
+    private int uncensoredObservations;
+    private int stockoutDaysCount;
     private String recommendedModel;
 }

@@ -201,6 +201,21 @@ public class ForecastController {
     }
 
     /**
+     * Batch inventory intelligence summary (30d velocity, days of coverage, urgency badges).
+     */
+    @GetMapping("/inventory-summary")
+    public ResponseEntity<?> getInventorySummary(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
+        if (firmId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+        }
+        InventoryIntelligenceSummaryDto summary = restockAdvisoryService.getInventoryIntelligenceSummary(firmId);
+        return ResponseEntity.ok(summary);
+    }
+
+    /**
      * Trigger on-demand full sync & forecast computation for a firm.
      */
     @PostMapping("/admin/sync")

@@ -22512,6 +22512,10 @@ if (typeof window !== 'undefined') {
       const [inventoryTab, setInventoryTab] = useState(() => (initialNav && initialNav.inventoryTab ? initialNav.inventoryTab : 'STANDARD'));
       const [selectedDetailProdId, setSelectedDetailProdId] = useState(null);
 
+      // Inventory Intelligence & Demand Forecasting State
+      const [inventorySummary, setInventorySummary] = useState(null);
+      const [syncingForecasts, setSyncingForecasts] = useState(false);
+
       // Inline Quick Stock Edit States
       const [editingStockId, setEditingStockId] = useState(null);
       const [inlineStockVal, setInlineStockVal] = useState('');
@@ -22781,13 +22785,15 @@ if (typeof window !== 'undefined') {
         Promise.all([
           API.products.list(),
           API.products.summary().catch(() => null),
-          API.products.categories().catch(() => [])
-        ]).then(([prods, sum, cats]) => {
+          API.products.categories().catch(() => []),
+          API.forecast.getInventorySummary().catch(() => null)
+        ]).then(([prods, sum, cats, invSum]) => {
           const freshProds = prods || [];
           const freshCats = cats || [];
           setProducts(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshProds)) ? prev : freshProds);
           if (sum) setSummary(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, sum)) ? prev : sum);
           setCategories(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, freshCats)) ? prev : freshCats);
+          if (invSum) setInventorySummary(invSum);
           if (!isSilent) setLoading(false);
         }).catch((err) => {
           console.debug('[Inventory] Load error:', err);
@@ -22806,15 +22812,63 @@ if (typeof window !== 'undefined') {
           }
         };
         const handleSilent = () => load({ silent: true });
+        const handleForecastSynced = () => load({ silent: true });
         window.addEventListener('billsoft:app-refresh', load);
         window.addEventListener('billsoft:silent-data-refresh', handleSilent);
+        window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
         window.addEventListener('billsoft:navigate-subtab', handleSubtabNav);
         return () => {
           window.removeEventListener('billsoft:app-refresh', load);
           window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
+          window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
           window.removeEventListener('billsoft:navigate-subtab', handleSubtabNav);
         };
       }, [load]);
+
+      const handleResyncForecasts = async () => {
+        const activeFid = API.firmId || (window.currentFirm && window.currentFirm.id);
+        if (!activeFid) {
+          showToast('Active firm ID is required to sync forecasts.', 'error');
+          return;
+        }
+        setSyncingForecasts(true);
+        try {
+          if (typeof window !== 'undefined' && window.ForecastSyncService) {
+            await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false });
+          } else {
+            const res = await API.forecast.adminSync(activeFid);
+            showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
+          }
+          load({ silent: true });
+        } catch (err) {
+          console.error('Forecast sync error:', err);
+          showToast('Failed to trigger forecast sync: ' + (err.message || 'Network error'), 'error');
+        } finally {
+          setSyncingForecasts(false);
+        }
+      };
+
+      const handleUseReorderRecommendation = (productId, suggestedQty) => {
+        window.__billsoftPendingNav = {
+          page: 'firm',
+          tab: 'orders',
+          prefillPoItem: {
+            productId: productId,
+            suggestedQty: suggestedQty
+          },
+          ts: Date.now()
+        };
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+          detail: {
+            page: 'firm',
+            tab: 'orders',
+            prefillPoItem: {
+              productId: productId,
+              suggestedQty: suggestedQty
+            }
+          }
+        }));
+      };
 
       const openCreate = () => {
         setEditItem(null);
@@ -23465,24 +23519,104 @@ if (typeof window !== 'undefined') {
           )
         ),
 
+        // Inventory Intelligence Overview Banner
+        inventorySummary && React.createElement('div', {
+          className: 'inventory-forecast-banner',
+          style: {
+            background: 'linear-gradient(90deg, rgba(79, 70, 229, 0.05) 0%, rgba(245, 158, 11, 0.05) 100%)',
+            border: '1px solid rgba(79, 70, 229, 0.2)',
+            borderRadius: 10,
+            padding: '10px 16px',
+            marginBottom: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 12
+          }
+        },
+          // Left: Intelligence KPIs
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('span', { style: { fontSize: '1.25rem' } }, '⚡'),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' } }, 'Inventory Intelligence & Demand Forecasting'),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)' } },
+                  `${inventorySummary.totalProducts || products.length} catalog items tracked with machine learning demand models`
+                )
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' } },
+              React.createElement('span', {
+                className: 'badge',
+                style: {
+                  background: (inventorySummary.outOfStockCount || 0) > 0 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-secondary)',
+                  color: (inventorySummary.outOfStockCount || 0) > 0 ? 'var(--status-error)' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  padding: '4px 8px'
+                }
+              }, `🚫 ${inventorySummary.outOfStockCount || 0} Out of Stock`),
+              React.createElement('span', {
+                className: 'badge',
+                style: {
+                  background: (inventorySummary.criticalCount || 0) > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                  color: (inventorySummary.criticalCount || 0) > 0 ? 'var(--status-warning)' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  padding: '4px 8px'
+                }
+              }, `⚠️ ${inventorySummary.criticalCount || 0} Critical Risks (<7d)`),
+              React.createElement('span', {
+                className: 'badge',
+                style: {
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  color: '#6366F1',
+                  fontWeight: 700,
+                  padding: '4px 8px'
+                }
+              }, `📦 ${inventorySummary.totalReplenishmentUnits || 0} Units Suggested`)
+            )
+          ),
+          // Right: Quick Actions
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('button', {
+              className: 'btn btn-sm btn-outline',
+              disabled: syncingForecasts,
+              onClick: handleResyncForecasts,
+              style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.78rem' },
+              title: 'Resynchronise demand models and recalculate replenishment suggestions'
+            },
+              syncingForecasts ? React.createElement(RupeeCRMLoader, { size: 14 }) : '🔄',
+              syncingForecasts ? 'Resyncing...' : 'Resync Forecasts'
+            ),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-gold',
+              onClick: () => setInventoryTab('SMART_REORDER'),
+              style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: '0.78rem' },
+              title: 'Open full Smart Reorder Queue'
+            }, '⚡ Open Reorder Queue')
+          )
+        ),
+
         // Product Table
         loading ? React.createElement(RupeeCRMLoader, { message: 'Loading products & stock inventory...', size: 56, style: { minHeight: 280 } }) :
           React.createElement('div', { className: 'card firm-table-card' },
             React.createElement('div', { className: 'table-container', tabIndex: 0, onKeyDown: handleScrollKeyDown, style: { outline: 'none' } },
               React.createElement('table', { style: { width: '100%', margin: 0 } },
                 React.createElement('thead', null, React.createElement('tr', null,
-                  React.createElement('th', { style: { width: '22%' } }, 'Product Name'),
-                  React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
-                  React.createElement('th', { style: { width: '12%' } }, 'Category'),
-                  React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, 'Cost Price'),
-                  React.createElement('th', { style: { width: '12%', textAlign: 'right' } }, 'Selling Price'),
-                  React.createElement('th', { style: { width: '9%', textAlign: 'center' } }, 'Margin %'),
-                  React.createElement('th', { style: { width: '12%', textAlign: 'center' } }, 'Stock on Hand'),
-                  React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
+                  React.createElement('th', { style: { width: '18%' } }, 'Product Name'),
+                  React.createElement('th', { style: { width: '9%' } }, 'HSN/SAC'),
+                  React.createElement('th', { style: { width: '10%' } }, 'Category'),
+                  React.createElement('th', { style: { width: '9%', textAlign: 'right' } }, 'Cost Price'),
+                  React.createElement('th', { style: { width: '10%', textAlign: 'right' } }, 'Selling Price'),
+                  React.createElement('th', { style: { width: '8%', textAlign: 'center' } }, 'Margin %'),
+                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, 'Stock on Hand'),
+                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, '30D Velocity & Coverage'),
+                  React.createElement('th', { style: { width: '9%', textAlign: 'center' } }, 'Urgency'),
+                  React.createElement('th', { style: { width: '11%', textAlign: 'center' } }, 'Actions')
                 )),
                 React.createElement('tbody', null,
                   filteredProducts.length === 0 ? React.createElement('tr', null,
-                    React.createElement('td', { colSpan: 8, style: { textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' } },
+                    React.createElement('td', { colSpan: 10, style: { textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' } },
                       React.createElement('div', { style: { fontSize: '2rem', marginBottom: 8 } }, '📦'),
                       React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' } }, 'No products match your criteria'),
                       React.createElement('div', { style: { fontSize: '0.85rem', marginTop: 4 } }, 'Try resetting filters or click "+ Add Product" to create one.')
@@ -23495,6 +23629,29 @@ if (typeof window !== 'undefined') {
                       const stock = Number(p.stockQuantity || 0);
                       const minStock = Number(p.minStockLevel || 5);
                       const isService = p.itemType === 'SERVICE';
+
+                      const itemIntel = inventorySummary && inventorySummary.items ? inventorySummary.items[p.id] : null;
+                      const sales30d = itemIntel ? itemIntel.sales30d : null;
+                      const dailyVel = itemIntel ? itemIntel.dailyVelocity : null;
+                      const daysCov = itemIntel ? itemIntel.daysOfCoverage : null;
+                      const urgency = itemIntel ? (itemIntel.urgencyStatus || 'HEALTHY') : null;
+                      const recQty = itemIntel && itemIntel.recommendedOrderQty ? Number(itemIntel.recommendedOrderQty) : 0;
+                      const incomingQty = itemIntel && itemIntel.incomingStock ? Number(itemIntel.incomingStock) : 0;
+
+                      let urgColor = 'var(--status-success)';
+                      let urgBg = 'var(--status-success-bg)';
+                      let urgBorder = 'var(--status-success-border)';
+                      let urgLabel = 'Healthy';
+
+                      if (isService) {
+                        urgLabel = 'Service'; urgColor = 'var(--status-info)'; urgBg = 'var(--status-info-bg)'; urgBorder = 'var(--status-info-border)';
+                      } else if (urgency === 'CRITICAL') {
+                        urgLabel = '⚠️ Critical'; urgColor = 'var(--status-error)'; urgBg = 'var(--status-error-bg)'; urgBorder = 'var(--status-error-border)';
+                      } else if (urgency === 'REORDER' || urgency === 'WARNING') {
+                        urgLabel = '⚡ Reorder'; urgColor = 'var(--status-warning)'; urgBg = 'var(--status-warning-bg)'; urgBorder = 'var(--status-warning-border)';
+                      } else if (urgency === 'PROVISIONAL') {
+                        urgLabel = 'Provisional'; urgColor = 'var(--text-secondary)'; urgBg = 'var(--bg-secondary)'; urgBorder = 'var(--border)';
+                      }
 
                       let stockBadgeStyle = { background: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success-border)' };
                       let stockLabel = `${stock} ${p.unit || 'pcs'}`;
@@ -23532,18 +23689,18 @@ if (typeof window !== 'undefined') {
                           p.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem', padding: '2px 8px' } }, p.category) : '—'
                         ),
 
-                        // Column 3: Cost Price
+                        // Column 4: Cost Price
                         React.createElement('td', { style: { textAlign: 'right', color: 'var(--text-secondary)' } },
                           p.costPrice != null ? BillsoftUtils.formatCurrency(p.costPrice) : '—'
                         ),
 
-                        // Column 4: Selling Price
+                        // Column 5: Selling Price
                         React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' } },
                           BillsoftUtils.formatCurrency(p.price),
                           p.gstPercentage ? React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 400 } }, `+${p.gstPercentage}% GST`) : null
                         ),
 
-                        // Column 5: Margin %
+                        // Column 6: Margin %
                         React.createElement('td', { style: { textAlign: 'center' } },
                           marginPct != null ? React.createElement('span', {
                             style: {
@@ -23554,7 +23711,7 @@ if (typeof window !== 'undefined') {
                           }, `${marginPct}%`) : '—'
                         ),
 
-                        // Column 6: Stock on Hand (Direct Inline Quick Steppers & One-Click Edit)
+                        // Column 7: Stock on Hand (Direct Inline Quick Steppers & One-Click Edit)
                         React.createElement('td', { style: { textAlign: 'center' } },
                           isService ? (
                             React.createElement('span', {
@@ -23643,41 +23800,73 @@ if (typeof window !== 'undefined') {
                           )
                         ),
 
-                        // Column 7: Actions
+                        // Column 8: 30D Velocity & Coverage
                         React.createElement('td', { style: { textAlign: 'center' } },
-                          React.createElement('div', { style: { display: 'flex', gap: 4, justifyContent: 'center' } },
+                          isService ? React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—') : (
+                            itemIntel ? React.createElement('div', { style: { fontSize: '0.78rem' } },
+                              React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
+                                `${sales30d || 0} ${p.unit || 'pcs'} / 30d`
+                              ),
+                              React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                                daysCov != null ? (daysCov >= 999 ? 'Coverage: 90+ days' : `Coverage: ${daysCov}d`) : (dailyVel ? `${dailyVel}/day` : 'No recent sales')
+                              )
+                            ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                          )
+                        ),
+
+                        // Column 9: Urgency / Reorder
+                        React.createElement('td', { style: { textAlign: 'center' } },
+                          isService ? React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}` } }, urgLabel) : (
+                            itemIntel ? React.createElement('div', { style: { display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
+                              React.createElement('span', { className: 'badge', style: { fontSize: '0.72rem', padding: '2px 6px', background: urgBg, color: urgColor, border: `1px solid ${urgBorder}`, fontWeight: 700 } }, urgLabel),
+                              recQty > 0 && React.createElement('span', { style: { fontSize: '0.7rem', fontWeight: 600, color: 'var(--primary)' } }, `+${recQty} ${p.unit || 'pcs'}`),
+                              incomingQty > 0 && React.createElement('span', { style: { fontSize: '0.68rem', color: 'var(--status-success)', fontWeight: 600 } }, `(+${incomingQty} PO)`)
+                            ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                          )
+                        ),
+
+                        // Column 10: Actions
+                        React.createElement('td', { style: { textAlign: 'center' } },
+                          React.createElement('div', { style: { display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' } },
+                            // Demand Forecast Insights Modal button
+                            !isService && React.createElement('button', {
+                              className: 'btn btn-sm btn-ghost',
+                              title: 'View Demand Forecast & Inventory Intelligence',
+                              style: { color: 'var(--primary)', padding: '2px 4px' },
+                              onClick: () => setSelectedDetailProdId(p.id)
+                            }, '📊'),
+                            // Quick Reorder PO button
+                            !isService && React.createElement('button', {
+                              className: 'btn btn-sm btn-ghost',
+                              title: recQty > 0 ? `Create PO for ${recQty} ${p.unit || 'pcs'}` : 'Create Purchase Order for this item',
+                              style: { color: recQty > 0 ? 'var(--accent-gold, #D4AF37)' : 'var(--text-secondary)', padding: '2px 4px' },
+                              onClick: () => handleUseReorderRecommendation(p.id, recQty > 0 ? recQty : 10)
+                            }, '🛒'),
                             // Quick Stock Adjust Modal button (for bulk Add / Deduct / Set with notes)
                             !isService && React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'Quick Adjust Modal (Bulk Add/Deduct with audit note)',
-                              style: { color: 'var(--text-secondary)' },
+                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
                               onClick: () => openQuickAdjust(p)
                             }, '⚡'),
-                            // Smart Reorder item button
-                            !isService && React.createElement('button', {
-                              className: 'btn btn-sm btn-ghost',
-                              title: 'Reorder this item via Smart PO Assistant',
-                              style: { color: 'var(--text-secondary)' },
-                              onClick: () => openSmartReorder(p.id)
-                            }, '🛒'),
                             // Movement History button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'View Movement Ledger',
-                              style: { color: 'var(--text-secondary)' },
+                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
                               onClick: () => openHistory(p)
                             }, '📜'),
                             // Edit button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
                               title: 'Edit Full Product Details',
-                              style: { color: 'var(--text-secondary)' },
+                              style: { color: 'var(--text-secondary)', padding: '2px 4px' },
                               onClick: () => openEdit(p)
                             }, Icons.edit),
                             // Archive button
                             React.createElement('button', {
                               className: 'btn btn-sm btn-ghost',
-                              style: { color: 'var(--status-error)' },
+                              style: { color: 'var(--status-error)', padding: '2px 4px' },
                               title: 'Archive Product',
                               onClick: () => handleDelete(p.id)
                             }, Icons.trash)
@@ -34523,9 +34712,10 @@ function PartyDetailModal({
       const initialNav = getInitialNav();
 
       // Statements State
-      const [statementMode, setStatementMode] = useState(() => (initialNav && initialNav.statementMode) || 'party'); // 'party' | 'customer' | 'firm'
+      const [statementMode, setStatementMode] = useState(() => (initialNav && initialNav.statementMode) || 'party'); // 'party' | 'customer' | 'firm' | 'forecast'
       const [parties, setParties] = useState([]);
       const [customers, setCustomers] = useState([]);
+      const [categories, setCategories] = useState([]);
       const [partyId, setPartyId] = useState(() => (initialNav && initialNav.partyId) || '');
       const [customerId, setCustomerId] = useState(() => (initialNav && initialNav.customerId) || '');
       const [from, setFrom] = useState('');
@@ -34534,6 +34724,12 @@ function PartyDetailModal({
       const [statementData, setStatementData] = useState(null);
       const [statementLoading, setStatementLoading] = useState(false);
       const [whatsAppModalDoc, setWhatsAppModalDoc] = useState(null);
+
+      // Forecast Statement Filters
+      const [forecastHorizon, setForecastHorizon] = useState(30);
+      const [forecastCategory, setForecastCategory] = useState('ALL');
+      const [forecastUrgency, setForecastUrgency] = useState('ALL');
+      const [forecastSearch, setForecastSearch] = useState('');
 
       // Journal Filters in Firm Statement
       const [journalSearch, setJournalSearch] = useState('');
@@ -34551,6 +34747,11 @@ function PartyDetailModal({
         API.customers.list().then(c => {
           const fresh = c || [];
           setCustomers(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
+        }).catch(() => { });
+
+        API.products.categories().then(c => {
+          const fresh = c || [];
+          setCategories(prev => (typeof RupeeCRMSync !== 'undefined' && RupeeCRMSync.isEqual(prev, fresh)) ? prev : fresh);
         }).catch(() => { });
       }, []);
 
@@ -34671,6 +34872,12 @@ function PartyDetailModal({
             result = await API.statements.party(partyId, from || undefined, to || undefined);
           } else if (statementMode === 'customer') {
             result = await API.statements.customer(customerId, from || undefined, to || undefined);
+          } else if (statementMode === 'forecast') {
+            result = await API.statements.forecast({
+              horizonDays: forecastHorizon || 30,
+              category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+              urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined
+            });
           } else {
             result = await API.statements.firm(from || undefined, to || undefined);
           }
@@ -34684,6 +34891,27 @@ function PartyDetailModal({
 
       // Standardized Export Modal State
       const [exportModalStatement, setExportModalStatement] = useState(null);
+
+      const handleDownloadForecastCsv = async () => {
+        try {
+          const csvText = await API.statements.forecastCsv({
+            horizonDays: forecastHorizon || 30,
+            category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+            urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined
+          });
+          const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `Forecast_Analytics_${forecastHorizon || 30}d_${BillsoftUtils.todayStr()}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          showToast('Forecast CSV downloaded successfully', 'success');
+        } catch (err) {
+          console.error('CSV export failed:', err);
+          showToast('Failed to download forecast CSV', 'error');
+        }
+      };
 
       const handleDownloadStatementPdf = (e) => {
         if (e && e.preventDefault) e.preventDefault();
@@ -34711,6 +34939,10 @@ function PartyDetailModal({
           const safeCust = (statementData && statementData.customerName) || custObj.name || `Customer-${customerId}`;
           docNum = safeCust;
           defaultFilename = `Customer_Statement_${safeCust.trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`;
+        } else if (statementMode === 'forecast') {
+          docFamily = 'Forecast Analytics Statement';
+          docNum = `Horizon-${forecastHorizon || 30}d`;
+          defaultFilename = `Forecast_Analytics_Statement_${forecastHorizon || 30}d_${BillsoftUtils.todayStr()}.pdf`;
         } else {
           docFamily = 'Firm Statement';
           docNum = (statementData && statementData.firmName) || 'Business-Summary';
@@ -34736,6 +34968,13 @@ function PartyDetailModal({
               return await API.statements.partyPdf(partyId, from || undefined, to || undefined, query);
             } else if (statementMode === 'customer') {
               return await API.statements.customerPdf(customerId, from || undefined, to || undefined, query);
+            } else if (statementMode === 'forecast') {
+              return await API.statements.forecastPdf({
+                horizonDays: forecastHorizon || 30,
+                category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+                urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined,
+                ...query
+              });
             } else {
               return await API.statements.firmPdf(from || undefined, to || undefined, API.firmId, query);
             }
@@ -34756,6 +34995,12 @@ function PartyDetailModal({
               currData = await API.statements.party(partyId, from || undefined, to || undefined);
             } else if (statementMode === 'customer' && customerId) {
               currData = await API.statements.customer(customerId, from || undefined, to || undefined);
+            } else if (statementMode === 'forecast') {
+              currData = await API.statements.forecast({
+                horizonDays: forecastHorizon || 30,
+                category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+                urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined
+              });
             } else if (statementMode === 'firm') {
               currData = await API.statements.firm(from || undefined, to || undefined);
             }
@@ -34806,6 +35051,27 @@ function PartyDetailModal({
             phone: recipientPhone,
             icon: '👤'
           });
+        } else if (statementMode === 'forecast') {
+          msg = `📈 *Demand Forecast & Replenishment Advisory*\n\n` +
+            `🏢 Business: ${firmObj.firmName || 'Store'}\n` +
+            `📅 Horizon: ${forecastHorizon || 30} Days (${BillsoftUtils.todayStr()})\n` +
+            `📦 Catalog SKUs Analyzed: ${currData ? (currData.totalProducts || 0) : 0}\n` +
+            `⚠️ Stockout Risks: ${currData ? (currData.stockoutRiskCount || 0) : 0} items\n` +
+            `⚡ Reorder Advised: ${currData ? (currData.reorderRecommendedCount || 0) : 0} items\n` +
+            `📊 Projected Demand: ${currData ? BillsoftUtils.formatNumber(currData.totalProjectedDemand || 0) : 0} units\n` +
+            `🛒 Replenishment Units: ${currData ? BillsoftUtils.formatNumber(currData.totalReplenishmentUnits || 0) : 0} units\n` +
+            `💰 Est. Capital Required: ₹${currData ? BillsoftUtils.formatCurrency(currData.estimatedReplenishmentCost || 0) : '0'}\n\n` +
+            `Generated via RupeeCRM Inventory Intelligence`;
+          recipientPhone = firmObj.phone || '';
+          recipientName = firmObj.firmName || 'Forecast Advisory';
+          ref = `FORECAST-STMT-${forecastHorizon || 30}D`;
+          recipients.push({
+            id: 'firm',
+            label: 'Store / Inventory Team',
+            name: firmObj.firmName || 'Store',
+            phone: recipientPhone,
+            icon: '📈'
+          });
         } else {
           msg = `📊 *${firmObj.firmName || 'Business'} Statement Summary*\n\n` +
             `📅 Period: ${from || 'Beginning'} to ${to || 'Today'}\n` +
@@ -34839,6 +35105,18 @@ function PartyDetailModal({
           pdfFileName = `Customer_Statement_${safeCustName}.pdf`;
           pdfFetcher = () => API.statements.customerPdf(customerId, from || undefined, to || undefined);
           pdfUrl = API.statements.customerPdfUrl(customerId, from || undefined, to || undefined);
+        } else if (statementMode === 'forecast') {
+          pdfFileName = `Forecast_Analytics_${forecastHorizon || 30}d.pdf`;
+          pdfFetcher = () => API.statements.forecastPdf({
+            horizonDays: forecastHorizon || 30,
+            category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+            urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined
+          });
+          pdfUrl = API.statements.forecastPdfUrl({
+            horizonDays: forecastHorizon || 30,
+            category: forecastCategory !== 'ALL' ? forecastCategory : undefined,
+            urgency: forecastUrgency !== 'ALL' ? forecastUrgency : undefined
+          });
         } else if (statementMode === 'firm') {
           pdfFileName = `Business_Statement.pdf`;
           pdfFetcher = () => API.statements.firmPdf(from || undefined, to || undefined);
@@ -34878,12 +35156,45 @@ function PartyDetailModal({
         });
       }, [statementData, journalTypeFilter, journalSearch]);
 
+      const handleUseReorderRecommendation = (prodId, suggestedQty) => {
+        window.__billsoftPendingNav = {
+          page: 'firm',
+          tab: 'orders',
+          prefillPoItem: {
+            productId: prodId,
+            suggestedQty: suggestedQty
+          },
+          ts: Date.now()
+        };
+        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+          detail: {
+            page: 'firm',
+            tab: 'orders',
+            prefillPoItem: {
+              productId: prodId,
+              suggestedQty: suggestedQty
+            }
+          }
+        }));
+      };
+
+      const filteredForecastItems = useMemo(() => {
+        if (!statementData) return [];
+        const items = statementData.productLedger || statementData.items || [];
+        if (!forecastSearch.trim()) return items;
+        const q = forecastSearch.toLowerCase();
+        return items.filter(it =>
+          (it.productName || '').toLowerCase().includes(q) ||
+          (it.category || '').toLowerCase().includes(q)
+        );
+      }, [statementData, forecastSearch]);
+
       return React.createElement('div', null,
-        // ── 3 HERO STATEMENT SELECTION CARDS ──
+        // ── 4 HERO STATEMENT SELECTION CARDS ──
           React.createElement('div', {
             style: {
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: 10,
               marginBottom: 10
             }
@@ -34994,6 +35305,42 @@ function PartyDetailModal({
                 React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' } }, 'Firm Financial Summary'),
                 React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Executive overview, P&L & journal')
               )
+            ),
+
+            // Card 4: Forecast & Replenishment Advisory Statement
+            React.createElement('div', {
+              onClick: () => { setStatementMode('forecast'); setStatementData(null); },
+              style: {
+                padding: '10px 14px',
+                borderRadius: 'var(--radius)',
+                border: statementMode === 'forecast' ? '2px solid var(--accent-gold, #D4AF37)' : '1px solid var(--border)',
+                background: statementMode === 'forecast' ? 'rgba(212, 175, 55, 0.08)' : 'var(--bg-card)',
+                boxShadow: statementMode === 'forecast' ? '0 2px 8px rgba(212, 175, 55, 0.2)' : 'var(--shadow)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: statementMode === 'forecast' ? 'var(--accent-gold, #D4AF37)' : 'var(--bg-secondary)',
+                  color: statementMode === 'forecast' ? '#ffffff' : 'var(--accent-gold, #D4AF37)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.1rem',
+                  flexShrink: 0
+                }
+              }, '📈'),
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' } }, 'Forecast & Replenishment'),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Demand projections, stockout risks & orders')
+              )
             )
           ),
 
@@ -35008,15 +35355,33 @@ function PartyDetailModal({
               boxShadow: 'var(--shadow)'
             }
           },
-            // Date Presets Row
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
-              React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 } }, '📅 Quick Presets:'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'today' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('today') }, 'Today'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisMonth' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisMonth') }, 'This Month'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'lastMonth' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('lastMonth') }, 'Last Month'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisQuarter' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisQuarter') }, 'This Quarter'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisFY' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisFY') }, 'This FY (Apr-Mar)'),
-              React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'all' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setDatePreset('all') }, 'All Time')
+            // Presets / Horizon Row
+            statementMode === 'forecast' ? (
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 } }, '⏱️ Forecast Horizon:'),
+                [
+                  { days: 30, label: '30 Days (1 Month)' },
+                  { days: 90, label: '90 Days (Quarter)' },
+                  { days: 180, label: '180 Days (Half Year)' },
+                  { days: 365, label: '365 Days (Full Year)' }
+                ].map(h => React.createElement('button', {
+                  key: h.days,
+                  type: 'button',
+                  className: `btn btn-xs ${forecastHorizon === h.days ? 'btn-primary' : 'btn-outline'}`,
+                  onClick: () => setForecastHorizon(h.days)
+                }, h.label))
+              )
+            ) : (
+              // Date Presets Row for Ledger Statements
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' } },
+                React.createElement('span', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 } }, '📅 Quick Presets:'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'today' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('today') }, 'Today'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisMonth' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisMonth') }, 'This Month'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'lastMonth' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('lastMonth') }, 'Last Month'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisQuarter' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisQuarter') }, 'This Quarter'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'thisFY' ? 'btn-primary' : 'btn-outline'}`, onClick: () => setDatePreset('thisFY') }, 'This FY (Apr-Mar)'),
+                React.createElement('button', { type: 'button', className: `btn btn-xs ${activePreset === 'all' ? 'btn-primary' : 'btn-ghost'}`, onClick: () => setDatePreset('all') }, 'All Time')
+              )
             ),
 
             // Main Filter Controls Grid
@@ -35054,8 +35419,8 @@ function PartyDetailModal({
                 })
               ),
 
-              // From Date
-              React.createElement('div', { style: { flex: '1 1 140px', minWidth: 130 } },
+              // From Date (Ledger Modes)
+              statementMode !== 'forecast' && React.createElement('div', { style: { flex: '1 1 140px', minWidth: 130 } },
                 React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'From Date'),
                 React.createElement('input', {
                   className: 'input w-full',
@@ -35066,14 +35431,56 @@ function PartyDetailModal({
                 })
               ),
 
-              // To Date
-              React.createElement('div', { style: { flex: '1 1 140px', minWidth: 130 } },
+              // To Date (Ledger Modes)
+              statementMode !== 'forecast' && React.createElement('div', { style: { flex: '1 1 140px', minWidth: 130 } },
                 React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'To Date'),
                 React.createElement('input', {
                   className: 'input w-full',
                   type: 'date',
                   value: to,
                   onChange: e => { setTo(e.target.value); setActivePreset(''); },
+                  style: { height: 40 }
+                })
+              ),
+
+              // Forecast Filters: Category
+              statementMode === 'forecast' && React.createElement('div', { style: { flex: '1 1 180px', minWidth: 150 } },
+                React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'Category Filter'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: forecastCategory,
+                  onChange: e => setForecastCategory(e.target.value),
+                  style: { height: 40 }
+                },
+                  React.createElement('option', { value: 'ALL' }, '📁 All Categories'),
+                  categories.map(c => React.createElement('option', { key: c, value: c }, c))
+                )
+              ),
+
+              // Forecast Filters: Urgency
+              statementMode === 'forecast' && React.createElement('div', { style: { flex: '1 1 180px', minWidth: 150 } },
+                React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'Urgency / Risk Status'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: forecastUrgency,
+                  onChange: e => setForecastUrgency(e.target.value),
+                  style: { height: 40 }
+                },
+                  React.createElement('option', { value: 'ALL' }, '⚡ All Statuses'),
+                  React.createElement('option', { value: 'CRITICAL' }, '⚠️ Critical Risks (<7d)'),
+                  React.createElement('option', { value: 'REORDER' }, '⚡ Reorder Advised'),
+                  React.createElement('option', { value: 'HEALTHY' }, '✓ Healthy Stock')
+                )
+              ),
+
+              // Forecast Filters: Search Filter
+              statementMode === 'forecast' && React.createElement('div', { style: { flex: '2 1 200px', minWidth: 180 } },
+                React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'Filter Products'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  placeholder: '🔍 Search product name or category...',
+                  value: forecastSearch,
+                  onChange: e => setForecastSearch(e.target.value),
                   style: { height: 40 }
                 })
               ),
@@ -35091,7 +35498,7 @@ function PartyDetailModal({
               )
             ),
 
-            // Firm Mode Informational Notice
+            // Mode Informational Notices
             statementMode === 'firm' && React.createElement('div', {
               style: {
                 marginTop: 12,
@@ -35110,6 +35517,27 @@ function PartyDetailModal({
               React.createElement('span', null,
                 'Firm Financial Summary automatically aggregates and consolidates all sales invoices, purchase orders, expenses, and payments across the firm for the selected period.'
               )
+            ),
+
+            statementMode === 'forecast' && React.createElement('div', {
+              style: {
+                marginTop: 12,
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: 'var(--radius)',
+                fontSize: '0.8rem',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                border: '1px solid var(--border-light)'
+              }
+            },
+              '💡 ',
+              React.createElement('span', null,
+                'Forecast & Replenishment Advisory models sales velocity, censors stockout periods, incorporates pending purchase orders, and applies damped Holt-Winters and Croston forecasting to project future stockouts and replenishment capital.'
+              )
+            )
             )
           ),
 
@@ -35213,9 +35641,316 @@ function PartyDetailModal({
                     )
                   )
                 )
-              ) :
+              ) : statementMode === 'forecast' ? (
+                // ── OPTION C: FORECAST & REPLENISHMENT ADVISORY STATEMENT ──
+                React.createElement(Fragment, null,
+                  // 1. Top Banner
+                  React.createElement('div', {
+                    className: 'card',
+                    style: {
+                      marginBottom: 16,
+                      padding: '16px 20px',
+                      background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0%, rgba(79, 70, 229, 0.06) 100%)',
+                      border: '1px solid rgba(212, 175, 55, 0.3)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: 12
+                    }
+                  },
+                    React.createElement('div', null,
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+                        React.createElement('h2', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' } },
+                          '📈 Demand Forecast & Replenishment Advisory'
+                        ),
+                        React.createElement('span', { className: 'badge', style: { background: 'var(--accent-gold, #D4AF37)', color: '#000', fontWeight: 700 } },
+                          `${statementData.horizonDays || forecastHorizon || 30} Days Horizon`
+                        ),
+                        statementData.selectedCategory && statementData.selectedCategory !== 'ALL' && React.createElement('span', { className: 'badge badge-outline' },
+                          `Category: ${statementData.selectedCategory}`
+                        ),
+                        statementData.selectedUrgency && statementData.selectedUrgency !== 'ALL' && React.createElement('span', { className: 'badge badge-outline' },
+                          `Status: ${statementData.selectedUrgency}`
+                        )
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 } },
+                        `${statementData.firmName || 'Our Business'} • Generated: ${BillsoftUtils.formatDate(statementData.generatedDate || BillsoftUtils.todayStr())} • Machine-learning demand projection`
+                      )
+                    ),
+                    React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
+                      React.createElement('button', {
+                        className: 'btn btn-sm btn-whatsapp',
+                        onClick: handleWhatsAppShareStatement
+                      }, Icons.whatsapp, 'Share on WhatsApp'),
+                      React.createElement('button', {
+                        className: 'btn btn-sm btn-outline',
+                        onClick: handleDownloadForecastCsv
+                      }, '📥 Download CSV'),
+                      React.createElement('button', {
+                        className: 'btn btn-sm btn-primary',
+                        onClick: handleDownloadStatementPdf
+                      }, '📄 Export PDF')
+                    )
+                  ),
 
-                // ── OPTION C: RICH FIRM SUMMARY STATEMENT ──
+                  // 2. 6 Executive KPI Cards
+                  React.createElement('div', {
+                    style: {
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                      gap: 12,
+                      marginBottom: 20
+                    }
+                  },
+                    // Card 1: SKUs Evaluated
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid #6366f1' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Catalog SKUs Evaluated'),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: 'var(--text-primary)' } },
+                        statementData.totalProducts || 0
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        `${statementData.healthyCount || 0} currently healthy`
+                      )
+                    ),
+
+                    // Card 2: Stockout Risks (<7d)
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid var(--status-error)' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Stockout Risks (< 7 Days)'),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: 'var(--status-error)' } },
+                        statementData.stockoutRiskCount || 0
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        'Immediate stockout or zero stock'
+                      )
+                    ),
+
+                    // Card 3: Reorder Advised
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid var(--status-warning)' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Reorder Recommendations'),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: 'var(--status-warning)' } },
+                        statementData.reorderRecommendedCount || 0
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        'Reorder threshold or forecast triggered'
+                      )
+                    ),
+
+                    // Card 4: Projected Demand
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid #3b82f6' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, `Projected Demand (${statementData.horizonDays || 30}d)`),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: '#1e40af' } },
+                        `${BillsoftUtils.formatNumber(statementData.totalProjectedDemand || 0)} pcs`
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        'Machine-learning predicted sales'
+                      )
+                    ),
+
+                    // Card 5: Replenishment Units
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid #8b5cf6' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' } }, 'Replenishment Units Needed'),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: '#6d28d9' } },
+                        `${BillsoftUtils.formatNumber(statementData.totalShortfallUnits != null ? statementData.totalShortfallUnits : (statementData.totalReplenishmentUnits || 0))} pcs`
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        'Net of stock on hand and issued POs'
+                      )
+                    ),
+
+                    // Card 6: Estimated Replenishment Capital
+                    React.createElement('div', { className: 'card', style: { padding: 14, borderLeft: '4px solid var(--status-success)', background: 'rgba(34, 197, 94, 0.04)' } },
+                      React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--status-success)', fontWeight: 600, textTransform: 'uppercase' } }, 'Est. Capital Required'),
+                      React.createElement('div', { style: { fontSize: '1.35rem', fontWeight: 800, margin: '4px 0', color: 'var(--status-success)' } },
+                        BillsoftUtils.formatCurrency(statementData.estimatedReplenishmentCost || 0)
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        'At verified historical unit cost'
+                      )
+                    )
+                  ),
+
+                  // 3. Category Demand & Capital Matrix Table
+                  (() => {
+                    const catMatrix = statementData.categoryBreakdown || statementData.categoryMatrix || [];
+                    if (!catMatrix || catMatrix.length === 0) return null;
+                    return React.createElement('div', { className: 'card', style: { marginBottom: 20 } },
+                      React.createElement('div', { className: 'card-header' },
+                        React.createElement('div', { className: 'card-title', style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          '📁 Category Demand & Capital Allocation Matrix'
+                        )
+                      ),
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', null,
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', { style: { width: '25%' } }, 'Category'),
+                            React.createElement('th', { style: { textAlign: 'center', width: '15%' } }, 'Catalog SKUs'),
+                            React.createElement('th', { style: { textAlign: 'right', width: '15%' } }, `Projected Demand (${statementData.horizonDays || 30}d)`),
+                            React.createElement('th', { style: { textAlign: 'right', width: '15%' } }, 'Replenishment Units'),
+                            React.createElement('th', { style: { textAlign: 'right', width: '15%' } }, 'Est. Capital Required (₹)'),
+                            React.createElement('th', { style: { textAlign: 'center', width: '15%' } }, 'Stockout Risks')
+                          )),
+                          React.createElement('tbody', null,
+                            catMatrix.map((cat, idx) => {
+                              const units = cat.shortfallUnits != null ? cat.shortfallUnits : (cat.replenishmentUnits || 0);
+                              const capital = cat.estimatedCapital != null ? cat.estimatedCapital : (cat.estimatedCost || 0);
+                              const risks = cat.criticalCount != null ? cat.criticalCount : (cat.stockoutRiskCount || 0);
+                              return React.createElement('tr', { key: idx },
+                                React.createElement('td', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, cat.category),
+                                React.createElement('td', { style: { textAlign: 'center' } }, cat.productCount),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 500 } }, `${BillsoftUtils.formatNumber(cat.projectedDemand || 0)} pcs`),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: '#6d28d9' } }, `${BillsoftUtils.formatNumber(units)} pcs`),
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 700, color: 'var(--status-success)' } }, BillsoftUtils.formatCurrency(capital)),
+                                React.createElement('td', { style: { textAlign: 'center' } },
+                                  risks > 0 ?
+                                    React.createElement('span', { className: 'badge', style: { background: 'rgba(239, 68, 68, 0.15)', color: 'var(--status-error)', fontWeight: 700 } }, `${risks} risk(s)`) :
+                                    React.createElement('span', { className: 'badge', style: { background: 'rgba(34, 197, 94, 0.15)', color: 'var(--status-success)' } }, '✓ 0 risks')
+                                )
+                              );
+                            })
+                          )
+                        )
+                      )
+                    );
+                  })(),
+
+                  // 4. Product Replenishment Detail Ledger Table
+                  React.createElement('div', { className: 'card', style: { marginBottom: 20 } },
+                    React.createElement('div', { className: 'card-header' },
+                      React.createElement('div', { className: 'card-title', style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                        '📦 Product Replenishment Detail Ledger'
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                        `Showing ${filteredForecastItems.length} of ${(statementData.productLedger || statementData.items || []).length} items`
+                      )
+                    ),
+                    React.createElement('div', { className: 'table-container' },
+                      React.createElement('table', null,
+                        React.createElement('thead', null, React.createElement('tr', null,
+                          React.createElement('th', { style: { width: '20%' } }, 'Product Name'),
+                          React.createElement('th', { style: { width: '12%' } }, 'Category'),
+                          React.createElement('th', { style: { width: '9%', textAlign: 'center' } }, 'Stock'),
+                          React.createElement('th', { style: { width: '13%', textAlign: 'center' } }, '30D Velocity & Coverage'),
+                          React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, `${statementData.horizonDays || 30}D Projected`),
+                          React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, 'Suggested Reorder'),
+                          React.createElement('th', { style: { width: '11%', textAlign: 'right' } }, 'Unit Cost & Est. Cost'),
+                          React.createElement('th', { style: { width: '8%', textAlign: 'center' } }, 'Urgency'),
+                          React.createElement('th', { style: { width: '5%', textAlign: 'center' } }, 'Action')
+                        )),
+                        React.createElement('tbody', null,
+                          filteredForecastItems.length === 0 ?
+                            React.createElement('tr', null, React.createElement('td', { colSpan: 9, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No products match the selected criteria.')) :
+                            filteredForecastItems.map((item, idx) => {
+                              const recQty = item.recommendedOrderQty != null ? Number(item.recommendedOrderQty) : (item.recommendedQty != null ? Number(item.recommendedQty) : 0);
+                              const incomingPo = item.incomingStock != null ? Number(item.incomingStock) : (item.incomingPoQty != null ? Number(item.incomingPoQty) : 0);
+                              const projDemand = item.projectedHorizonDemand != null ? item.projectedHorizonDemand : (item.horizonDemand || 0);
+                              const itemCost = item.costPrice != null ? item.costPrice : (item.unitCost || 0);
+                              const estCost = item.estimatedReplenishmentCost != null ? item.estimatedReplenishmentCost : (item.replenishmentCost || 0);
+                              const urg = item.urgencyStatus || 'HEALTHY';
+                              let urgBadgeStyle = { background: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success-border)' };
+                              let urgBadgeText = '✓ Healthy';
+                              if (urg === 'CRITICAL') {
+                                urgBadgeStyle = { background: 'var(--status-error-bg)', color: 'var(--status-error)', border: '1px solid var(--status-error-border)' };
+                                urgBadgeText = '⚠️ Critical';
+                              } else if (urg === 'REORDER' || urg === 'WARNING') {
+                                urgBadgeStyle = { background: 'var(--status-warning-bg)', color: 'var(--status-warning)', border: '1px solid var(--status-warning-border)' };
+                                urgBadgeText = '⚡ Reorder';
+                              } else if (urg === 'PROVISIONAL') {
+                                urgBadgeStyle = { background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' };
+                                urgBadgeText = 'Provisional';
+                              }
+
+                              return React.createElement('tr', { key: idx },
+                                // Product Name
+                                React.createElement('td', null,
+                                  React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } }, item.productName),
+                                  item.primaryDriver && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } }, `Driver: ${item.primaryDriver}`)
+                                ),
+                                // Category
+                                React.createElement('td', null,
+                                  item.category ? React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem', padding: '2px 8px' } }, item.category) : '—'
+                                ),
+                                // Stock on Hand
+                                React.createElement('td', { style: { textAlign: 'center', fontWeight: 600 } },
+                                  item.currentStock != null ? `${BillsoftUtils.formatNumber(item.currentStock)} pcs` : '0 pcs'
+                                ),
+                                // 30D Velocity & Coverage
+                                React.createElement('td', { style: { textAlign: 'center' } },
+                                  React.createElement('div', { style: { fontSize: '0.78rem' } },
+                                    React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)' } },
+                                      `${item.sales30d || 0} pcs / 30d`
+                                    ),
+                                    React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                                      item.daysOfCoverage != null ? (item.daysOfCoverage >= 999 ? 'Coverage: 90+ days' : `Coverage: ${item.daysOfCoverage}d`) : 'No recent sales'
+                                    )
+                                  )
+                                ),
+                                // Projected Demand
+                                React.createElement('td', { style: { textAlign: 'right', fontWeight: 600, color: '#1e40af' } },
+                                  `${BillsoftUtils.formatNumber(projDemand)} pcs`
+                                ),
+                                // Suggested Reorder
+                                React.createElement('td', { style: { textAlign: 'right' } },
+                                  recQty > 0 ? (
+                                    React.createElement('div', null,
+                                      React.createElement('span', { style: { fontWeight: 700, color: '#6d28d9', fontSize: '0.88rem' } }, `+${recQty} pcs`),
+                                      incomingPo > 0 && React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--status-success)', fontWeight: 600 } }, `(+${incomingPo} PO)`)
+                                    )
+                                  ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '0 pcs')
+                                ),
+                                // Unit Cost & Replenishment Capital
+                                React.createElement('td', { style: { textAlign: 'right' } },
+                                  estCost != null && Number(estCost) > 0 ? (
+                                    React.createElement('div', null,
+                                      React.createElement('div', { style: { fontWeight: 700, color: 'var(--status-success)' } }, BillsoftUtils.formatCurrency(estCost)),
+                                      React.createElement('div', { style: { fontSize: '0.7rem', color: 'var(--text-secondary)' } }, `@ ${BillsoftUtils.formatCurrency(itemCost || 0)}/unit`)
+                                    )
+                                  ) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                                ),
+                                // Urgency Badge
+                                React.createElement('td', { style: { textAlign: 'center' } },
+                                  React.createElement('span', { className: 'badge', style: { ...urgBadgeStyle, fontSize: '0.72rem', padding: '2px 6px', fontWeight: 700 } }, urgBadgeText)
+                                ),
+                                // Action Button (+ PO)
+                                React.createElement('td', { style: { textAlign: 'center' } },
+                                  React.createElement('button', {
+                                    className: 'btn btn-sm btn-ghost',
+                                    style: { color: recQty > 0 ? 'var(--accent-gold, #D4AF37)' : 'var(--text-secondary)', padding: '2px 6px' },
+                                    title: recQty > 0 ? `Create PO for ${recQty} pcs` : 'Create Purchase Order for this item',
+                                    onClick: () => handleUseReorderRecommendation(item.productId, recQty > 0 ? recQty : 10)
+                                  }, '🛒')
+                                )
+                              );
+                            })
+                        )
+                      )
+                    )
+                  ),
+
+                  // 5. Methodology Footnote
+                  React.createElement('div', {
+                    style: {
+                      marginTop: 16,
+                      padding: '12px 16px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: 'var(--radius)',
+                      border: '1px solid var(--border)',
+                      fontSize: '0.78rem',
+                      color: 'var(--text-secondary)',
+                      lineHeight: 1.5
+                    }
+                  },
+                    React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 } }, 'ℹ️ Inventory Intelligence Methodology & Assumptions:'),
+                    React.createElement('div', null,
+                      '• Projections incorporate stockout-censored historical demand timelines, damped additive Holt-Winters smoothing (φ = 0.90), Croston intermittent demand models, and time-phased incoming purchase order offsets.'
+                    ),
+                    React.createElement('div', null,
+                      '• Confidence scores reflect historical sample size, demand consistency (ADI/CV²), and cross-validation backtest error. Zero synthetic demand data is imputed.'
+                    )
+                  )
+                )
+              ) : (
+                // ── OPTION D: RICH FIRM SUMMARY STATEMENT ──
                 React.createElement(Fragment, null,
                   // Top Banner with Title & PDF Actions
                   React.createElement('div', {

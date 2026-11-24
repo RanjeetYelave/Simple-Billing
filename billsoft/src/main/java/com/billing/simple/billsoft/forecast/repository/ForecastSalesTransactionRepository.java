@@ -57,6 +57,28 @@ public interface ForecastSalesTransactionRepository extends JpaRepository<Foreca
            "WHERE t.firmId = :firmId AND t.productId IS NOT NULL")
     List<Long> findDistinctProductIdsWithTransactions(@Param("firmId") Long firmId);
 
+    @Query("SELECT " +
+           "t.productId, " +
+           "t.transactionDate, " +
+           "SUM(CASE WHEN t.sourceType = 'SALE' THEN t.requestedQty ELSE 0 END), " +
+           "SUM(CASE WHEN t.sourceType = 'SALE' THEN t.fulfilledQty ELSE 0 END), " +
+           "SUM(CASE WHEN t.sourceType = 'SALE' THEN t.shortageQty ELSE 0 END), " +
+           "SUM(CASE WHEN t.sourceType = 'RETURN' THEN t.requestedQty ELSE 0 END), " +
+           "SUM(CASE WHEN t.sourceType = 'SALE' THEN t.lineTotal ELSE 0 END), " +
+           "SUM(CASE WHEN t.sourceType = 'RETURN' THEN t.lineTotal ELSE 0 END), " +
+           "MIN(CASE WHEN t.sourceType = 'SALE' THEN t.unitPrice ELSE NULL END), " +
+           "MAX(CASE WHEN t.sourceType = 'SALE' THEN t.unitPrice ELSE NULL END), " +
+           "COUNT(DISTINCT t.customerId) " +
+           "FROM ForecastSalesTransaction t " +
+           "WHERE t.firmId = :firmId AND t.productId IS NOT NULL " +
+           "GROUP BY t.productId, t.transactionDate")
+    List<Object[]> batchAggregateMetricsForFirm(@Param("firmId") Long firmId);
+
+    @Query("SELECT t.productId, SUM(t.fulfilledQty) FROM ForecastSalesTransaction t " +
+           "WHERE t.firmId = :firmId AND t.sourceType = 'SALE' AND t.transactionDate >= :since " +
+           "GROUP BY t.productId")
+    List<Object[]> sumSalesByProductSince(@Param("firmId") Long firmId, @Param("since") LocalDate since);
+
     @Modifying
     @Query("DELETE FROM ForecastSalesTransaction t WHERE t.firmId = :firmId AND t.sourceType = 'SALE' " +
            "AND t.sourceHeaderId NOT IN (SELECT i.id FROM Invoice i WHERE i.firmId = :firmId)")

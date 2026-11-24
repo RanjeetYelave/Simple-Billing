@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 import com.billing.simple.billsoft.dtos.CustomerStatementResponse;
 import com.billing.simple.billsoft.dtos.FirmStatementResponse;
+import com.billing.simple.billsoft.dtos.ForecastAnalyticsStatementResponse;
 import com.billing.simple.billsoft.dtos.PartyStatementResponse;
 
 public interface StatementService {
@@ -25,4 +26,10 @@ public interface StatementService {
     byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to) throws Exception;
 
     byte[] generatePartyStatementPdf(Long firmId, Long partyId, LocalDate from, LocalDate to, String format, String theme, String color) throws Exception;
+
+    ForecastAnalyticsStatementResponse getForecastAnalyticsStatement(Long firmId, Integer horizonDays, String category, String urgency);
+
+    byte[] generateForecastAnalyticsStatementPdf(Long firmId, Integer horizonDays, String category, String urgency, String format, String theme, String color) throws Exception;
+
+    String generateForecastAnalyticsStatementCsv(Long firmId, Integer horizonDays, String category, String urgency);
 }

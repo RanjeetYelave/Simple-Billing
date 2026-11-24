@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -43,6 +44,12 @@ class StatementServiceTest {
     private com.billing.simple.billsoft.repo.InvoicePaymentRepository invoicePaymentRepo;
     @Mock
     private com.billing.simple.billsoft.repo.SalesReturnRepository salesReturnRepo;
+    @Mock
+    private com.billing.simple.billsoft.repo.ProductRepository productRepo;
+    @Mock
+    private com.billing.simple.billsoft.forecast.repository.ProductRestockRecommendationRepository restockRepo;
+    @Mock
+    private com.billing.simple.billsoft.forecast.repository.ForecastSalesTransactionRepository transactionRepo;
 
     @InjectMocks
     private StatementServiceImpl service;
@@ -191,5 +198,74 @@ class StatementServiceTest {
         byte[] pdf = service.generateFirmStatementPdf(firmId, null, null);
         assertNotNull(pdf);
         assertTrue(pdf.length > 0);
+    }
+
+    @Test
+    void testForecastAnalyticsStatementJson() {
+        Long firmId = 1L;
+        FirmDetails firm = new FirmDetails();
+        firm.setId(firmId);
+        firm.setFirmName("Test Firm");
+        when(firmRepo.findById(firmId)).thenReturn(Optional.of(firm));
+
+        com.billing.simple.billsoft.entities.Product p = new com.billing.simple.billsoft.entities.Product();
+        p.setId(101L);
+        p.setName("Widget A");
+        p.setCategory("Widgets");
+        p.setStockQuantity(new BigDecimal("10.00"));
+        p.setMinStockLevel(new BigDecimal("5.00"));
+        p.setCostPrice(new BigDecimal("40.00"));
+        p.setPrice(new BigDecimal("70.00"));
+        when(productRepo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseOrderByNameAsc(firmId))
+                .thenReturn(List.of(p));
+
+        com.billing.simple.billsoft.forecast.entity.ProductRestockRecommendation rec =
+                com.billing.simple.billsoft.forecast.entity.ProductRestockRecommendation.builder()
+                        .firmId(firmId)
+                        .productId(101L)
+                        .urgencyStatus("HEALTHY")
+                        .recommendedOrderQty(BigDecimal.ZERO)
+                        .currentStock(new BigDecimal("10.00"))
+                        .incomingStock(BigDecimal.ZERO)
+                        .recommendationStatus("ACTIVE")
+                        .build();
+        when(restockRepo.findAllByFirmIdAndRecommendationStatus(firmId, "ACTIVE"))
+                .thenReturn(List.of(rec));
+
+        var resp = service.getForecastAnalyticsStatement(firmId, 30, "ALL", "ALL");
+        assertNotNull(resp);
+        assertEquals(1, resp.getTotalProducts());
+        assertEquals("Test Firm", resp.getFirmName());
+        assertEquals(30, resp.getHorizonDays());
+        assertEquals(1, resp.getProductLedger().size());
+        assertEquals("Widget A", resp.getProductLedger().get(0).getProductName());
+    }
+
+    @Test
+    void testForecastAnalyticsStatementPdfAndCsv() throws Exception {
+        Long firmId = 1L;
+        FirmDetails firm = new FirmDetails();
+        firm.setId(firmId);
+        firm.setFirmName("Test Firm");
+        when(firmRepo.findById(firmId)).thenReturn(Optional.of(firm));
+
+        com.billing.simple.billsoft.entities.Product p = new com.billing.simple.billsoft.entities.Product();
+        p.setId(101L);
+        p.setName("Widget A");
+        p.setCategory("Widgets");
+        p.setStockQuantity(new BigDecimal("2.00"));
+        p.setMinStockLevel(new BigDecimal("10.00"));
+        p.setCostPrice(new BigDecimal("40.00"));
+        when(productRepo.findByFirmIdAndInInventoryTrueAndIsArchivedFalseOrderByNameAsc(firmId))
+                .thenReturn(List.of(p));
+
+        byte[] pdf = service.generateForecastAnalyticsStatementPdf(firmId, 30, "ALL", "ALL", null, null, null);
+        assertNotNull(pdf);
+        assertTrue(pdf.length > 0);
+
+        String csv = service.generateForecastAnalyticsStatementCsv(firmId, 30, "ALL", "ALL");
+        assertNotNull(csv);
+        assertTrue(csv.contains("Forecast Analytics & Replenishment Advisory"));
+        assertTrue(csv.contains("Widget A"));
     }
 }

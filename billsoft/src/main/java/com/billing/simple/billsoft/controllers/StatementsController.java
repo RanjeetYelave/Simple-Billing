@@ -221,4 +221,65 @@ public class StatementsController {
                 .headers(headers)
                 .body(pdf);
     }
+
+    @GetMapping("/forecast")
+    public ResponseEntity<com.billing.simple.billsoft.dtos.ForecastAnalyticsStatementResponse> forecastAnalyticsStatement(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) String firmIdParam,
+            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "category", required = false) String category,
+            @RequestParam(name = "urgency", required = false) String urgency
+    ) {
+        Long clientFirmId = parseFirmId(firmIdParam);
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
+        return ResponseEntity.ok(statementService.getForecastAnalyticsStatement(effFirmId, horizon, category, urgency));
+    }
+
+    @GetMapping("/forecast/pdf")
+    public ResponseEntity<byte[]> forecastAnalyticsStatementPdf(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) String firmIdParam,
+            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "category", required = false) String category,
+            @RequestParam(name = "urgency", required = false) String urgency,
+            @RequestParam(name = "theme", required = false) String theme,
+            @RequestParam(name = "color", required = false) String color,
+            @RequestParam(name = "format", required = false) String format
+    ) throws Exception {
+        validatePrintOptions(format, theme, color);
+        Long clientFirmId = parseFirmId(firmIdParam);
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
+        byte[] pdf = statementService.generateForecastAnalyticsStatementPdf(effFirmId, horizon, category, urgency, format, theme, color);
+
+        String filename = "Forecast_Analytics_Statement_" + horizon + "D_" + LocalDate.now() + ".pdf";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdf);
+    }
+
+    @GetMapping(value = "/forecast/csv", produces = "text/csv")
+    public ResponseEntity<String> forecastAnalyticsStatementCsv(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) String firmIdParam,
+            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "category", required = false) String category,
+            @RequestParam(name = "urgency", required = false) String urgency
+    ) {
+        Long clientFirmId = parseFirmId(firmIdParam);
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
+        String csv = statementService.generateForecastAnalyticsStatementCsv(effFirmId, horizon, category, urgency);
+
+        String filename = "Forecast_Analytics_Statement_" + horizon + "D_" + LocalDate.now() + ".csv";
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType("text/csv; charset=UTF-8"));
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(csv);
+    }
 }

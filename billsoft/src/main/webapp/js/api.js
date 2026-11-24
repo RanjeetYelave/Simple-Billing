@@ -1193,6 +1193,44 @@ const API = {
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
+    forecast: (params = {}) => {
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/forecast', params)));
+    },
+    forecastPdfUrl: (params = {}, options = {}) => {
+      return API._qs('/api/statements/forecast/pdf', { ...params, ...options });
+    },
+    forecastPdf: async (params = {}, options = {}) => {
+      await API._ensureFirmReady();
+      const res = await API._request(API._qs('/api/statements/forecast/pdf', { ...params, ...options }));
+      if (!res.ok) {
+        let errMsg = `Server returned HTTP ${res.status}`;
+        try {
+          const errText = await res.text();
+          if (errText) {
+            try {
+              const errJson = JSON.parse(errText);
+              errMsg = errJson.error || errJson.message || errText;
+            } catch (_) {
+              errMsg = errText;
+            }
+          }
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+      const blob = await res.blob();
+      return new Blob([blob], { type: 'application/pdf' });
+    },
+    forecastCsvUrl: (params = {}) => {
+      return API._qs('/api/statements/forecast/csv', params);
+    },
+    forecastCsv: async (params = {}) => {
+      await API._ensureFirmReady();
+      const res = await API._request(API._qs('/api/statements/forecast/csv', params));
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+      return await res.text();
+    }
   },
 
   // ── Authentication ──
@@ -1671,6 +1709,7 @@ const API = {
     getConfig: (productId) => API._json(API._qs(`/api/forecast/products/${productId}/config`)),
     updateConfig: (productId, payload) => API._json(API._qs(`/api/forecast/products/${productId}/config`), { method: 'PUT', body: payload }),
     getRecommendations: (params = {}) => API._json(API._qs('/api/forecast/restock/recommendations', params)),
+    getInventorySummary: () => API._json(API._qs('/api/forecast/inventory-summary')),
     adminSync: (targetFirmId) => {
       const fid = targetFirmId || API.firmId;
       return API._json(API._qs('/api/forecast/admin/sync', fid ? { firmId: fid } : {}), {

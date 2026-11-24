@@ -40,6 +40,7 @@ public class ForecastScheduler {
             if (firmId == null) continue;
             try {
                 TenantContext.setCurrentFirmId(firmId);
+                ingestionService.reconcileHardDeletedInvoices(firmId);
                 ingestionService.syncAllInvoicesForFirm(firmId);
                 ingestionService.syncAllSalesReturnsForFirm(firmId);
                 aggregationService.aggregateAllProductsForFirm(firmId);
@@ -64,6 +65,7 @@ public class ForecastScheduler {
             if (firmId == null) continue;
             try {
                 TenantContext.setCurrentFirmId(firmId);
+                ingestionService.reconcileHardDeletedInvoices(firmId);
                 ingestionService.syncAllInvoicesForFirm(firmId);
                 ingestionService.syncAllSalesReturnsForFirm(firmId);
                 aggregationService.aggregateAllProductsForFirm(firmId);

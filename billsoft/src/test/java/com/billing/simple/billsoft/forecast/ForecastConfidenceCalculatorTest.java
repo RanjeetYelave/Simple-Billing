@@ -11,12 +11,24 @@ class ForecastConfidenceCalculatorTest {
     private final ForecastConfidenceCalculator calculator = new ForecastConfidenceCalculator();
 
     @Test
-    @DisplayName("Short history or high error scores LOW confidence")
+    @DisplayName("Short history (< 14 days) scores PROVISIONAL confidence and distinguishes unavailable accuracy")
     void testSparseSeries() {
         ForecastConfidenceCalculator.ConfidenceResult res =
                 calculator.calculate(0.8, 0.5, 0.8, 5);
 
+        assertEquals("PROVISIONAL", res.getLevel());
+        assertTrue(res.isProvisional());
+        assertTrue(res.getScore().doubleValue() < 50.0);
+    }
+
+    @Test
+    @DisplayName("Adequate history with high error scores LOW confidence")
+    void testLowQualitySeries() {
+        ForecastConfidenceCalculator.ConfidenceResult res =
+                calculator.calculate(0.8, 0.5, 0.8, 20);
+
         assertEquals("LOW", res.getLevel());
+        assertFalse(res.isProvisional());
         assertTrue(res.getScore().doubleValue() < 50.0);
     }
 

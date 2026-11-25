@@ -308,4 +308,27 @@ public class PurchaseOrderController {
         Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> historyMap = poService.getProductVendorHistory(firmId);
         return ResponseEntity.ok(historyMap);
     }
+
+    @PostMapping("/{id}/receipts")
+    public ResponseEntity<com.billing.simple.billsoft.entities.PurchaseOrderReceipt> recordGoodsReceipt(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
+            @RequestBody com.billing.simple.billsoft.dtos.PoReceiptRequest request) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        com.billing.simple.billsoft.entities.PurchaseOrderReceipt receipt = poService.recordGoodsReceipt(id, firmId, request);
+        return ResponseEntity.ok(receipt);
+    }
+
+    @GetMapping("/{id}/receipts")
+    public ResponseEntity<List<com.billing.simple.billsoft.entities.PurchaseOrderReceipt>> getReceipts(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        Long firmId = authoritativeFirmId != null ? authoritativeFirmId : (firmIdHeader != null ? firmIdHeader : firmIdParam);
+        List<com.billing.simple.billsoft.entities.PurchaseOrderReceipt> receipts = poService.getReceiptsForPurchaseOrder(id, firmId);
+        return ResponseEntity.ok(receipts);
+    }
 }

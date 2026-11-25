@@ -39,4 +39,8 @@ public interface PurchaseOrderService {
     byte[] generateZipBundle(List<Long> poIds, Long firmId) throws Exception;
 
     java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> getProductVendorHistory(Long firmId);
+
+    com.billing.simple.billsoft.entities.PurchaseOrderReceipt recordGoodsReceipt(Long id, Long firmId, com.billing.simple.billsoft.dtos.PoReceiptRequest request);
+
+    List<com.billing.simple.billsoft.entities.PurchaseOrderReceipt> getReceiptsForPurchaseOrder(Long id, Long firmId);
 }

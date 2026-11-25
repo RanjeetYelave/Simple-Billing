@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum PurchaseOrderStatus {
     DRAFT,
     ISSUED,
+    PARTIALLY_RECEIVED,
     RECEIVED,
     CANCELLED;
 

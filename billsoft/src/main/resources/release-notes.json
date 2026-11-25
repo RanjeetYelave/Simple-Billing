@@ -1,20 +1,27 @@
 {
+  "1.0.396": [
+    "\ud83d\udce6 Partial Goods Receiving & Immutable Audit Trail: Multi-receipt tracking with pending quantity calculations, dedicated receipt ledger, and authoritative PURCHASE_RECEIPT stock movements.",
+    "\ud83d\udd12 Transaction-Scoped Vendor Preference: Selected supplier preferences persist strictly upon successful purchase order creation, guaranteeing zero corruption from failed orders.",
+    "\ud83d\udcdc Stock Movement Statement (5th Statement Card): New comprehensive statement card in Statements & Ledgers with movement KPI ribbon, transaction audit table, and CSV download.",
+    "\ud83d\udd0d Movement Ledger Filter Toolbar: Search, transaction type filtering, and date range controls with instant CSV export in Inventory Movement Ledger.",
+    "\u26a1 Canonical Cross-Module Navigation: Unified navigation dispatch across Forecast Dashboard, Product Intelligence, and Order Products workspace."
+  ],
   "1.0.390": [
-    "📝 Centralized Version-Based Release Notes: Offline-first release notes service with secure disk caching and bundled classpath fallback.",
-    "🛡️ Software Update UI Hardening: Clean release notes presentation with automatic suppression of internal integrity manifest placeholders.",
-    "🏷️ Standardized Release Descriptions: Automated 6-section release notes generation with SHA-256 package checksum verification.",
-    "🌐 Secure Client & API Endpoints: Public /api/system/release-notes endpoint with input sanitization and strict XSS protection."
+    "\ud83d\udcdd Centralized Version-Based Release Notes: Offline-first release notes service with secure disk caching and bundled classpath fallback.",
+    "\ud83d\udee1\ufe0f Software Update UI Hardening: Clean release notes presentation with automatic suppression of internal integrity manifest placeholders.",
+    "\ud83c\udff7\ufe0f Standardized Release Descriptions: Automated 6-section release notes generation with SHA-256 package checksum verification.",
+    "\ud83c\udf10 Secure Client & API Endpoints: Public /api/system/release-notes endpoint with input sanitization and strict XSS protection."
   ],
   "1.0.389": [
-    "⚡ Unified Order Products Workspace: Combined manual stock ordering and demand forecast replenishment into one cohesive workspace.",
-    "📦 Multi-Vendor Purchasing: Create purchase orders for multiple suppliers in a single session with automatic vendor segregation.",
-    "🔒 Independent Supplier Transactions: Isolated database transactions per supplier preventing one vendor issue from aborting other orders.",
-    "🔄 Durable Batch Idempotency: Persistent order tracking ensuring unique purchase orders and reliable retry for partial failures.",
-    "📊 Headless Forecast Worker: Automated 6-hour background synchronization with non-intrusive status indicators.",
-    "📋 Contextual Inventory Subtabs: Five dedicated subtabs (Products & Stock, Order Products, Demand & Forecasts, Archive, Movement Ledger) with full toolbar preservation."
+    "\u26a1 Unified Order Products Workspace: Combined manual stock ordering and demand forecast replenishment into one cohesive workspace.",
+    "\ud83d\udce6 Multi-Vendor Purchasing: Create purchase orders for multiple suppliers in a single session with automatic vendor segregation.",
+    "\ud83d\udd12 Independent Supplier Transactions: Isolated database transactions per supplier preventing one vendor issue from aborting other orders.",
+    "\ud83d\udd04 Durable Batch Idempotency: Persistent order tracking ensuring unique purchase orders and reliable retry for partial failures.",
+    "\ud83d\udcca Headless Forecast Worker: Automated 6-hour background synchronization with non-intrusive status indicators.",
+    "\ud83d\udccb Contextual Inventory Subtabs: Five dedicated subtabs (Products & Stock, Order Products, Demand & Forecasts, Archive, Movement Ledger) with full toolbar preservation."
   ],
   "1.0.386": [
-    "Application-wide Auto-Hide Sidebar preference under Settings → Appearance.",
+    "Application-wide Auto-Hide Sidebar preference under Settings \u2192 Appearance.",
     "Space-optimized Inventory toolbar layout preserving all existing bulk tools, search filters, and statistics."
   ],
   "1.0.385": [

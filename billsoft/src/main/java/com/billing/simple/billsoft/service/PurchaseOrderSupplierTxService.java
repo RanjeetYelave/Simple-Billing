@@ -102,6 +102,19 @@ public class PurchaseOrderSupplierTxService {
 
         PurchaseOrder savedPo = poRepository.save(po);
 
+        // Remember preferred vendor for products upon successful PO creation for this supplier
+        if (savedPo.getItems() != null && party.getId() != null) {
+            for (PurchaseOrderItem item : savedPo.getItems()) {
+                if (item.getProductId() != null) {
+                    try {
+                        productRepository.updatePreferredPartyId(item.getProductId(), party.getId(), firmId);
+                    } catch (Exception e) {
+                        log.warn("Failed to update preferredPartyId for product {} to vendor {}: {}", item.getProductId(), party.getId(), e.getMessage());
+                    }
+                }
+            }
+        }
+
         // Adjust party payment balance if paidAmount > 0
         syncPartyPayment(savedPo);
 

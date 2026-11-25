@@ -734,6 +734,7 @@
                       if (onViewSmartReorder) {
                         onViewSmartReorder();
                       } else {
+                        window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', { detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' } }));
                         window.dispatchEvent(new CustomEvent('billsoft:navigate', { detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' } }));
                       }
                       if (onClose) onClose();
@@ -1985,8 +1986,8 @@
             },
               React.createElement('span', { style: { fontSize: '0.85rem' } },
                 syncStatus.isStalled ? '⏸️' :
-                syncStatus.lastSyncStatus === 'FAILED' ? '⚠️' :
-                syncing ? '⏳' : '⚡'
+                  syncStatus.lastSyncStatus === 'FAILED' ? '⚠️' :
+                    syncing ? '⏳' : '⚡'
               ),
               React.createElement('span', { style: { whiteSpace: 'nowrap' } },
                 syncing
@@ -2875,8 +2876,8 @@
                       failedPos.length === 0
                         ? `${createdPos.length} Purchase Order(s) Created Successfully`
                         : (createdPos.length > 0
-                            ? `${createdPos.length} Purchase Order(s) Created, ${failedPos.length} Failed`
-                            : `${failedPos.length} Purchase Order(s) Failed to Generate`)
+                          ? `${createdPos.length} Purchase Order(s) Created, ${failedPos.length} Failed`
+                          : `${failedPos.length} Purchase Order(s) Failed to Generate`)
                     ),
                     React.createElement('p', { style: { margin: '6px 0 20px', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
                       failedPos.length === 0
@@ -6138,6 +6139,9 @@
             id: 'btn-nav-order-products',
             className: 'btn btn-gold',
             onClick: () => {
+              window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' }
+              }));
               window.dispatchEvent(new CustomEvent('billsoft:navigate', {
                 detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' }
               }));

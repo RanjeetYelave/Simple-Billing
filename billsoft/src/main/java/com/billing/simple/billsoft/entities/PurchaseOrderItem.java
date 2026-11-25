@@ -42,6 +42,10 @@ public class PurchaseOrderItem {
     private BigDecimal quantity;
 
     @Builder.Default
+    @Column(precision = 12, scale = 3)
+    private BigDecimal receivedQuantity = BigDecimal.ZERO;
+
+    @Builder.Default
     @Column(length = 20)
     private String unit = "pcs";
 
@@ -86,6 +90,22 @@ public class PurchaseOrderItem {
     public BigDecimal getQuantity() { return quantity; }
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
 
+    public BigDecimal getReceivedQuantity() {
+        return receivedQuantity != null ? receivedQuantity : BigDecimal.ZERO;
+    }
+
+    public void setReceivedQuantity(BigDecimal receivedQuantity) {
+        this.receivedQuantity = receivedQuantity != null ? receivedQuantity : BigDecimal.ZERO;
+    }
+
+    @Transient
+    public BigDecimal getPendingQuantity() {
+        BigDecimal ord = quantity != null ? quantity : BigDecimal.ZERO;
+        BigDecimal rec = receivedQuantity != null ? receivedQuantity : BigDecimal.ZERO;
+        BigDecimal pending = ord.subtract(rec);
+        return pending.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : pending;
+    }
+
     public String getUnit() { return unit; }
     public void setUnit(String unit) { this.unit = unit; }
 
@@ -119,6 +139,7 @@ public class PurchaseOrderItem {
         private String description;
         private String hsnCode;
         private BigDecimal quantity;
+        private BigDecimal receivedQuantity = BigDecimal.ZERO;
         private String unit = "pcs";
         private BigDecimal unitPrice;
         private BigDecimal discountValue = BigDecimal.ZERO;
@@ -134,6 +155,7 @@ public class PurchaseOrderItem {
         public PurchaseOrderItemBuilder description(String description) { this.description = description; return this; }
         public PurchaseOrderItemBuilder hsnCode(String hsnCode) { this.hsnCode = hsnCode; return this; }
         public PurchaseOrderItemBuilder quantity(BigDecimal quantity) { this.quantity = quantity; return this; }
+        public PurchaseOrderItemBuilder receivedQuantity(BigDecimal receivedQuantity) { this.receivedQuantity = receivedQuantity; return this; }
         public PurchaseOrderItemBuilder unit(String unit) { this.unit = unit; return this; }
         public PurchaseOrderItemBuilder unitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; return this; }
         public PurchaseOrderItemBuilder discountValue(BigDecimal discountValue) { this.discountValue = discountValue; return this; }
@@ -151,6 +173,7 @@ public class PurchaseOrderItem {
             item.description = this.description;
             item.hsnCode = this.hsnCode;
             item.quantity = this.quantity;
+            item.receivedQuantity = this.receivedQuantity != null ? this.receivedQuantity : BigDecimal.ZERO;
             item.unit = this.unit != null ? this.unit : "pcs";
             item.unitPrice = this.unitPrice;
             item.discountValue = this.discountValue != null ? this.discountValue : BigDecimal.ZERO;

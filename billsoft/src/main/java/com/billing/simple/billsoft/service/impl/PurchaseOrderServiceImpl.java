@@ -54,6 +54,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.billing.simple.billsoft.service.PurchaseOrderSupplierTxService supplierTxService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repositories.PurchaseOrderReceiptRepository receiptRepository;
+
     public PurchaseOrderServiceImpl(PurchaseOrderRepository poRepository,
             PurchaseOrderItemRepository poItemRepository,
             PartyRepository partyRepository,
@@ -130,6 +133,19 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
 
         PurchaseOrder savedPo = poRepository.save(po);
+
+        // Remember preferred vendor for products upon successful PO creation
+        if (savedPo.getItems() != null && savedPo.getParty() != null && savedPo.getParty().getId() != null) {
+            for (PurchaseOrderItem item : savedPo.getItems()) {
+                if (item.getProductId() != null) {
+                    try {
+                        productRepository.updatePreferredPartyId(item.getProductId(), savedPo.getParty().getId(), savedPo.getFirmId());
+                    } catch (Exception e) {
+                        log.warn("Failed to update preferredPartyId for product {} to vendor {}: {}", item.getProductId(), savedPo.getParty().getId(), e.getMessage());
+                    }
+                }
+            }
+        }
 
         // Sync with party payments if paid amount > 0
         syncPartyPayment(savedPo);
@@ -332,6 +348,13 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId)
                 : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
+
+        long receiptCount = (receiptRepository != null)
+                ? receiptRepository.findByPurchaseOrderIdAndFirmIdOrderByReceiptDateDescCreatedAtDesc(id, effectiveFirmId).size()
+                : 0;
+        if (receiptCount > 0) {
+            throw new IllegalStateException("Cannot delete Purchase Order #" + po.getPoNumber() + " because it has " + receiptCount + " recorded goods receipt(s). Receipts form an immutable audit trail.");
+        }
 
         // If PO was RECEIVED, reverse stock upon deletion
         if (po.getStatus() == PurchaseOrderStatus.RECEIVED) {
@@ -539,7 +562,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private static final java.util.concurrent.ConcurrentHashMap<String, Long> PROCESSED_CLIENT_REQUESTS = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
-    public com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId) {
+    public com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult createPurchaseOrdersBatch(
+            com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         final Long effectiveFirmId = (authoritativeFirmId != null) ? authoritativeFirmId : firmId;
         if (effectiveFirmId == null) {
@@ -558,7 +582,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             PROCESSED_CLIENT_REQUESTS.entrySet().removeIf(e -> now - e.getValue() > 300_000L);
             if (!isRetry) {
                 if (PROCESSED_CLIENT_REQUESTS.putIfAbsent(reqId, now) != null) {
-                    throw new IllegalStateException("Duplicate batch submission detected. This batch has already been processed.");
+                    throw new IllegalStateException(
+                            "Duplicate batch submission detected. This batch has already been processed.");
                 }
             } else {
                 PROCESSED_CLIENT_REQUESTS.put(reqId, now);
@@ -571,7 +596,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         result.setTotalOrdersRequested(request.getOrders().size());
 
         // 2. Process each supplier order in independent transaction
-        int orderIdx = 0;
+        int orderIndex = 0;
         for (PurchaseOrder poInput : request.getOrders()) {
             poInput.setFirmId(effectiveFirmId);
             if (poInput.getHidePricesOnPo() == null && request.getHidePricesOnPo() != null) {
@@ -588,18 +613,20 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             }
 
             Long partyId = (poInput.getParty() != null) ? poInput.getParty().getId() : null;
-            String supplierOpId = (reqId != null && partyId != null) ? (reqId + "_ord" + (orderIdx++) + "_party_" + partyId) : null;
+            String supplierOpId = (reqId != null && partyId != null) ? (reqId + "_ord" + (orderIndex++) + "_party_" + partyId) : null;
 
             // Durable idempotency check
             if (supplierOpId != null && batchRecordRepository != null) {
-                java.util.Optional<com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord> existingRecord =
-                        batchRecordRepository.findByFirmIdAndSupplierOpId(effectiveFirmId, supplierOpId);
+                java.util.Optional<com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord> existingRecord = batchRecordRepository
+                        .findByFirmIdAndSupplierOpId(effectiveFirmId, supplierOpId);
                 if (existingRecord.isPresent() && "SUCCESS".equalsIgnoreCase(existingRecord.get().getStatus())) {
                     Long existingPoId = existingRecord.get().getPurchaseOrderId();
                     if (existingPoId != null) {
-                        java.util.Optional<PurchaseOrder> existingPo = poRepository.findByIdAndFirmId(existingPoId, effectiveFirmId);
+                        java.util.Optional<PurchaseOrder> existingPo = poRepository.findByIdAndFirmId(existingPoId,
+                                effectiveFirmId);
                         if (existingPo.isPresent()) {
-                            log.info("Durable idempotency: Supplier party ID {} in batch {} was already created as PO #{}. Reusing existing PO.",
+                            log.info(
+                                    "Durable idempotency: Supplier party ID {} in batch {} was already created as PO #{}. Reusing existing PO.",
                                     partyId, reqId, existingPo.get().getPoNumber());
                             result.add(existingPo.get());
                             continue;
@@ -610,7 +637,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
             try {
                 PurchaseOrder created;
-                boolean outerTxActive = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+                boolean outerTxActive = org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isActualTransactionActive();
                 if (supplierTxService != null && !outerTxActive) {
                     created = supplierTxService.createSupplierPoInNewTransaction(poInput, effectiveFirmId);
                 } else {
@@ -636,14 +664,16 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                     batchRecordRepository.save(record);
                 }
             } catch (Exception ex) {
-                log.error("Failed to create purchase order for supplier {} in batch {}: {}", partyId, reqId, ex.getMessage());
+                log.error("Failed to create purchase order for supplier {} in batch {}: {}", partyId, reqId,
+                        ex.getMessage());
                 String partyName = poInput.getParty() != null ? poInput.getParty().getName()
                         : (poInput.getPartyName() != null ? poInput.getPartyName() : "Supplier #" + partyId);
                 result.getFailedOrders().add(com.billing.simple.billsoft.dtos.FailedSupplierOrderDto.builder()
                         .partyId(partyId)
                         .partyName(partyName)
                         .errorCode(ex.getClass().getSimpleName())
-                        .errorMessage(ex.getMessage() != null ? ex.getMessage() : "Unknown failure creating purchase order")
+                        .errorMessage(
+                                ex.getMessage() != null ? ex.getMessage() : "Unknown failure creating purchase order")
                         .items(poInput.getItems() != null ? new ArrayList<>(poInput.getItems()) : new ArrayList<>())
                         .build());
 
@@ -661,18 +691,6 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                     record.setPartyName(partyName);
                     record.setErrorMessage(ex.getMessage());
                     batchRecordRepository.save(record);
-                }
-            }
-        }
-
-        // 3. Update preferred vendors if requested
-        if (request.getUpdatePreferredVendors() != null) {
-            for (com.billing.simple.billsoft.dtos.PreferredVendorUpdate update : request.getUpdatePreferredVendors()) {
-                if (update.getProductId() != null && update.getPartyId() != null) {
-                    if (productRepository.existsByIdAndFirmId(update.getProductId(), effectiveFirmId) &&
-                            partyRepository.existsByIdAndFirmId(update.getPartyId(), effectiveFirmId)) {
-                        productRepository.updatePreferredPartyId(update.getProductId(), update.getPartyId(), effectiveFirmId);
-                    }
                 }
             }
         }
@@ -771,5 +789,193 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
 
         return historyMap;
+    }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public com.billing.simple.billsoft.entities.PurchaseOrderReceipt recordGoodsReceipt(Long id, Long firmId, com.billing.simple.billsoft.dtos.PoReceiptRequest request) {
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (effectiveFirmId == null) {
+            throw new IllegalArgumentException("Firm ID is required");
+        }
+
+        // Idempotency check: if request has idempotencyKey and receipt already exists, return it
+        if (request != null && request.getIdempotencyKey() != null && !request.getIdempotencyKey().trim().isEmpty()) {
+            String ikey = request.getIdempotencyKey().trim();
+            if (receiptRepository != null) {
+                java.util.Optional<com.billing.simple.billsoft.entities.PurchaseOrderReceipt> existing =
+                        receiptRepository.findByIdempotencyKeyAndFirmId(ikey, effectiveFirmId);
+                if (existing.isPresent()) {
+                    log.info("Durable idempotency: Goods receipt with idempotencyKey '{}' already exists as receipt #{}. Reusing existing receipt.",
+                            ikey, existing.get().getReceiptNumber());
+                    return existing.get();
+                }
+            }
+        }
+
+        PurchaseOrder po = poRepository.findByIdAndFirmId(id, effectiveFirmId)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
+
+        if (po.getStatus() == PurchaseOrderStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot receive items for a CANCELLED purchase order");
+        }
+        if (po.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            throw new IllegalStateException("Purchase order #" + po.getPoNumber() + " is already fully received");
+        }
+
+        if (request == null || request.getItems() == null || request.getItems().isEmpty()) {
+            throw new IllegalArgumentException("Goods receipt must contain at least one item to receive");
+        }
+
+        PurchaseOrderStatus oldStatus = po.getStatus();
+        LocalDate receiptDate = request.getReceiptDate() != null ? request.getReceiptDate() : LocalDate.now();
+
+        long receiptCount = (receiptRepository != null) ? receiptRepository.countByFirmId(effectiveFirmId) + 1 : 1;
+        String receiptNumber = String.format("REC-%s-%03d", po.getPoNumber(), receiptCount);
+
+        com.billing.simple.billsoft.entities.PurchaseOrderReceipt receipt = com.billing.simple.billsoft.entities.PurchaseOrderReceipt.builder()
+                .firmId(effectiveFirmId)
+                .purchaseOrderId(po.getId())
+                .receiptNumber(receiptNumber)
+                .receiptDate(receiptDate)
+                .receivedBy(request.getReceivedBy())
+                .notes(request.getNotes())
+                .idempotencyKey(request.getIdempotencyKey() != null ? request.getIdempotencyKey().trim() : null)
+                .createdAt(java.time.LocalDateTime.now())
+                .items(new java.util.ArrayList<>())
+                .build();
+
+        java.util.Map<Long, PurchaseOrderItem> poItemMap = new java.util.HashMap<>();
+        if (po.getItems() != null) {
+            for (PurchaseOrderItem it : po.getItems()) {
+                if (it.getId() != null) {
+                    poItemMap.put(it.getId(), it);
+                }
+            }
+        }
+
+        java.util.Set<Long> affectedProductIds = new java.util.HashSet<>();
+
+        for (com.billing.simple.billsoft.dtos.PoReceiptItemRequest reqItem : request.getItems()) {
+            BigDecimal qtyToReceive = reqItem.getReceivedQuantity();
+            if (qtyToReceive == null || qtyToReceive.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            PurchaseOrderItem poItem = null;
+            if (reqItem.getPurchaseOrderItemId() != null) {
+                poItem = poItemMap.get(reqItem.getPurchaseOrderItemId());
+            } else if (reqItem.getProductId() != null && po.getItems() != null) {
+                for (PurchaseOrderItem it : po.getItems()) {
+                    if (reqItem.getProductId().equals(it.getProductId())) {
+                        poItem = it;
+                        break;
+                    }
+                }
+            }
+
+            if (poItem == null) {
+                throw new IllegalArgumentException("Purchase order item not found for line: " + reqItem.getPurchaseOrderItemId());
+            }
+
+            BigDecimal currentReceived = poItem.getReceivedQuantity() != null ? poItem.getReceivedQuantity() : BigDecimal.ZERO;
+            BigDecimal orderedQty = poItem.getQuantity() != null ? poItem.getQuantity() : BigDecimal.ZERO;
+            BigDecimal remainingPending = orderedQty.subtract(currentReceived);
+            if (remainingPending.compareTo(BigDecimal.ZERO) < 0) remainingPending = BigDecimal.ZERO;
+
+            if (qtyToReceive.compareTo(remainingPending) > 0) {
+                throw new IllegalArgumentException("Received quantity (" + qtyToReceive + ") exceeds remaining pending quantity ("
+                        + remainingPending + ") for item: " + poItem.getProductName());
+            }
+
+            // Update item received quantity
+            poItem.setReceivedQuantity(currentReceived.add(qtyToReceive));
+            poItemRepository.save(poItem);
+
+            // Create receipt item
+            com.billing.simple.billsoft.entities.PurchaseOrderReceiptItem receiptItem = com.billing.simple.billsoft.entities.PurchaseOrderReceiptItem.builder()
+                    .receipt(receipt)
+                    .purchaseOrderItemId(poItem.getId())
+                    .productId(poItem.getProductId())
+                    .productName(poItem.getProductName())
+                    .receivedQuantity(qtyToReceive)
+                    .unit(poItem.getUnit())
+                    .build();
+            receipt.addItem(receiptItem);
+
+            // Record authoritative stock movement
+            Long prodId = poItem.getProductId();
+            if (prodId == null) {
+                prodId = resolveOrCreateProduct(poItem, po, effectiveFirmId, true);
+            }
+            if (prodId != null) {
+                affectedProductIds.add(prodId);
+                productService.recordStockMovement(
+                        prodId,
+                        effectiveFirmId,
+                        "PURCHASE_RECEIPT",
+                        qtyToReceive,
+                        "PURCHASE_ORDER",
+                        po.getPoNumber(),
+                        "Receipt #" + receiptNumber + " for PO #" + po.getPoNumber() + " (" + (po.getParty() != null ? po.getParty().getName() : "Vendor") + ")"
+                );
+            }
+        }
+
+        // Determine updated PO status
+        boolean anyPending = false;
+        boolean anyReceived = false;
+        if (po.getItems() != null) {
+            for (PurchaseOrderItem it : po.getItems()) {
+                BigDecimal ord = it.getQuantity() != null ? it.getQuantity() : BigDecimal.ZERO;
+                BigDecimal rec = it.getReceivedQuantity() != null ? it.getReceivedQuantity() : BigDecimal.ZERO;
+                if (rec.compareTo(BigDecimal.ZERO) > 0) {
+                    anyReceived = true;
+                }
+                if (rec.compareTo(ord) < 0) {
+                    anyPending = true;
+                }
+            }
+        }
+
+        PurchaseOrderStatus newStatus;
+        if (!anyPending && anyReceived) {
+            newStatus = PurchaseOrderStatus.RECEIVED;
+        } else if (anyReceived) {
+            newStatus = PurchaseOrderStatus.PARTIALLY_RECEIVED;
+        } else {
+            newStatus = oldStatus;
+        }
+
+        po.setStatus(newStatus);
+        poRepository.save(po);
+
+        com.billing.simple.billsoft.entities.PurchaseOrderReceipt savedReceipt = (receiptRepository != null)
+                ? receiptRepository.save(receipt) : receipt;
+
+        publishPoUpdatedEvent(po, oldStatus, newStatus);
+
+        log.info("Recorded goods receipt #{} (ID: {}) for PO #{} (Status: {} -> {}) with {} items in firm {}",
+                savedReceipt.getReceiptNumber(), savedReceipt.getId(), po.getPoNumber(), oldStatus, newStatus,
+                savedReceipt.getItems().size(), effectiveFirmId);
+
+        return savedReceipt;
+    }
+
+    @Override
+    public List<com.billing.simple.billsoft.entities.PurchaseOrderReceipt> getReceiptsForPurchaseOrder(Long id, Long firmId) {
+        Long authoritativeFirmId = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null && firmId != null && !authoritativeFirmId.equals(firmId)) {
+            throw new TenantSecurityException("Cross-firm access prohibited");
+        }
+        Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
+        if (effectiveFirmId == null || receiptRepository == null) {
+            return java.util.Collections.emptyList();
+        }
+        return receiptRepository.findByPurchaseOrderIdAndFirmIdOrderByReceiptDateDescCreatedAtDesc(id, effectiveFirmId);
     }
 }

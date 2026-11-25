@@ -6839,7 +6839,11 @@
           else if (initialNav.subTab) setTab(normalizeFirmTab(initialNav.subTab));
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, []);
 
       const activeTab = normalizeFirmTab(tab);
@@ -8230,7 +8234,11 @@
           handleNav({ detail: initialNav });
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, []);
 
       const [customers, setCustomers] = useState([]);
@@ -14502,7 +14510,11 @@ if (typeof window !== 'undefined') {
           setDashSegment(initialNav.dashboardSegment);
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, []);
 
       const [dashLockTick, setDashLockTick] = useState(0);
@@ -22625,8 +22637,25 @@ if (typeof window !== 'undefined') {
             React.createElement('button', {
               className: 'btn btn-outline btn-sm',
               onClick: () => {
+                window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+                  detail: {
+                    page: 'firm',
+                    tab: 'statements',
+                    statementMode: 'forecast',
+                    forecastHorizon: horizonDays,
+                    category: selectedCategory,
+                    autoGenerate: true
+                  }
+                }));
                 window.dispatchEvent(new CustomEvent('billsoft:navigate', {
-                  detail: { page: 'firm', tab: 'statements' }
+                  detail: {
+                    page: 'firm',
+                    tab: 'statements',
+                    statementMode: 'forecast',
+                    forecastHorizon: horizonDays,
+                    category: selectedCategory,
+                    autoGenerate: true
+                  }
                 }));
               },
               style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }
@@ -23360,6 +23389,7 @@ if (typeof window !== 'undefined') {
         window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
         window.addEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
         window.addEventListener('billsoft:navigate-subtab', handleSubtabNav);
+        window.addEventListener('billsoft:navigate', handleSubtabNav);
         return () => {
           window.removeEventListener('billsoft:app-refresh', load);
           window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
@@ -23367,6 +23397,7 @@ if (typeof window !== 'undefined') {
           window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
           window.removeEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
           window.removeEventListener('billsoft:navigate-subtab', handleSubtabNav);
+          window.removeEventListener('billsoft:navigate', handleSubtabNav);
         };
       }, [load]);
 
@@ -23719,20 +23750,80 @@ if (typeof window !== 'undefined') {
         return filteredProducts.slice(start, start + productPageSize);
       }, [filteredProducts, safeProductPage, productPageSize]);
 
-      const totalMovementPages = Math.max(1, Math.ceil(movements.length / movementPageSize));
+      const [movementSearch, setMovementSearch] = useState('');
+      const [movementTypeFilter, setMovementTypeFilter] = useState('ALL');
+      const [movementFrom, setMovementFrom] = useState('');
+      const [movementTo, setMovementTo] = useState('');
+
+      const filteredMovements = useMemo(() => {
+        if (!movements || movements.length === 0) return [];
+        return movements.filter(m => {
+          if (movementTypeFilter !== 'ALL' && m.movementType !== movementTypeFilter) return false;
+          if (movementFrom && m.createdAt && m.createdAt.slice(0, 10) < movementFrom) return false;
+          if (movementTo && m.createdAt && m.createdAt.slice(0, 10) > movementTo) return false;
+          if (movementSearch.trim()) {
+            const q = movementSearch.toLowerCase().trim();
+            const matchName = (m.productName || '').toLowerCase().includes(q);
+            const matchRef = (m.referenceNumber || '').toLowerCase().includes(q);
+            const matchNotes = (m.notes || '').toLowerCase().includes(q);
+            if (!matchName && !matchRef && !matchNotes) return false;
+          }
+          return true;
+        });
+      }, [movements, movementTypeFilter, movementFrom, movementTo, movementSearch]);
+
+      const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / movementPageSize));
       const safeMovementPage = Math.min(movementPage, totalMovementPages);
       const paginatedMovements = useMemo(() => {
         const start = (safeMovementPage - 1) * movementPageSize;
-        return movements.slice(start, start + movementPageSize);
-      }, [movements, safeMovementPage, movementPageSize]);
+        return filteredMovements.slice(start, start + movementPageSize);
+      }, [filteredMovements, safeMovementPage, movementPageSize]);
+
+      useEffect(() => {
+        setMovementPage(1);
+      }, [movementSearch, movementTypeFilter, movementFrom, movementTo]);
+
+      const handleDownloadMovementCsv = () => {
+        try {
+          const rows = [
+            ['Date & Time', 'Product Name', 'Movement Type', 'Change Qty', 'Previous Qty', 'New Qty', 'Reference', 'Notes']
+          ];
+          filteredMovements.forEach(m => {
+            rows.push([
+              m.createdAt ? BillsoftUtils.formatDateTime(m.createdAt) : '',
+              m.productName || '',
+              m.movementType || '',
+              String(m.quantityChange || 0),
+              String(m.previousQuantity || 0),
+              String(m.newQuantity || 0),
+              m.referenceNumber || '',
+              m.notes || ''
+            ]);
+          });
+          const csvContent = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Stock_Movement_Ledger_${new Date().toISOString().slice(0, 10)}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          if (typeof showToast === 'function') showToast('Stock Movement CSV downloaded', 'success');
+        } catch (e) {
+          console.error('Failed to export movements CSV:', e);
+          if (typeof showToast === 'function') showToast('Failed to export CSV', 'error');
+        }
+      };
 
       return React.createElement(Fragment, null,
         // Level 3 Contextual Subtabs
         React.createElement(RupeeCRMSubTabs, {
           tabs: [
             { id: 'STANDARD', label: 'Inventory Overview', icon: Icons.package },
-            { id: 'ORDER_PRODUCTS', label: '⚡ Order Products', icon: React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)' } }, '⚡') },
-            { id: 'FORECAST_DASHBOARD', label: '📊 Forecast Dashboard', icon: React.createElement('span', null, '📊') },
+            { id: 'ORDER_PRODUCTS', label: 'Order Products', icon: React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)' } }, '⚡') },
+            { id: 'FORECAST_DASHBOARD', label: 'Forecast Dashboard', icon: React.createElement('span', null, '📊') },
             { id: 'ARCHIVE', label: 'Archive', icon: React.createElement('span', { style: { fontSize: '0.9rem' } }, '📁') },
             { id: 'MOVEMENT_LEDGER', label: 'Movement Ledger', icon: React.createElement('span', null, '📜') }
           ],
@@ -23770,6 +23861,12 @@ if (typeof window !== 'undefined') {
               React.createElement('div', { className: 'inventory-canonical-toolbar rcrm-action-cluster' },
                 React.createElement('button', {
                   className: 'btn btn-outline btn-sm',
+                  onClick: handleDownloadMovementCsv,
+                  disabled: filteredMovements.length === 0,
+                  style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 500 }
+                }, '📥 Download CSV'),
+                React.createElement('button', {
+                  className: 'btn btn-outline btn-sm',
                   onClick: () => {
                     setMovementsLoading(true);
                     API.products.allMovements().then(data => {
@@ -23786,75 +23883,142 @@ if (typeof window !== 'undefined') {
               )
             ),
             React.createElement('div', { className: 'card firm-table-card' },
+              // Movement Filter Toolbar
+              React.createElement('div', {
+                style: {
+                  padding: '10px 14px',
+                  borderBottom: '1px solid var(--border)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  alignItems: 'center',
+                  background: 'var(--surface-sunken, #f8fafc)'
+                }
+              },
+                React.createElement('div', { style: { flex: '2 1 200px', minWidth: 160 } },
+                  React.createElement('input', {
+                    className: 'input w-full',
+                    placeholder: '🔍 Search product name, reference, notes...',
+                    value: movementSearch,
+                    onChange: e => setMovementSearch(e.target.value),
+                    style: { height: 32, fontSize: '0.82rem' }
+                  })
+                ),
+                React.createElement('div', { style: { flex: '1 1 150px', minWidth: 140 } },
+                  React.createElement('select', {
+                    className: 'select w-full',
+                    value: movementTypeFilter,
+                    onChange: e => setMovementTypeFilter(e.target.value),
+                    style: { height: 32, fontSize: '0.82rem' }
+                  },
+                    React.createElement('option', { value: 'ALL' }, '📋 All Types'),
+                    React.createElement('option', { value: 'PURCHASE_RECEIPT' }, '📦 Purchase Receipts'),
+                    React.createElement('option', { value: 'INVOICE_SALE' }, '🧾 Sales / Dispatches'),
+                    React.createElement('option', { value: 'ADJUSTMENT' }, '⚙️ Adjustments'),
+                    React.createElement('option', { value: 'RETURN' }, '↩️ Returns')
+                  )
+                ),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'From:'),
+                  React.createElement('input', {
+                    className: 'input',
+                    type: 'date',
+                    value: movementFrom,
+                    onChange: e => setMovementFrom(e.target.value),
+                    style: { height: 32, fontSize: '0.80rem', padding: '0 6px' }
+                  })
+                ),
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                  React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'To:'),
+                  React.createElement('input', {
+                    className: 'input',
+                    type: 'date',
+                    value: movementTo,
+                    onChange: e => setMovementTo(e.target.value),
+                    style: { height: 32, fontSize: '0.80rem', padding: '0 6px' }
+                  })
+                ),
+                (movementSearch || movementTypeFilter !== 'ALL' || movementFrom || movementTo) && React.createElement('button', {
+                  className: 'btn btn-ghost btn-sm',
+                  style: { height: 32, fontSize: '0.78rem', padding: '0 8px' },
+                  onClick: () => {
+                    setMovementSearch('');
+                    setMovementTypeFilter('ALL');
+                    setMovementFrom('');
+                    setMovementTo('');
+                  }
+                }, '✕ Reset')
+              ),
               movementsLoading ? React.createElement(RupeeCRMLoader, { message: 'Loading stock movement ledger...', size: 48, style: { minHeight: 180 } }) :
                 movements.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } }, 'No recorded stock movements yet') :
-                  React.createElement(Fragment, null,
-                    React.createElement('div', { className: 'table-container' },
-                      React.createElement('table', { style: { width: '100%', margin: 0 } },
-                        React.createElement('thead', null, React.createElement('tr', null,
-                          React.createElement('th', { style: { width: '18%' } }, 'Date & Time'),
-                          React.createElement('th', { style: { width: '24%' } }, 'Product Name'),
-                          React.createElement('th', { style: { width: '16%' } }, 'Movement Type'),
-                          React.createElement('th', { style: { textAlign: 'right', width: '12%' } }, 'Change'),
-                          React.createElement('th', { style: { textAlign: 'center', width: '12%' } }, 'Prev ➔ New'),
-                          React.createElement('th', { style: { width: '18%' } }, 'Reference / Note')
-                        )),
-                        React.createElement('tbody', null,
-                          paginatedMovements.map(m => {
-                            const isPos = Number(m.quantityChange || 0) > 0;
-                            return React.createElement('tr', { key: m.id },
-                              React.createElement('td', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)' } },
-                                m.createdAt ? BillsoftUtils.formatDateTime(m.createdAt) : '—'
-                              ),
-                              React.createElement('td', { style: { fontWeight: 600 } }, m.productName),
-                              React.createElement('td', null,
-                                React.createElement('span', {
-                                  className: 'badge',
+                  filteredMovements.length === 0 ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } }, 'No movements match your filters') :
+                    React.createElement(Fragment, null,
+                      React.createElement('div', { className: 'table-container' },
+                        React.createElement('table', { style: { width: '100%', margin: 0 } },
+                          React.createElement('thead', null, React.createElement('tr', null,
+                            React.createElement('th', { style: { width: '18%' } }, 'Date & Time'),
+                            React.createElement('th', { style: { width: '24%' } }, 'Product Name'),
+                            React.createElement('th', { style: { width: '16%' } }, 'Movement Type'),
+                            React.createElement('th', { style: { textAlign: 'right', width: '12%' } }, 'Change'),
+                            React.createElement('th', { style: { textAlign: 'center', width: '12%' } }, 'Prev ➔ New'),
+                            React.createElement('th', { style: { width: '18%' } }, 'Reference / Note')
+                          )),
+                          React.createElement('tbody', null,
+                            paginatedMovements.map(m => {
+                              const isPos = Number(m.quantityChange || 0) > 0;
+                              return React.createElement('tr', { key: m.id },
+                                React.createElement('td', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)' } },
+                                  m.createdAt ? BillsoftUtils.formatDateTime(m.createdAt) : '—'
+                                ),
+                                React.createElement('td', { style: { fontWeight: 600 } }, m.productName),
+                                React.createElement('td', null,
+                                  React.createElement('span', {
+                                    className: 'badge',
+                                    style: {
+                                      fontSize: '0.72rem',
+                                      padding: '2px 6px',
+                                      background: m.movementType === 'INVOICE_SALE' ? 'rgba(239, 68, 68, 0.15)' : (m.movementType === 'PURCHASE_RECEIPT' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
+                                      color: m.movementType === 'INVOICE_SALE' ? '#EF4444' : (m.movementType === 'PURCHASE_RECEIPT' ? '#10B981' : '#3B82F6')
+                                    }
+                                  }, m.movementType ? m.movementType.replace('_', ' ') : 'ADJUSTMENT')
+                                ),
+                                React.createElement('td', {
                                   style: {
-                                    fontSize: '0.72rem',
-                                    padding: '2px 6px',
-                                    background: m.movementType === 'INVOICE_SALE' ? 'rgba(239, 68, 68, 0.15)' : (m.movementType === 'PURCHASE_RECEIPT' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
-                                    color: m.movementType === 'INVOICE_SALE' ? '#EF4444' : (m.movementType === 'PURCHASE_RECEIPT' ? '#10B981' : '#3B82F6')
+                                    textAlign: 'right',
+                                    fontWeight: 700,
+                                    color: isPos ? '#10B981' : '#EF4444'
                                   }
-                                }, m.movementType ? m.movementType.replace('_', ' ') : 'ADJUSTMENT')
-                              ),
-                              React.createElement('td', {
-                                style: {
-                                  textAlign: 'right',
-                                  fontWeight: 700,
-                                  color: isPos ? '#10B981' : '#EF4444'
-                                }
-                              }, `${isPos ? '+' : ''}${m.quantityChange}`),
-                              React.createElement('td', { style: { textAlign: 'center', fontSize: '0.82rem' } },
-                                `${m.previousQuantity} ➔ ${m.newQuantity}`
-                              ),
-                              React.createElement('td', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
-                                m.referenceNumber ? `${m.referenceNumber}${m.notes ? ` (${m.notes})` : ''}` : (m.notes || '—')
-                              )
-                            );
-                          })
+                                }, `${isPos ? '+' : ''}${m.quantityChange}`),
+                                React.createElement('td', { style: { textAlign: 'center', fontSize: '0.82rem' } },
+                                  `${m.previousQuantity} ➔ ${m.newQuantity}`
+                                ),
+                                React.createElement('td', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } },
+                                  m.referenceNumber ? `${m.referenceNumber}${m.notes ? ` (${m.notes})` : ''}` : (m.notes || '—')
+                                )
+                              );
+                            })
+                          )
+                        )
+                      ),
+                      totalMovementPages > 1 && React.createElement('div', { className: 'firm-docked-pagination', style: { padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                        React.createElement('span', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)' } },
+                          `Showing ${(safeMovementPage - 1) * movementPageSize + 1}–${Math.min(safeMovementPage * movementPageSize, filteredMovements.length)} of ${filteredMovements.length} movements`
+                        ),
+                        React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+                          React.createElement('button', {
+                            className: 'btn btn-outline btn-xs',
+                            disabled: safeMovementPage <= 1,
+                            onClick: () => setMovementPage(p => Math.max(1, p - 1))
+                          }, '◀ Prev'),
+                          React.createElement('span', { style: { fontSize: '0.80rem', fontWeight: 600 } }, `${safeMovementPage} / ${totalMovementPages}`),
+                          React.createElement('button', {
+                            className: 'btn btn-outline btn-xs',
+                            disabled: safeMovementPage >= totalMovementPages,
+                            onClick: () => setMovementPage(p => Math.min(totalMovementPages, p + 1))
+                          }, 'Next ▶')
                         )
                       )
-                    ),
-                    totalMovementPages > 1 && React.createElement('div', { className: 'firm-docked-pagination', style: { padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-                      React.createElement('span', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)' } },
-                        `Showing ${(safeMovementPage - 1) * movementPageSize + 1}–${Math.min(safeMovementPage * movementPageSize, movements.length)} of ${movements.length} movements`
-                      ),
-                      React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
-                        React.createElement('button', {
-                          className: 'btn btn-outline btn-xs',
-                          disabled: safeMovementPage <= 1,
-                          onClick: () => setMovementPage(p => Math.max(1, p - 1))
-                        }, '◀ Prev'),
-                        React.createElement('span', { style: { fontSize: '0.80rem', fontWeight: 600 } }, `${safeMovementPage} / ${totalMovementPages}`),
-                        React.createElement('button', {
-                          className: 'btn btn-outline btn-xs',
-                          disabled: safeMovementPage >= totalMovementPages,
-                          onClick: () => setMovementPage(p => Math.min(totalMovementPages, p + 1))
-                        }, 'Next ▶')
-                      )
                     )
-                  )
             )
           )
         ) : inventoryTab === 'ARCHIVE' ? (
@@ -32439,6 +32603,14 @@ function PartyDetailModal({
       });
       const [recordingQuickPay, setRecordingQuickPay] = useState(false);
 
+      // Goods Receipt Modal State
+      const [receivePoModal, setReceivePoModal] = useState(null);
+      const [receiveQuantities, setReceiveQuantities] = useState({});
+      const [receiveReceiptNotes, setReceiveReceiptNotes] = useState('');
+      const [receiveReceiptBy, setReceiveReceiptBy] = useState('');
+      const [receiveSubmitting, setReceiveSubmitting] = useState(false);
+      const [loadingPoDetails, setLoadingPoDetails] = useState(false);
+
       // Inline Quick Add Party Modal
       const [showInlinePartyModal, setShowInlinePartyModal] = useState(false);
       const [inlinePartyForm, setInlinePartyForm] = useState({
@@ -32909,6 +33081,67 @@ function PartyDetailModal({
         window.addEventListener('keydown', handleModalKey, true);
         return () => window.removeEventListener('keydown', handleModalKey, true);
       }, [showCompletionPopup, form, parties, products, formCalculations]);
+
+      const handleOpenReceiveModal = async (po) => {
+        setLoadingPoDetails(true);
+        try {
+          let targetPo = po;
+          if (po && po.id) {
+            const full = await API.purchaseOrders.get(po.id);
+            if (full) targetPo = full;
+          }
+          setReceivePoModal(targetPo);
+          const initQtys = {};
+          (targetPo.items || []).forEach(it => {
+            const ordered = Number(it.quantity || 0);
+            const rec = Number(it.receivedQuantity || 0);
+            const pending = Math.max(0, ordered - rec);
+            initQtys[it.id] = pending > 0 ? String(pending) : '0';
+          });
+          setReceiveQuantities(initQtys);
+          setReceiveReceiptNotes('');
+          setReceiveReceiptBy('');
+        } catch (err) {
+          console.error('Failed to load PO details for receipt:', err);
+          showToast('Failed to load purchase order details', 'error');
+        } finally {
+          setLoadingPoDetails(false);
+        }
+      };
+
+      const handleSubmitGoodsReceipt = async () => {
+        if (!receivePoModal) return;
+        const items = Object.entries(receiveQuantities)
+          .filter(([_, qty]) => Number(qty) > 0)
+          .map(([itemId, qty]) => ({
+            purchaseOrderItemId: Number(itemId),
+            receivedQuantity: Number(qty)
+          }));
+
+        if (items.length === 0) {
+          showToast('Please enter at least one quantity to receive (> 0)', 'error');
+          return;
+        }
+
+        setReceiveSubmitting(true);
+        try {
+          const payload = {
+            receivedBy: receiveReceiptBy.trim() || undefined,
+            notes: receiveReceiptNotes.trim() || undefined,
+            items: items
+          };
+          await API.purchaseOrders.recordReceipt(receivePoModal.id, payload);
+          showToast('Goods receipt recorded successfully. Stock movements updated.', 'success');
+          setReceivePoModal(null);
+          load();
+          window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
+        } catch (err) {
+          console.error('Failed to record goods receipt:', err);
+          showToast(err.message || 'Failed to record goods receipt', 'error');
+        } finally {
+          setReceiveSubmitting(false);
+        }
+      };
 
       const openQuickPay = (po) => {
         const total = po.totalAmount || 0;
@@ -33892,6 +34125,7 @@ function PartyDetailModal({
             React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: 6 } }, 'Status:'),
             React.createElement('button', { className: `btn btn-sm ${statusFilter === 'ALL' ? 'btn-primary' : 'btn-outline'}`, style: { padding: '2px 8px', fontSize: '0.78rem' }, onClick: () => setStatusFilter('ALL') }, 'All'),
             React.createElement('button', { className: `btn btn-sm ${statusFilter === 'ISSUED' ? 'btn-primary' : 'btn-outline'}`, style: { padding: '2px 8px', fontSize: '0.78rem' }, onClick: () => setStatusFilter('ISSUED') }, 'Issued'),
+            React.createElement('button', { className: `btn btn-sm ${statusFilter === 'PARTIALLY_RECEIVED' ? 'btn-warning' : 'btn-outline'}`, style: { padding: '2px 8px', fontSize: '0.78rem' }, onClick: () => setStatusFilter('PARTIALLY_RECEIVED') }, 'Partially Received'),
             React.createElement('button', { className: `btn btn-sm ${statusFilter === 'RECEIVED' ? 'btn-success' : 'btn-outline'}`, style: { padding: '2px 8px', fontSize: '0.78rem' }, onClick: () => setStatusFilter('RECEIVED') }, 'Received'),
             React.createElement('button', { className: `btn btn-sm ${statusFilter === 'DRAFT' ? 'btn-outline' : 'btn-ghost'}`, style: { padding: '2px 8px', fontSize: '0.78rem' }, onClick: () => setStatusFilter('DRAFT') }, 'Draft')
           )
@@ -33918,6 +34152,7 @@ function PartyDetailModal({
                       const partyName = po.partyName || (po.party ? po.party.name : '—');
                       let badgeClass = 'badge-primary';
                       if (po.status === 'RECEIVED') badgeClass = 'badge-paid';
+                      else if (po.status === 'PARTIALLY_RECEIVED') badgeClass = 'badge-warning';
                       else if (po.status === 'DRAFT') badgeClass = 'badge-draft';
                       else if (po.status === 'CANCELLED') badgeClass = 'badge-danger';
 
@@ -33963,6 +34198,7 @@ function PartyDetailModal({
                             onChange: e => handleStatusChange(po.id, e.target.value)
                           },
                             React.createElement('option', { value: 'ISSUED' }, 'Issued'),
+                            React.createElement('option', { value: 'PARTIALLY_RECEIVED' }, 'Partially Received'),
                             React.createElement('option', { value: 'RECEIVED' }, 'Received'),
                             React.createElement('option', { value: 'DRAFT' }, 'Draft'),
                             React.createElement('option', { value: 'CANCELLED' }, 'Cancelled')
@@ -33970,6 +34206,13 @@ function PartyDetailModal({
                         ),
                         React.createElement('td', { style: { textAlign: 'center' } },
                           React.createElement('div', { style: { display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' } },
+                            (po.status === 'ISSUED' || po.status === 'PARTIALLY_RECEIVED') && React.createElement('button', {
+                              type: 'button',
+                              className: 'btn btn-sm btn-primary',
+                              style: { padding: '4px 8px', fontSize: '0.78rem', whiteSpace: 'nowrap' },
+                              onClick: () => handleOpenReceiveModal(po),
+                              title: 'Record Goods Receipt / Partial Delivery'
+                            }, '📦 Receive'),
                             React.createElement('button', {
                               type: 'button',
                               className: 'btn btn-sm btn-outline',
@@ -34304,6 +34547,149 @@ function PartyDetailModal({
                   disabled: recordingQuickPay || !quickPayForm.amount || parseFloat(quickPayForm.amount) <= 0
                 }, recordingQuickPay ? 'Recording...' : '💳 Save Payment')
               )
+            )
+          )
+        ),
+
+        // Goods Receipt Modal (Partial / Full Receiving)
+        receivePoModal && React.createElement('div', {
+          className: 'modal-overlay modal-foreground',
+          style: { zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('po_receive_modal', 'foreground') : 10100 },
+          onClick: () => !receiveSubmitting && setReceivePoModal(null)
+        },
+          React.createElement('div', {
+            className: 'card modal-content',
+            style: { maxWidth: 680, width: '96%', margin: '40px auto', padding: 24, borderRadius: 16, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' },
+            onClick: e => e.stopPropagation()
+          },
+            // Header
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 } },
+              React.createElement('div', null,
+                React.createElement('h3', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 8 } },
+                  '📦 Record Goods Receipt',
+                  React.createElement('span', { className: 'badge badge-outline', style: { fontSize: '0.76rem', fontWeight: 600 } }, receivePoModal.poNumber || `PO #${receivePoModal.id}`)
+                ),
+                React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 3 } },
+                  `${receivePoModal.partyName || (receivePoModal.party ? receivePoModal.party.name : 'Vendor')} • PO Date: ${BillsoftUtils.formatDate(receivePoModal.poDate)}`
+                )
+              ),
+              React.createElement('button', {
+                className: 'btn btn-ghost btn-sm',
+                disabled: receiveSubmitting,
+                onClick: () => setReceivePoModal(null)
+              }, '✕')
+            ),
+
+            // Instruction Note
+            React.createElement('div', {
+              style: {
+                padding: '8px 12px',
+                background: 'rgba(79, 70, 229, 0.06)',
+                borderRadius: 8,
+                border: '1px solid rgba(79, 70, 229, 0.15)',
+                fontSize: '0.80rem',
+                color: 'var(--text)',
+                marginBottom: 16,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }
+            },
+              'ℹ️ ',
+              React.createElement('span', null, 'Enter quantities physically received in this shipment. Physical stock movement records and warehouse inventory will be automatically updated.')
+            ),
+
+            // Line items table
+            React.createElement('div', { className: 'table-container', style: { maxHeight: 280, overflowY: 'auto', marginBottom: 16, border: '1px solid var(--border)', borderRadius: 8 } },
+              React.createElement('table', { style: { width: '100%', margin: 0 } },
+                React.createElement('thead', null, React.createElement('tr', null,
+                  React.createElement('th', { style: { width: '40%' } }, 'Product / Item'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '15%' } }, 'Ordered'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '15%' } }, 'Received'),
+                  React.createElement('th', { style: { textAlign: 'center', width: '15%' } }, 'Pending'),
+                  React.createElement('th', { style: { textAlign: 'right', width: '15%' } }, 'Receive Now')
+                )),
+                React.createElement('tbody', null,
+                  (receivePoModal.items || []).map(it => {
+                    const ordered = Number(it.quantity || 0);
+                    const rec = Number(it.receivedQuantity || 0);
+                    const pending = Math.max(0, ordered - rec);
+                    const currInput = receiveQuantities[it.id] !== undefined ? receiveQuantities[it.id] : String(pending);
+                    return React.createElement('tr', { key: it.id },
+                      React.createElement('td', null,
+                        React.createElement('div', { style: { fontWeight: 600, fontSize: '0.88rem' } }, it.productName || (it.product ? it.product.name : 'Item')),
+                        it.hsnCode && React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-muted)' } }, `HSN: ${it.hsnCode}`)
+                      ),
+                      React.createElement('td', { style: { textAlign: 'center', fontSize: '0.86rem' } }, `${ordered} ${it.unit || 'pcs'}`),
+                      React.createElement('td', { style: { textAlign: 'center', fontSize: '0.86rem', color: rec > 0 ? 'var(--success)' : 'inherit', fontWeight: rec > 0 ? 600 : 400 } }, `${rec} ${it.unit || 'pcs'}`),
+                      React.createElement('td', { style: { textAlign: 'center', fontSize: '0.86rem', color: pending > 0 ? 'var(--primary)' : 'var(--text-muted)', fontWeight: 600 } }, `${pending} ${it.unit || 'pcs'}`),
+                      React.createElement('td', { style: { textAlign: 'right' } },
+                        pending <= 0 ? (
+                          React.createElement('span', { className: 'badge badge-paid', style: { fontSize: '0.72rem' } }, '✓ Completed')
+                        ) : (
+                          React.createElement('input', {
+                            className: 'input input-sm',
+                            type: 'number',
+                            min: 0,
+                            max: pending,
+                            step: 'any',
+                            style: { width: 90, textAlign: 'right', fontWeight: 700 },
+                            value: currInput,
+                            disabled: receiveSubmitting,
+                            onChange: e => {
+                              const val = e.target.value;
+                              setReceiveQuantities(prev => ({ ...prev, [it.id]: val }));
+                            }
+                          })
+                        )
+                      )
+                    );
+                  })
+                )
+              )
+            ),
+
+            // Metadata fields: Received By and Notes
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 } },
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Received By (Person / Storekeeper)'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  placeholder: 'e.g. Warehouse Incharge, Ramesh',
+                  value: receiveReceiptBy,
+                  disabled: receiveSubmitting,
+                  onChange: e => setReceiveReceiptBy(e.target.value),
+                  style: { height: 36, fontSize: '0.84rem' }
+                })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { style: { fontSize: '0.80rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, display: 'block' } }, 'Delivery Challan / Invoice Notes'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  placeholder: 'e.g. DC #1024, verified condition',
+                  value: receiveReceiptNotes,
+                  disabled: receiveSubmitting,
+                  onChange: e => setReceiveReceiptNotes(e.target.value),
+                  style: { height: 36, fontSize: '0.84rem' }
+                })
+              )
+            ),
+
+            // Actions
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-outline',
+                disabled: receiveSubmitting,
+                onClick: () => setReceivePoModal(null)
+              }, 'Cancel'),
+              React.createElement('button', {
+                type: 'button',
+                className: 'btn btn-primary',
+                disabled: receiveSubmitting,
+                onClick: handleSubmitGoodsReceipt,
+                style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }
+              }, receiveSubmitting ? '⏳ Recording...' : '✓ Confirm Goods Receipt (Stock +)')
             )
           )
         ),
@@ -35571,6 +35957,10 @@ function PartyDetailModal({
       const [forecastUrgency, setForecastUrgency] = useState('ALL');
       const [forecastSearch, setForecastSearch] = useState('');
 
+      // Movement Statement Filters
+      const [statementMovementSearch, setStatementMovementSearch] = useState('');
+      const [statementMovementType, setStatementMovementType] = useState('ALL');
+
       // Journal Filters in Firm Statement
       const [journalSearch, setJournalSearch] = useState('');
       const [journalTypeFilter, setJournalTypeFilter] = useState('ALL'); // 'ALL' | 'SALE_INVOICE' | 'PURCHASE_ORDER' | 'VENDOR_PAYMENT'
@@ -35646,6 +36036,9 @@ function PartyDetailModal({
                 result = await API.statements.customer(effCustId, from || undefined, to || undefined);
               } else if (effMode === 'firm') {
                 result = await API.statements.firm(from || undefined, to || undefined);
+              } else if (effMode === 'movement') {
+                const list = await API.products.allMovements();
+                result = { mode: 'movement', movements: list || [] };
               }
               if (result) setStatementData(result);
             } catch (err) {
@@ -35660,7 +36053,11 @@ function PartyDetailModal({
         }
 
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, [customerId, partyId, from, to]);
 
       const setDatePreset = (preset) => {
@@ -35717,7 +36114,27 @@ function PartyDetailModal({
         }
       };
 
+      const loadMovementStatement = async () => {
+        setStatementLoading(true);
+        try {
+          const list = await API.products.allMovements();
+          setStatementData({
+            mode: 'movement',
+            movements: list || []
+          });
+        } catch (e) {
+          console.error('Failed to load movement statement:', e);
+          showToast('Failed to load stock movements', 'error');
+        } finally {
+          setStatementLoading(false);
+        }
+      };
+
       const handleGenerateStatement = async () => {
+        if (statementMode === 'movement') {
+          await loadMovementStatement();
+          return;
+        }
         if (statementMode === 'party' && !partyId) {
           showToast('Please search and select a Vendor / Party', 'error');
           return;
@@ -36048,6 +36465,71 @@ function PartyDetailModal({
         );
       }, [statementData, forecastSearch]);
 
+      const filteredStatementMovements = useMemo(() => {
+        if (statementMode !== 'movement' || !statementData) return [];
+        const list = statementData.movements || [];
+        return list.filter(m => {
+          if (statementMovementType !== 'ALL' && m.movementType !== statementMovementType) return false;
+          if (from && m.createdAt && m.createdAt.slice(0, 10) < from) return false;
+          if (to && m.createdAt && m.createdAt.slice(0, 10) > to) return false;
+          if (statementMovementSearch.trim()) {
+            const q = statementMovementSearch.toLowerCase().trim();
+            const matchName = (m.productName || '').toLowerCase().includes(q);
+            const matchRef = (m.referenceNumber || '').toLowerCase().includes(q);
+            const matchNotes = (m.notes || '').toLowerCase().includes(q);
+            if (!matchName && !matchRef && !matchNotes) return false;
+          }
+          return true;
+        });
+      }, [statementMode, statementData, statementMovementType, from, to, statementMovementSearch]);
+
+      const movementMetrics = useMemo(() => {
+        if (statementMode !== 'movement') return { inward: 0, outward: 0, net: 0, count: 0 };
+        let inward = 0;
+        let outward = 0;
+        filteredStatementMovements.forEach(m => {
+          const chg = Number(m.quantityChange || 0);
+          if (chg > 0) inward += chg;
+          else outward += Math.abs(chg);
+        });
+        return { inward, outward, net: inward - outward, count: filteredStatementMovements.length };
+      }, [statementMode, filteredStatementMovements]);
+
+      const handleDownloadMovementStatementCsv = () => {
+        try {
+          const list = filteredStatementMovements;
+          const rows = [
+            ['Date & Time', 'Product Name', 'Movement Type', 'Change Qty', 'Previous Qty', 'New Qty', 'Reference', 'Notes']
+          ];
+          list.forEach(m => {
+            rows.push([
+              m.createdAt ? BillsoftUtils.formatDateTime(m.createdAt) : '',
+              m.productName || '',
+              m.movementType || '',
+              String(m.quantityChange || 0),
+              String(m.previousQuantity || 0),
+              String(m.newQuantity || 0),
+              m.referenceNumber || '',
+              m.notes || ''
+            ]);
+          });
+          const csvContent = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Stock_Movement_Statement_${BillsoftUtils.todayStr()}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          showToast('Stock Movement CSV downloaded', 'success');
+        } catch (e) {
+          console.error('Failed to export movements CSV:', e);
+          showToast('Failed to export CSV', 'error');
+        }
+      };
+
       return React.createElement('div', null,
         // ── 4 HERO STATEMENT SELECTION CARDS ──
           React.createElement('div', {
@@ -36203,6 +36685,45 @@ function PartyDetailModal({
                 React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' } }, 'Forecast & Replenishment'),
                 React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Demand projections, stockout risks & orders')
               )
+            ),
+
+            // Card 5: Stock Movement Ledger Statement
+            React.createElement('div', {
+              onClick: () => {
+                setStatementMode('movement');
+                loadMovementStatement();
+              },
+              style: {
+                padding: '10px 14px',
+                borderRadius: 'var(--radius)',
+                border: statementMode === 'movement' ? '2px solid #10B981' : '1px solid var(--border)',
+                background: statementMode === 'movement' ? 'rgba(16, 185, 129, 0.08)' : 'var(--bg-card)',
+                boxShadow: statementMode === 'movement' ? '0 2px 8px rgba(16, 185, 129, 0.2)' : 'var(--shadow)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10
+              }
+            },
+              React.createElement('div', {
+                style: {
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: statementMode === 'movement' ? '#10B981' : 'var(--bg-secondary)',
+                  color: statementMode === 'movement' ? '#ffffff' : '#10B981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.1rem',
+                  flexShrink: 0
+                }
+              }, '📜'),
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: { fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' } }, 'Stock Movement Statement'),
+                React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Audit trail of sales, receipts & adjustments')
+              )
             )
           ),
 
@@ -36356,6 +36877,35 @@ function PartyDetailModal({
                 })
               ),
 
+              // Movement Filters: Movement Type
+              statementMode === 'movement' && React.createElement('div', { style: { flex: '1 1 180px', minWidth: 150 } },
+                React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'Movement Type'),
+                React.createElement('select', {
+                  className: 'select w-full',
+                  value: statementMovementType,
+                  onChange: e => setStatementMovementType(e.target.value),
+                  style: { height: 40 }
+                },
+                  React.createElement('option', { value: 'ALL' }, '📋 All Types'),
+                  React.createElement('option', { value: 'PURCHASE_RECEIPT' }, '📦 Purchase Receipts'),
+                  React.createElement('option', { value: 'INVOICE_SALE' }, '🧾 Sales / Dispatches'),
+                  React.createElement('option', { value: 'ADJUSTMENT' }, '⚙️ Adjustments'),
+                  React.createElement('option', { value: 'RETURN' }, '↩️ Returns')
+                )
+              ),
+
+              // Movement Filters: Search Filter
+              statementMode === 'movement' && React.createElement('div', { style: { flex: '2 1 200px', minWidth: 180 } },
+                React.createElement('label', { style: { fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' } }, 'Filter Products / Reference'),
+                React.createElement('input', {
+                  className: 'input w-full',
+                  placeholder: '🔍 Search product name, reference, notes...',
+                  value: statementMovementSearch,
+                  onChange: e => setStatementMovementSearch(e.target.value),
+                  style: { height: 40 }
+                })
+              ),
+
               // Submit Button
               React.createElement('div', { style: { flex: '0 0 auto' } },
                 React.createElement('button', {
@@ -36370,6 +36920,26 @@ function PartyDetailModal({
             ),
 
             // Mode Informational Notices
+            statementMode === 'movement' && React.createElement('div', {
+              style: {
+                marginTop: 12,
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                borderRadius: 'var(--radius)',
+                fontSize: '0.8rem',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                border: '1px solid var(--border-light)'
+              }
+            },
+              '💡 ',
+              React.createElement('span', null,
+                'Stock Movement Ledger Statement consolidates all warehouse movements including invoice dispatches, PO receipts, and physical stock count adjustments.'
+              )
+            ),
+
             statementMode === 'firm' && React.createElement('div', {
               style: {
                 marginTop: 12,
@@ -36408,7 +36978,6 @@ function PartyDetailModal({
               React.createElement('span', null,
                 'Forecast & Replenishment Advisory models sales velocity, censors stockout periods, incorporates pending purchase orders, and applies damped Holt-Winters and Croston forecasting to project future stockouts and replenishment capital.'
               )
-            )
             )
           ),
 
@@ -36820,6 +37389,91 @@ function PartyDetailModal({
                     )
                   )
                 )
+              ) : statementMode === 'movement' ? (
+                // ── OPTION E: STOCK MOVEMENT STATEMENT ──
+                React.createElement(Fragment, null,
+                  // 1. Movement KPI Ribbon
+                  React.createElement('div', { className: 'statement-summary' },
+                    React.createElement('div', { className: 'statement-summary-item' },
+                      React.createElement('div', { className: 'label' }, 'Total Inward Receipts'),
+                      React.createElement('div', { className: 'value', style: { color: 'var(--success)' } }, `+${BillsoftUtils.formatNumber(movementMetrics.inward)} units`)
+                    ),
+                    React.createElement('div', { className: 'statement-summary-item' },
+                      React.createElement('div', { className: 'label' }, 'Total Outward Dispatches'),
+                      React.createElement('div', { className: 'value', style: { color: 'var(--danger)' } }, `-${BillsoftUtils.formatNumber(movementMetrics.outward)} units`)
+                    ),
+                    React.createElement('div', { className: 'statement-summary-item' },
+                      React.createElement('div', { className: 'label' }, 'Net Inventory Delta'),
+                      React.createElement('div', { className: 'value', style: { color: movementMetrics.net >= 0 ? 'var(--primary)' : 'var(--danger)' } }, `${movementMetrics.net >= 0 ? '+' : ''}${BillsoftUtils.formatNumber(movementMetrics.net)} units`)
+                    ),
+                    React.createElement('div', { className: 'statement-summary-item' },
+                      React.createElement('div', { className: 'label' }, 'Logged Movements'),
+                      React.createElement('div', { className: 'value' }, BillsoftUtils.formatNumber(movementMetrics.count))
+                    )
+                  ),
+                  // 2. Movement Card Table
+                  React.createElement('div', { className: 'card' },
+                    React.createElement('div', { className: 'card-header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                      React.createElement('div', { className: 'card-title' }, '📜 Stock Movement Audit Trail'),
+                      React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+                        React.createElement('button', {
+                          className: 'btn btn-sm btn-outline',
+                          onClick: handleDownloadMovementStatementCsv,
+                          disabled: filteredStatementMovements.length === 0
+                        }, '📥 Download CSV')
+                      )
+                    ),
+                    React.createElement('div', { className: 'table-container' },
+                      React.createElement('table', null,
+                        React.createElement('thead', null, React.createElement('tr', null,
+                          React.createElement('th', { style: { width: '18%' } }, 'Date & Time'),
+                          React.createElement('th', { style: { width: '24%' } }, 'Product Name'),
+                          React.createElement('th', { style: { width: '16%' } }, 'Movement Type'),
+                          React.createElement('th', { style: { textAlign: 'right', width: '14%' } }, 'Quantity Change'),
+                          React.createElement('th', { style: { textAlign: 'center', width: '12%' } }, 'Prev ➔ New'),
+                          React.createElement('th', { style: { width: '16%' } }, 'Reference / Notes')
+                        )),
+                        React.createElement('tbody', null,
+                          filteredStatementMovements.length === 0 ?
+                            React.createElement('tr', null, React.createElement('td', { colSpan: 6, style: { textAlign: 'center', padding: 40, color: 'var(--text-secondary)' } }, 'No recorded stock movements match your criteria')) :
+                            filteredStatementMovements.map((m, idx) => {
+                              const isPos = Number(m.quantityChange || 0) > 0;
+                              return React.createElement('tr', { key: m.id || idx },
+                                React.createElement('td', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+                                  m.createdAt ? BillsoftUtils.formatDateTime(m.createdAt) : '—'
+                                ),
+                                React.createElement('td', { style: { fontWeight: 600 } }, m.productName || '—'),
+                                React.createElement('td', null,
+                                  React.createElement('span', {
+                                    className: 'badge',
+                                    style: {
+                                      fontSize: '0.72rem',
+                                      padding: '2px 6px',
+                                      background: m.movementType === 'INVOICE_SALE' ? 'rgba(239, 68, 68, 0.15)' : (m.movementType === 'PURCHASE_RECEIPT' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)'),
+                                      color: m.movementType === 'INVOICE_SALE' ? '#EF4444' : (m.movementType === 'PURCHASE_RECEIPT' ? '#10B981' : '#3B82F6')
+                                    }
+                                  }, m.movementType ? m.movementType.replace('_', ' ') : 'ADJUSTMENT')
+                                ),
+                                React.createElement('td', {
+                                  style: {
+                                    textAlign: 'right',
+                                    fontWeight: 700,
+                                    color: isPos ? '#10B981' : '#EF4444'
+                                  }
+                                }, `${isPos ? '+' : ''}${m.quantityChange}`),
+                                React.createElement('td', { style: { textAlign: 'center', fontSize: '0.82rem' } },
+                                  `${m.previousQuantity} ➔ ${m.newQuantity}`
+                                ),
+                                React.createElement('td', { style: { fontSize: '0.80rem', color: 'var(--text-secondary)' } },
+                                  m.referenceNumber ? `${m.referenceNumber}${m.notes ? ` (${m.notes})` : ''}` : (m.notes || '—')
+                                )
+                              );
+                            })
+                        )
+                      )
+                    )
+                  )
+                )
               ) : (
                 // ── OPTION D: RICH FIRM SUMMARY STATEMENT ──
                 React.createElement(Fragment, null,
@@ -37228,7 +37882,8 @@ function PartyDetailModal({
                     )
                   )
                 )
-        ),
+            )
+          ),
 
         // WhatsApp Share Modal
         whatsAppModalDoc && React.createElement(WhatsAppShareModal, {
@@ -37289,7 +37944,11 @@ function PartyDetailModal({
           }
         };
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, []);
 
       const paperworkSubTabs = [
@@ -44206,7 +44865,11 @@ function PartyDetailModal({
           setTab(normalizeSettingsTab(initialNav.tab));
         }
         window.addEventListener('billsoft:navigate-subtab', handleNav);
-        return () => window.removeEventListener('billsoft:navigate-subtab', handleNav);
+        window.addEventListener('billsoft:navigate', handleNav);
+        return () => {
+          window.removeEventListener('billsoft:navigate-subtab', handleNav);
+          window.removeEventListener('billsoft:navigate', handleNav);
+        };
       }, []);
 
       const activeTab = normalizeSettingsTab(tab);
@@ -52061,10 +52724,12 @@ function PartyDetailModal({
         };
 
         window.addEventListener('billsoft:navigate-subtab', handleNavSubtab);
+        window.addEventListener('billsoft:navigate', handleNavSubtab);
         window.addEventListener('billsoft:convert-quotation', handleConvertQuote);
         window.addEventListener('billsoft:create-invoice-for-customer', handleCreateCustInvoice);
         return () => {
           window.removeEventListener('billsoft:navigate-subtab', handleNavSubtab);
+          window.removeEventListener('billsoft:navigate', handleNavSubtab);
           window.removeEventListener('billsoft:convert-quotation', handleConvertQuote);
           window.removeEventListener('billsoft:create-invoice-for-customer', handleCreateCustInvoice);
         };

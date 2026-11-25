@@ -353,6 +353,11 @@ const API = {
       method: 'POST',
       body: { ...data, firmId: API.firmId }
     })),
+    recordReceipt: (id, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/receipts`), {
+      method: 'POST',
+      body: { ...data, firmId: API.firmId }
+    })),
+    getReceipts: (id) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/receipts`))),
     adjustAdvance: (id, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/purchase-orders/${id}/adjust-advance`), {
       method: 'POST',
       body: { ...data, firmId: API.firmId }

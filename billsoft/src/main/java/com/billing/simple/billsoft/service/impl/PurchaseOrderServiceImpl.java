@@ -571,6 +571,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         result.setTotalOrdersRequested(request.getOrders().size());
 
         // 2. Process each supplier order in independent transaction
+        int orderIdx = 0;
         for (PurchaseOrder poInput : request.getOrders()) {
             poInput.setFirmId(effectiveFirmId);
             if (poInput.getHidePricesOnPo() == null && request.getHidePricesOnPo() != null) {
@@ -587,7 +588,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             }
 
             Long partyId = (poInput.getParty() != null) ? poInput.getParty().getId() : null;
-            String supplierOpId = (reqId != null && partyId != null) ? (reqId + "_party_" + partyId) : null;
+            String supplierOpId = (reqId != null && partyId != null) ? (reqId + "_ord" + (orderIdx++) + "_party_" + partyId) : null;
 
             // Durable idempotency check
             if (supplierOpId != null && batchRecordRepository != null) {

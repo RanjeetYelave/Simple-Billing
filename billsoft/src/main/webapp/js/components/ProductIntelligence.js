@@ -1841,7 +1841,7 @@
             )
           ),
 
-          // Auto-sync status badge (replacing manual Resync button)
+          // Auto-sync status badge
           React.createElement('div', {
             id: 'badge-forecast-sync-status',
             style: {
@@ -1860,6 +1860,14 @@
             React.createElement('span', null, syncing ? '⏳' : '⚡'),
             syncing ? 'Syncing forecasts...' : 'Forecasts synchronized'
           ),
+
+          React.createElement('button', {
+            id: 'btn-resync-forecasts-queue',
+            className: 'btn btn-outline',
+            onClick: handleResyncForecasts,
+            disabled: syncing,
+            style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', padding: '5px 10px' }
+          }, syncing ? '⏳ Computing Forecasts...' : '🔄 Resync Forecasts'),
 
           // Single Unified Primary Action
           React.createElement('button', {
@@ -5691,7 +5699,15 @@
               }
             },
             style: { display: 'flex', alignItems: 'center', gap: 6 }
-          }, '📥 Export CSV')
+          }, '📥 Export CSV'),
+
+          hubTab === 'INTELLIGENCE' && React.createElement('button', {
+            id: 'btn-resync-forecasts-intelligence',
+            className: 'btn btn-outline',
+            onClick: handleSync,
+            disabled: syncing,
+            style: { display: 'flex', alignItems: 'center', gap: 6 }
+          }, syncing ? '⏳ Computing...' : '🔄 Re-sync Forecasts')
         )
       ),
 

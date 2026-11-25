@@ -24189,7 +24189,7 @@ if (typeof window !== 'undefined') {
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
             React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 5 } },
               React.createElement('span', { style: { fontSize: '1rem' } }, '⚡'),
-              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.80rem', color: 'var(--text-primary)' } }, 'Inventory Intelligence:'),
+              React.createElement('span', { style: { fontWeight: 700, fontSize: '0.80rem', color: 'var(--text-primary)' } }, 'Inventory Intelligence & Demand Forecasting:'),
               React.createElement('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
                 `(${inventorySummary.totalProducts || products.length} tracked items)`
               )
@@ -24248,6 +24248,13 @@ if (typeof window !== 'undefined') {
             ),
             React.createElement('button', {
               className: 'btn btn-xs btn-outline',
+              onClick: handleResyncForecasts,
+              disabled: syncingForecasts,
+              style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
+              title: 'Resync Forecasts'
+            }, syncingForecasts ? 'Computing Forecasts...' : '🔄 Resync Forecasts'),
+            React.createElement('button', {
+              className: 'btn btn-xs btn-outline',
               onClick: () => setInventoryTab('FORECAST_DASHBOARD'),
               style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
               title: 'Open full Forecast Analytics Dashboard'
@@ -24256,8 +24263,8 @@ if (typeof window !== 'undefined') {
               className: 'btn btn-xs btn-gold',
               onClick: () => setInventoryTab('ORDER_PRODUCTS'),
               style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
-              title: 'Open Order Products workspace'
-            }, '⚡ Order Products')
+              title: 'Open Reorder Queue & Order Products workspace'
+            }, '⚡ Open Reorder Queue')
           )
         ),
 

@@ -1718,11 +1718,12 @@ const API = {
       const fid = targetFirmId || API.firmId;
       return API._json(API._qs('/api/forecast/sync/status', fid ? { firmId: fid } : {}));
     },
-    adminSync: (targetFirmId, options = {}) => {
+    adminSync: (targetFirmId) => {
       const fid = targetFirmId || API.firmId;
+      const opts = (typeof arguments !== 'undefined' && arguments[1]) ? arguments[1] : {};
       const q = { firmId: fid };
-      if (options.force) q.force = true;
-      if (options.async) q.async = true;
+      if (opts.force) q.force = true;
+      if (opts.async) q.async = true;
       return API._json(API._qs('/api/forecast/admin/sync', q), {
         method: 'POST',
         headers: fid ? { 'X-Firm-Id': String(fid) } : {}

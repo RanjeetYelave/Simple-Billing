@@ -25,7 +25,9 @@ import java.util.stream.Collectors;
 
 import com.billing.simple.billsoft.repo.ProductRepository;
 import com.billing.simple.billsoft.entities.Product;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @Transactional
 public class PurchaseOrderServiceImpl implements PurchaseOrderService {
@@ -46,14 +48,20 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repositories.PurchaseOrderBatchRecordRepository batchRecordRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.service.PurchaseOrderSupplierTxService supplierTxService;
+
     public PurchaseOrderServiceImpl(PurchaseOrderRepository poRepository,
-                                    PurchaseOrderItemRepository poItemRepository,
-                                    PartyRepository partyRepository,
-                                    PartyPaymentRepository partyPaymentRepository,
-                                    PurchaseOrderPdfService pdfService,
-                                    com.billing.simple.billsoft.service.ProductService productService,
-                                    ProductRepository productRepository,
-                                    @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.DocumentSequenceService sequenceService) {
+            PurchaseOrderItemRepository poItemRepository,
+            PartyRepository partyRepository,
+            PartyPaymentRepository partyPaymentRepository,
+            PurchaseOrderPdfService pdfService,
+            com.billing.simple.billsoft.service.ProductService productService,
+            ProductRepository productRepository,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.service.DocumentSequenceService sequenceService) {
         this.poRepository = poRepository;
         this.poItemRepository = poItemRepository;
         this.partyRepository = partyRepository;
@@ -78,7 +86,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         }
 
         Party party = partyRepository.findByIdAndFirmId(po.getParty().getId(), po.getFirmId())
-                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found with id: " + po.getParty().getId()));
+                .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                        "Party not found with id: " + po.getParty().getId()));
 
         po.setParty(party);
         // Save party snapshot
@@ -93,7 +102,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         if (po.getPoNumber() == null || po.getPoNumber().trim().isEmpty()) {
             po.setPoNumber(generateNextPoNumber(po.getFirmId()));
         } else if (sequenceService != null) {
-            sequenceService.syncSequenceIfApplicable(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER, po.getFirmId(), po.getPoNumber(), po.getPoDate());
+            sequenceService.syncSequenceIfApplicable(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER,
+                    po.getFirmId(), po.getPoNumber(), po.getPoDate());
         }
 
         if (po.getItems() != null) {
@@ -101,7 +111,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             for (PurchaseOrderItem item : po.getItems()) {
                 if (item.getProductId() != null) {
                     if (!productRepository.existsByIdAndFirmId(item.getProductId(), po.getFirmId())) {
-                        throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced product does not belong to the current firm: " + item.getProductId());
+                        throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                                "Referenced product does not belong to the current firm: " + item.getProductId());
                     }
                 }
                 item.setPurchaseOrder(po);
@@ -135,7 +146,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     public PurchaseOrder updatePurchaseOrder(Long id, PurchaseOrder updated) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId == null) authoritativeFirmId = updated.getFirmId();
+        if (authoritativeFirmId == null)
+            authoritativeFirmId = updated.getFirmId();
 
         PurchaseOrder existing = (authoritativeFirmId != null
                 ? poRepository.findByIdAndFirmId(id, authoritativeFirmId)
@@ -153,7 +165,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         if (updated.getParty() != null && updated.getParty().getId() != null) {
             Party party = partyRepository.findByIdAndFirmId(updated.getParty().getId(), existing.getFirmId())
-                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException("Party not found with id: " + updated.getParty().getId()));
+                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                            "Party not found with id: " + updated.getParty().getId()));
             existing.setParty(party);
             existing.setPartyName(party.getName());
             existing.setPartyContactPerson(party.getContactPerson());
@@ -200,7 +213,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             for (PurchaseOrderItem item : updated.getItems()) {
                 if (item.getProductId() != null) {
                     if (!productRepository.existsByIdAndFirmId(item.getProductId(), existing.getFirmId())) {
-                        throw new com.billing.simple.billsoft.security.TenantSecurityException("Referenced product does not belong to the current firm: " + item.getProductId());
+                        throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                                "Referenced product does not belong to the current firm: " + item.getProductId());
                     }
                 }
                 item.setPurchaseOrder(existing);
@@ -222,7 +236,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     private void syncPartyPayment(PurchaseOrder po) {
-        if (po == null || po.getId() == null || po.getParty() == null) return;
+        if (po == null || po.getId() == null || po.getParty() == null)
+            return;
 
         List<PartyPayment> existingPayments = partyPaymentRepository.findByPurchaseOrderId(po.getId());
 
@@ -253,7 +268,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public com.billing.simple.billsoft.dtos.PageResponse<PurchaseOrder> getPaginatedPurchaseOrders(Long firmId, org.springframework.data.domain.Pageable pageable) {
+    public com.billing.simple.billsoft.dtos.PageResponse<PurchaseOrder> getPaginatedPurchaseOrders(Long firmId,
+            org.springframework.data.domain.Pageable pageable) {
         org.springframework.data.domain.Page<PurchaseOrder> page = poRepository.findByFirmId(firmId, pageable);
         return com.billing.simple.billsoft.dtos.PageResponse.of(page);
     }
@@ -285,7 +301,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId) : poRepository.findById(id))
+        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId)
+                : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
         PurchaseOrderStatus oldStatus = po.getStatus();
         po.setStatus(status);
@@ -295,9 +312,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         publishPoUpdatedEvent(saved, oldStatus, status);
         if (notificationService != null && saved != null && saved.getId() != null) {
             if (status == PurchaseOrderStatus.RECEIVED) {
-                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
+                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(),
+                        com.billing.simple.billsoft.entities.NotificationStatus.ACTIONED);
             } else if (status == PurchaseOrderStatus.CANCELLED) {
-                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+                notificationService.resolveByEventKey(saved.getFirmId(), "purchase:po:delivery:" + saved.getId(),
+                        com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
             }
         }
         return saved;
@@ -310,7 +329,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             throw new TenantSecurityException("Cross-firm access prohibited");
         }
         Long effectiveFirmId = authoritativeFirmId != null ? authoritativeFirmId : firmId;
-        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId) : poRepository.findById(id))
+        PurchaseOrder po = (effectiveFirmId != null ? poRepository.findByIdAndFirmId(id, effectiveFirmId)
+                : poRepository.findById(id))
                 .orElseThrow(() -> new IllegalArgumentException("Purchase Order not found with id: " + id));
 
         // If PO was RECEIVED, reverse stock upon deletion
@@ -322,12 +342,14 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         partyPaymentRepository.deleteByPurchaseOrderId(po.getId());
         poRepository.delete(po);
         if (notificationService != null && po.getId() != null) {
-            notificationService.resolveByEventKey(po.getFirmId(), "purchase:po:delivery:" + po.getId(), com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
+            notificationService.resolveByEventKey(po.getFirmId(), "purchase:po:delivery:" + po.getId(),
+                    com.billing.simple.billsoft.entities.NotificationStatus.DISMISSED);
         }
     }
 
     private void publishPoUpdatedEvent(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {
-        if (eventPublisher == null || po == null || po.getId() == null) return;
+        if (eventPublisher == null || po == null || po.getId() == null)
+            return;
         java.util.Set<Long> productIds = new java.util.HashSet<>();
         if (po.getItems() != null) {
             for (PurchaseOrderItem it : po.getItems()) {
@@ -341,9 +363,11 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     private void handleStockAdjustment(PurchaseOrder po, PurchaseOrderStatus oldStatus, PurchaseOrderStatus newStatus) {
-        if (po == null || po.getItems() == null) return;
+        if (po == null || po.getItems() == null)
+            return;
 
-        // If transitioning to RECEIVED from another status (or on initial creation as RECEIVED), increase inventory stock
+        // If transitioning to RECEIVED from another status (or on initial creation as
+        // RECEIVED), increase inventory stock
         if (newStatus == PurchaseOrderStatus.RECEIVED && oldStatus != PurchaseOrderStatus.RECEIVED) {
             for (PurchaseOrderItem item : po.getItems()) {
                 Long prodId = resolveOrCreateProduct(item, po, po.getFirmId(), true);
@@ -356,15 +380,16 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                             item.getQuantity(),
                             "PURCHASE_ORDER",
                             po.getPoNumber(),
-                            "Vendor goods received from PO " + po.getPoNumber() + " (" + (po.getParty() != null ? po.getParty().getName() : "Vendor") + ")"
-                    );
+                            "Vendor goods received from PO " + po.getPoNumber() + " ("
+                                    + (po.getParty() != null ? po.getParty().getName() : "Vendor") + ")");
                     if (item.getId() != null) {
                         poItemRepository.save(item);
                     }
                 }
             }
         }
-        // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT) or upon deletion, reverse stock
+        // If transitioning away from RECEIVED to another status (e.g. CANCELLED, DRAFT)
+        // or upon deletion, reverse stock
         else if (oldStatus == PurchaseOrderStatus.RECEIVED && newStatus != PurchaseOrderStatus.RECEIVED) {
             for (PurchaseOrderItem item : po.getItems()) {
                 Long prodId = resolveOrCreateProduct(item, po, po.getFirmId(), false);
@@ -377,8 +402,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                             item.getQuantity().negate(),
                             "PURCHASE_ORDER",
                             po.getPoNumber(),
-                            "PO " + po.getPoNumber() + " changed from RECEIVED to " + newStatus + " - stock reversed"
-                    );
+                            "PO " + po.getPoNumber() + " changed from RECEIVED to " + newStatus + " - stock reversed");
                 }
             }
         }
@@ -441,7 +465,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     @Override
-    public PurchaseOrder recordPoPayment(Long id, Long firmId, BigDecimal amount, LocalDate paymentDate, String paymentMode, String referenceNumber, String notes) {
+    public PurchaseOrder recordPoPayment(Long id, Long firmId, BigDecimal amount, LocalDate paymentDate,
+            String paymentMode, String referenceNumber, String notes) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Payment amount must be greater than zero");
         }
@@ -487,7 +512,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     public String generateNextPoNumber(Long firmId) {
         if (sequenceService != null) {
-            return sequenceService.generateNextNumber(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER, firmId);
+            return sequenceService.generateNextNumber(com.billing.simple.billsoft.service.DocumentType.PURCHASE_ORDER,
+                    firmId);
         }
         long count = poRepository.countByFirmId(firmId);
         int currentYear = LocalDate.now().getYear();
@@ -513,34 +539,40 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private static final java.util.concurrent.ConcurrentHashMap<String, Long> PROCESSED_CLIENT_REQUESTS = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public List<PurchaseOrder> createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId) {
+    public com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
-        if (authoritativeFirmId != null) {
-            firmId = authoritativeFirmId;
-        }
-        if (firmId == null) {
+        final Long effectiveFirmId = (authoritativeFirmId != null) ? authoritativeFirmId : firmId;
+        if (effectiveFirmId == null) {
             throw new IllegalArgumentException("Authoritative Firm ID is required");
         }
         if (request == null || request.getOrders() == null || request.getOrders().isEmpty()) {
             throw new IllegalArgumentException("At least one purchase order is required for batch creation");
         }
 
+        String reqId = request.getClientRequestId() != null ? request.getClientRequestId().trim() : null;
+        boolean isRetry = Boolean.TRUE.equals(request.getRetry());
+
         // 1. Short-lived in-memory duplicate submission / rapid double-click guard
-        if (request.getClientRequestId() != null && !request.getClientRequestId().trim().isEmpty()) {
-            String reqId = request.getClientRequestId().trim();
+        if (reqId != null && !reqId.isEmpty()) {
             long now = System.currentTimeMillis();
-            // Prune entries older than 5 minutes
             PROCESSED_CLIENT_REQUESTS.entrySet().removeIf(e -> now - e.getValue() > 300_000L);
-            if (PROCESSED_CLIENT_REQUESTS.putIfAbsent(reqId, now) != null) {
-                throw new IllegalStateException("Duplicate batch submission detected. This batch has already been processed.");
+            if (!isRetry) {
+                if (PROCESSED_CLIENT_REQUESTS.putIfAbsent(reqId, now) != null) {
+                    throw new IllegalStateException("Duplicate batch submission detected. This batch has already been processed.");
+                }
+            } else {
+                PROCESSED_CLIENT_REQUESTS.put(reqId, now);
             }
         }
 
-        // 2. Process all orders atomically
-        List<PurchaseOrder> createdOrders = new ArrayList<>();
+        com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult result = new com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult();
+        result.setClientRequestId(reqId);
+        result.setFirmId(effectiveFirmId);
+        result.setTotalOrdersRequested(request.getOrders().size());
+
+        // 2. Process each supplier order in independent transaction
         for (PurchaseOrder poInput : request.getOrders()) {
-            poInput.setFirmId(firmId);
+            poInput.setFirmId(effectiveFirmId);
             if (poInput.getHidePricesOnPo() == null && request.getHidePricesOnPo() != null) {
                 poInput.setHidePricesOnPo(request.getHidePricesOnPo());
             }
@@ -553,23 +585,98 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             if (poInput.getPoDate() == null) {
                 poInput.setPoDate(LocalDate.now());
             }
-            PurchaseOrder created = createPurchaseOrder(poInput);
-            createdOrders.add(created);
+
+            Long partyId = (poInput.getParty() != null) ? poInput.getParty().getId() : null;
+            String supplierOpId = (reqId != null && partyId != null) ? (reqId + "_party_" + partyId) : null;
+
+            // Durable idempotency check
+            if (supplierOpId != null && batchRecordRepository != null) {
+                java.util.Optional<com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord> existingRecord =
+                        batchRecordRepository.findByFirmIdAndSupplierOpId(effectiveFirmId, supplierOpId);
+                if (existingRecord.isPresent() && "SUCCESS".equalsIgnoreCase(existingRecord.get().getStatus())) {
+                    Long existingPoId = existingRecord.get().getPurchaseOrderId();
+                    if (existingPoId != null) {
+                        java.util.Optional<PurchaseOrder> existingPo = poRepository.findByIdAndFirmId(existingPoId, effectiveFirmId);
+                        if (existingPo.isPresent()) {
+                            log.info("Durable idempotency: Supplier party ID {} in batch {} was already created as PO #{}. Reusing existing PO.",
+                                    partyId, reqId, existingPo.get().getPoNumber());
+                            result.add(existingPo.get());
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            try {
+                PurchaseOrder created;
+                boolean outerTxActive = org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive();
+                if (supplierTxService != null && !outerTxActive) {
+                    created = supplierTxService.createSupplierPoInNewTransaction(poInput, effectiveFirmId);
+                } else {
+                    created = createPurchaseOrder(poInput);
+                }
+                result.add(created);
+
+                // Persist durable success record
+                if (supplierOpId != null && batchRecordRepository != null) {
+                    com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord record = batchRecordRepository
+                            .findByFirmIdAndSupplierOpId(effectiveFirmId, supplierOpId)
+                            .orElseGet(() -> com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord.builder()
+                                    .firmId(effectiveFirmId)
+                                    .clientRequestId(reqId)
+                                    .supplierOpId(supplierOpId)
+                                    .partyId(partyId != null ? partyId : 0L)
+                                    .build());
+                    record.setStatus("SUCCESS");
+                    record.setPartyName(created.getPartyName());
+                    record.setPurchaseOrderId(created.getId());
+                    record.setPoNumber(created.getPoNumber());
+                    record.setErrorMessage(null);
+                    batchRecordRepository.save(record);
+                }
+            } catch (Exception ex) {
+                log.error("Failed to create purchase order for supplier {} in batch {}: {}", partyId, reqId, ex.getMessage());
+                String partyName = poInput.getParty() != null ? poInput.getParty().getName()
+                        : (poInput.getPartyName() != null ? poInput.getPartyName() : "Supplier #" + partyId);
+                result.getFailedOrders().add(com.billing.simple.billsoft.dtos.FailedSupplierOrderDto.builder()
+                        .partyId(partyId)
+                        .partyName(partyName)
+                        .errorCode(ex.getClass().getSimpleName())
+                        .errorMessage(ex.getMessage() != null ? ex.getMessage() : "Unknown failure creating purchase order")
+                        .items(poInput.getItems() != null ? new ArrayList<>(poInput.getItems()) : new ArrayList<>())
+                        .build());
+
+                // Persist durable failure record
+                if (supplierOpId != null && batchRecordRepository != null) {
+                    com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord record = batchRecordRepository
+                            .findByFirmIdAndSupplierOpId(effectiveFirmId, supplierOpId)
+                            .orElseGet(() -> com.billing.simple.billsoft.entities.PurchaseOrderBatchRecord.builder()
+                                    .firmId(effectiveFirmId)
+                                    .clientRequestId(reqId)
+                                    .supplierOpId(supplierOpId)
+                                    .partyId(partyId != null ? partyId : 0L)
+                                    .build());
+                    record.setStatus("FAILED");
+                    record.setPartyName(partyName);
+                    record.setErrorMessage(ex.getMessage());
+                    batchRecordRepository.save(record);
+                }
+            }
         }
 
         // 3. Update preferred vendors if requested
         if (request.getUpdatePreferredVendors() != null) {
             for (com.billing.simple.billsoft.dtos.PreferredVendorUpdate update : request.getUpdatePreferredVendors()) {
                 if (update.getProductId() != null && update.getPartyId() != null) {
-                    if (productRepository.existsByIdAndFirmId(update.getProductId(), firmId) &&
-                            partyRepository.existsByIdAndFirmId(update.getPartyId(), firmId)) {
-                        productRepository.updatePreferredPartyId(update.getProductId(), update.getPartyId(), firmId);
+                    if (productRepository.existsByIdAndFirmId(update.getProductId(), effectiveFirmId) &&
+                            partyRepository.existsByIdAndFirmId(update.getPartyId(), effectiveFirmId)) {
+                        productRepository.updatePreferredPartyId(update.getProductId(), update.getPartyId(), effectiveFirmId);
                     }
                 }
             }
         }
 
-        return createdOrders;
+        return result;
     }
 
     @Override
@@ -618,7 +725,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
     @Override
     @Transactional(readOnly = true)
-    public java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> getProductVendorHistory(Long firmId) {
+    public java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> getProductVendorHistory(
+            Long firmId) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         if (authoritativeFirmId != null) {
             firmId = authoritativeFirmId;
@@ -631,7 +739,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         java.util.Map<Long, com.billing.simple.billsoft.dtos.ProductVendorHistoryDto> historyMap = new java.util.LinkedHashMap<>();
 
         for (Object[] row : rawList) {
-            if (row == null || row.length < 5 || row[0] == null) continue;
+            if (row == null || row.length < 5 || row[0] == null)
+                continue;
             Long productId = ((Number) row[0]).longValue();
             Long partyId = row[1] != null ? ((Number) row[1]).longValue() : null;
             String partyName = row[2] != null ? row[2].toString() : null;
@@ -640,8 +749,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             BigDecimal qty = (row.length > 5 && row[5] instanceof BigDecimal) ? (BigDecimal) row[5] : BigDecimal.ONE;
 
             if (!historyMap.containsKey(productId)) {
-                // First encountered entry is the latest because of ORDER BY poDate DESC, id DESC
-                com.billing.simple.billsoft.dtos.ProductVendorHistoryDto dto = com.billing.simple.billsoft.dtos.ProductVendorHistoryDto.builder()
+                // First encountered entry is the latest because of ORDER BY poDate DESC, id
+                // DESC
+                com.billing.simple.billsoft.dtos.ProductVendorHistoryDto dto = com.billing.simple.billsoft.dtos.ProductVendorHistoryDto
+                        .builder()
                         .productId(productId)
                         .latestPartyId(partyId)
                         .latestPartyName(partyName)

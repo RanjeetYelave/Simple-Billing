@@ -235,7 +235,7 @@ public class PurchaseOrderController {
     }
 
     @PostMapping("/batch")
-    public ResponseEntity<List<PurchaseOrder>> createBatch(@RequestBody com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request,
+    public ResponseEntity<?> createBatch(@RequestBody com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request,
                                                            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
                                                            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
@@ -248,15 +248,15 @@ public class PurchaseOrderController {
         }
 
         try {
-            List<PurchaseOrder> createdOrders = poService.createPurchaseOrdersBatch(request, firmId);
-            return ResponseEntity.ok(createdOrders);
+            com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult result = poService.createPurchaseOrdersBatch(request, firmId);
+            return ResponseEntity.ok(result.toResponseDto());
         } catch (IllegalStateException e) {
             // Duplicate request error
-            return ResponseEntity.status(409).build();
+            return ResponseEntity.status(409).body(java.util.Map.of("error", e.getMessage() != null ? e.getMessage() : "Duplicate request"));
         } catch (IllegalArgumentException | com.billing.simple.billsoft.security.TenantSecurityException e) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", e.getMessage() != null ? e.getMessage() : "Bad request"));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.internalServerError().body(java.util.Map.of("error", e.getMessage() != null ? e.getMessage() : "Internal error"));
         }
     }
 

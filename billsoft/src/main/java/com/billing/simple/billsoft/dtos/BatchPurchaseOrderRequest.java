@@ -21,6 +21,8 @@ public class BatchPurchaseOrderRequest {
     private Boolean hidePricesOnPo;
     private LocalDate expectedDeliveryDate;
     private String notes;
+    private Boolean retry;
+    private Boolean detailed;
 
     @Builder.Default
     private List<PurchaseOrder> orders = new ArrayList<>();

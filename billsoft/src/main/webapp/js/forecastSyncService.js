@@ -86,13 +86,32 @@
 
       const syncJob = (async () => {
         try {
-          console.log(`[ForecastSyncService] Dispatching forecast sync for firm ${firmId} (automatic=${isAutomatic})...`);
+          console.log(`[ForecastSyncService] Checking forecast freshness for firm ${firmId} (automatic=${isAutomatic}, force=${Boolean(options.force)})...`);
           
+          // 1. Freshness check: if automatic and fresh, bypass heavy recalculation
+          if (isAutomatic && !options.force && typeof API !== 'undefined' && API.forecast && typeof API.forecast.getSyncStatus === 'function') {
+            try {
+              const statusDto = await API.forecast.getSyncStatus(firmId);
+              if (statusDto && statusDto.isFresh && !statusDto.inProgress) {
+                console.log(`[ForecastSyncService] Forecast for firm ${firmId} is already fresh (<6h). Bypassing startup retrain.`);
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                  window.dispatchEvent(new CustomEvent('billsoft:forecast-synced', {
+                    detail: { firmId, res: statusDto, isAutomatic, bypassedFresh: true }
+                  }));
+                }
+                return statusDto;
+              }
+            } catch (freshErr) {
+              console.debug('[ForecastSyncService] Freshness check fallback to sync:', freshErr);
+            }
+          }
+
+          console.log(`[ForecastSyncService] Dispatching background forecast sync for firm ${firmId}...`);
           let res;
           if (typeof API !== 'undefined' && API.forecast && typeof API.forecast.adminSync === 'function') {
-            res = await API.forecast.adminSync(firmId);
+            res = await API.forecast.adminSync(firmId, { force: Boolean(options.force), async: isAutomatic });
           } else {
-            const url = `/api/forecast/admin/sync?firmId=${encodeURIComponent(firmId)}`;
+            const url = `/api/forecast/admin/sync?firmId=${encodeURIComponent(firmId)}&async=${isAutomatic}&force=${Boolean(options.force)}`;
             const response = await fetch(url, {
               method: 'POST',
               headers: {
@@ -107,28 +126,18 @@
             res = await response.json();
           }
 
-          console.log(`[ForecastSyncService] Forecast sync completed successfully for firm ${firmId}:`, res);
+          console.log(`[ForecastSyncService] Forecast sync dispatched/completed for firm ${firmId}:`, res);
 
-          // Dispatched so SmartReorderView and ProductIntelligenceHub refresh recommendations
+          // Dispatched so Order Products workspace and Product Master refresh recommendations
           if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
             window.dispatchEvent(new CustomEvent('billsoft:forecast-synced', {
               detail: { firmId, res, isAutomatic }
             }));
           }
 
-          if (!isAutomatic && typeof window !== 'undefined' && typeof window.showToast === 'function') {
-            const models = (res && res.forecastsGenerated != null) ? res.forecastsGenerated : 0;
-            window.showToast(`Forecast sync complete: ${models} models computed.`, 'success');
-          }
-
           return res;
         } catch (err) {
           console.warn(`[ForecastSyncService] Forecast sync error for firm ${firmId}:`, err);
-
-          // For manual syncs, display failure feedback to the user
-          if (!isAutomatic && typeof window !== 'undefined' && typeof window.showToast === 'function') {
-            window.showToast('Failed to trigger forecast sync: ' + (err.message || 'Network error'), 'error');
-          }
           // For automatic sync: do NOT disrupt user, do NOT wipe data. Existing forecasts remain safe.
           throw err;
         } finally {

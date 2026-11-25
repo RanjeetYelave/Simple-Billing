@@ -32,7 +32,7 @@ public interface PurchaseOrderService {
 
     PurchaseOrder recordPoPayment(Long id, Long firmId, java.math.BigDecimal amount, java.time.LocalDate paymentDate, String paymentMode, String referenceNumber, String notes);
 
-    List<PurchaseOrder> createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId);
+    com.billing.simple.billsoft.dtos.BatchPurchaseOrderResult createPurchaseOrdersBatch(com.billing.simple.billsoft.dtos.BatchPurchaseOrderRequest request, Long firmId);
 
     byte[] generateMergedPoPdf(List<Long> poIds, Long firmId) throws Exception;
 

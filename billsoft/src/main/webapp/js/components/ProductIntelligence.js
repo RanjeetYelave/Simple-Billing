@@ -24,8 +24,8 @@
   const Grid = typeof CompactEditableGrid !== 'undefined'
     ? CompactEditableGrid
     : (typeof window !== 'undefined' && window.CompactEditableGrid
-        ? window.CompactEditableGrid
-        : (typeof require === 'function' ? (() => { try { return require('./CompactEditableGrid').CompactEditableGrid; } catch(e) { return null; } })() : null));
+      ? window.CompactEditableGrid
+      : (typeof require === 'function' ? (() => { try { return require('./CompactEditableGrid').CompactEditableGrid; } catch (e) { return null; } })() : null));
 
   // Helper formatting
   const fmtNum = (val, dec = 2) => {
@@ -715,12 +715,29 @@
                     className: 'btn btn-primary',
                     style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 },
                     onClick: () => {
-                      const qty = explanation ? explanation.finalRecommendedOrderQty : insights.recommendedOrderQty;
+                      const qty = explanation ? explanation.finalRecommendedOrderQty : (insights ? insights.recommendedOrderQty : 1);
+                      const safeQty = qty && Number(qty) > 0 ? Number(qty) : 1;
                       if (onUseRecommendation) {
-                        onUseRecommendation(productId, qty && Number(qty) > 0 ? Number(qty) : 1);
+                        onUseRecommendation(productId, safeQty);
+                      } else {
+                        window.dispatchEvent(new CustomEvent('billsoft:add-order-item', { detail: { productId: productId, quantity: safeQty } }));
+                        window.dispatchEvent(new CustomEvent('billsoft:navigate', { detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' } }));
+                        if (onClose) onClose();
                       }
                     }
-                  }, '⚡ Use Recommendation (Create PO)')
+                  }, '⚡ Use Recommendation (Create PO)'),
+                  React.createElement('button', {
+                    className: 'btn btn-outline',
+                    style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 },
+                    onClick: () => {
+                      if (onViewSmartReorder) {
+                        onViewSmartReorder();
+                      } else {
+                        window.dispatchEvent(new CustomEvent('billsoft:navigate', { detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' } }));
+                      }
+                      if (onClose) onClose();
+                    }
+                  }, '⚡ Open Order Products')
                 )
               ),
 
@@ -871,6 +888,7 @@
     // Order Lines
     const [orderItems, setOrderItems] = useState([]);
     const [createdPos, setCreatedPos] = useState([]);
+    const [failedPos, setFailedPos] = useState([]);
 
     // Product Search Autocomplete inside workspace
     const [searchQuery, setSearchQuery] = useState('');
@@ -959,7 +977,7 @@
       const handleForecastSynced = (e) => {
         try {
           loadRecommendations();
-        } catch (err) {}
+        } catch (err) { }
       };
       window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
       window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
@@ -1026,7 +1044,7 @@
       const handlePoUpdated = (evt) => {
         try {
           loadRecommendations();
-        } catch (e) {}
+        } catch (e) { }
       };
       window.addEventListener('billsoft:po-updated', handlePoUpdated);
       return () => {
@@ -1092,6 +1110,76 @@
 
       return { partyId: resolvedPartyId, provenance, provenanceDetail };
     };
+
+    // Listen for external add-to-order events (from ProductDetailDrawer or ForecastDashboard)
+    useEffect(() => {
+      const handleExternalAddOrderItem = async (e) => {
+        if (!e || !e.detail || !e.detail.productId) return;
+        const pId = Number(e.detail.productId);
+        const qty = Number(e.detail.quantity) > 0 ? Number(e.detail.quantity) : 1;
+
+        setShowOrderWorkspace(true);
+        setWorkspaceStep(1);
+
+        try {
+          let prods = catalogProducts;
+          let parts = partiesList;
+          let hist = vendorHistory;
+
+          if (!prods || prods.length === 0) {
+            const [fetchedProds, fetchedParts, fetchedHist] = await Promise.all([
+              API.products.list(),
+              API.parties.list(),
+              API.purchaseOrders.getVendorHistory().catch(() => ({}))
+            ]);
+            prods = fetchedProds || [];
+            parts = fetchedParts || [];
+            hist = fetchedHist || {};
+            setCatalogProducts(prods);
+            setPartiesList(parts);
+            setVendorHistory(hist);
+            const cats = Array.from(new Set(prods.map(p => p.category).filter(Boolean))).sort();
+            setCategoryList(cats);
+          }
+
+          const matchedProd = (prods || []).find(p => p.id === pId) || {};
+          const { partyId, provenance, provenanceDetail } = resolveVendorForProduct(pId, matchedProd, parts || [], hist || {});
+          const unitCost = matchedProd.costPrice != null && Number(matchedProd.costPrice) >= 0 ? Number(matchedProd.costPrice) : 0;
+
+          setOrderItems(prev => {
+            const existing = prev.find(it => it.productId === pId);
+            if (existing) {
+              return prev.map(it => it.productId === pId ? { ...it, orderQty: Number(it.orderQty || 0) + qty } : it);
+            }
+            const newItem = {
+              _key: 'item_' + pId + '_' + Date.now(),
+              productId: pId,
+              name: matchedProd.name || `Product #${pId}`,
+              hsnCode: matchedProd.hsnCode || '',
+              sku: matchedProd.sku || '',
+              unit: matchedProd.unit || 'pcs',
+              orderQty: qty,
+              unitCost: unitCost,
+              gstPercentage: matchedProd.gstPercentage != null ? Number(matchedProd.gstPercentage) : 0,
+              partyId: partyId,
+              provenance: provenance,
+              provenanceDetail: provenanceDetail,
+              source: 'MANUAL'
+            };
+            return [...prev, newItem];
+          });
+
+          if (typeof showToast === 'function') {
+            showToast(`Added "${matchedProd.name || 'Product'}" to order (${qty} units)`, 'success');
+          }
+        } catch (err) {
+          console.error('Failed to add external item to order:', err);
+        }
+      };
+
+      window.addEventListener('billsoft:add-order-item', handleExternalAddOrderItem);
+      return () => window.removeEventListener('billsoft:add-order-item', handleExternalAddOrderItem);
+    }, [catalogProducts, partiesList, vendorHistory]);
 
     // Open Unified PO Creation Workspace
     const handleOpenOrderWorkspace = async (prefillRec = null) => {
@@ -1346,10 +1434,10 @@
       setWorkspaceStep(2);
     };
 
-    // Execute Multi-Vendor Batch PO Creation
-    const handleExecuteBatchPo = async () => {
+    // Execute Multi-Vendor Batch PO Creation with Independent Transaction & Failure Isolation
+    const handleExecuteBatchPo = async (isRetry = false, customVendors = null) => {
       if (orderExecuting) return;
-      const validVendors = groupedVendorOrders.filter(g => g.partyId);
+      const validVendors = customVendors || groupedVendorOrders.filter(g => g.partyId);
       if (validVendors.length === 0) {
         if (typeof showToast === 'function') showToast('No assigned vendors found.', 'error');
         return;
@@ -1366,13 +1454,14 @@
           clientRequestId: clientRequestId,
           hidePricesOnPo: hidePricesOnPo,
           expectedDeliveryDate: expectedDeliveryDate || null,
-          notes: orderNotes || 'Replenishment order from Smart Reorder Queue.',
+          notes: orderNotes || 'Replenishment order from Order Products workspace.',
+          retry: Boolean(isRetry),
           orders: validVendors.map(g => ({
             party: { id: g.partyId },
             partyId: g.partyId,
             poDate: todayStr,
             expectedDeliveryDate: expectedDeliveryDate || null,
-            notes: orderNotes || 'Replenishment order from Smart Reorder Queue.',
+            notes: orderNotes || 'Replenishment order from Order Products workspace.',
             hidePricesOnPo: hidePricesOnPo,
             status: 'ISSUED',
             items: g.items.map(it => ({
@@ -1391,8 +1480,11 @@
         };
 
         const res = await API.purchaseOrders.createBatch(payload);
-        const posList = Array.isArray(res) ? res : [res];
-        setCreatedPos(posList);
+        const posList = res.createdOrders || (Array.isArray(res) ? res : [res]);
+        const failedList = res.failedOrders || [];
+
+        setCreatedPos(prev => isRetry ? [...prev, ...posList] : posList);
+        setFailedPos(failedList);
         setWorkspaceStep(3);
 
         // Update in-session duplicate prevention map
@@ -1408,16 +1500,18 @@
         });
         setRecentlyOrderedMap(newOrderedMap);
 
-        if (typeof showToast === 'function') {
-          showToast(`Successfully created ${posList.length} Purchase Order(s) across ${validVendors.length} vendor(s)!`, 'success');
+        if (failedList.length === 0) {
+          if (typeof showToast === 'function') {
+            showToast(`Successfully created ${posList.length} Purchase Order(s) across ${validVendors.length} vendor(s)!`, 'success');
+          }
+        } else {
+          if (typeof showToast === 'function') {
+            showToast(`Created ${posList.length} PO(s); ${failedList.length} vendor order(s) failed. See failure details.`, 'warning');
+          }
         }
 
-        // Sync forecast and refresh queue
-        if (API.forecast && API.forecast.sync) {
-          API.forecast.sync().then(() => loadRecommendations()).catch(() => loadRecommendations());
-        } else {
-          loadRecommendations();
-        }
+        // Refresh recommendations
+        loadRecommendations();
         window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
       } catch (err) {
         console.error('Batch PO execution failed:', err);
@@ -1426,6 +1520,15 @@
         }
       } finally {
         setOrderExecuting(false);
+      }
+    };
+
+    const handleRetryFailedOrders = () => {
+      if (failedPos.length === 0) return;
+      const failedPartyIds = new Set(failedPos.map(f => f.partyId));
+      const retryGroups = groupedVendorOrders.filter(g => failedPartyIds.has(g.partyId));
+      if (retryGroups.length > 0) {
+        handleExecuteBatchPo(true, retryGroups);
       }
     };
 
@@ -1712,10 +1815,10 @@
         React.createElement('div', { className: 'rcrm-reorder-title-group' },
           React.createElement('div', { className: 'rcrm-reorder-title' },
             React.createElement('span', { style: { color: 'var(--accent-gold, #D4AF37)', fontSize: '1.1rem' } }, '⚡'),
-            'Smart Reorder Queue'
+            'Order Products & Replenishment Workspace'
           ),
           React.createElement('div', { className: 'rcrm-reorder-subtitle' },
-            'Replenishment advisory & automated vendor purchase order generation'
+            'Manual catalog search, demand forecasting recommendations & automated vendor purchase order generation'
           )
         ),
 
@@ -1738,25 +1841,24 @@
             )
           ),
 
-          // Resync Forecasts Action inside Smart Reorder Queue
-          React.createElement('button', {
-            id: 'btn-resync-forecasts-queue',
-            type: 'button',
-            className: 'btn btn-outline',
-            onClick: handleResyncForecasts,
-            disabled: syncing,
-            title: syncing ? 'Synchronising demand models and restock queue...' : 'Resynchronise demand forecasts and restock queue',
+          // Auto-sync status badge (replacing manual Resync button)
+          React.createElement('div', {
+            id: 'badge-forecast-sync-status',
             style: {
-              fontWeight: 600,
-              padding: '6px 14px',
-              fontSize: '0.8125rem',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6
+              gap: 6,
+              fontSize: '0.78rem',
+              padding: '5px 12px',
+              borderRadius: 6,
+              background: syncing ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+              color: syncing ? '#4f46e5' : '#047857',
+              fontWeight: 600,
+              border: syncing ? '1px solid rgba(99, 102, 241, 0.25)' : '1px solid rgba(16, 185, 129, 0.25)'
             }
           },
-            React.createElement('span', null, syncing ? '⏳' : '🔄'),
-            syncing ? 'Computing Forecasts...' : 'Resync Forecasts'
+            React.createElement('span', null, syncing ? '⏳' : '⚡'),
+            syncing ? 'Syncing forecasts...' : 'Forecasts synchronized'
           ),
 
           // Single Unified Primary Action
@@ -1883,19 +1985,19 @@
                   React.createElement('td', { style: { textAlign: 'right', padding: '6px 12px' } },
                     incomingPo > 0
                       ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 } },
-                          React.createElement('span', { style: { fontWeight: 700, fontSize: '0.82rem', color: '#047857' } }, `+${fmtNum(incomingPo, 0)}`),
-                          React.createElement('span', {
-                            style: {
-                              fontSize: '0.62rem',
-                              fontWeight: 600,
-                              color: '#047857',
-                              background: 'rgba(16, 185, 129, 0.12)',
-                              padding: '1px 4px',
-                              borderRadius: 3
-                            },
-                            title: r.explanationText || 'Active Purchase Order pending delivery'
-                          }, 'PO Issued')
-                        )
+                        React.createElement('span', { style: { fontWeight: 700, fontSize: '0.82rem', color: '#047857' } }, `+${fmtNum(incomingPo, 0)}`),
+                        React.createElement('span', {
+                          style: {
+                            fontSize: '0.62rem',
+                            fontWeight: 600,
+                            color: '#047857',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            padding: '1px 4px',
+                            borderRadius: 3
+                          },
+                          title: r.explanationText || 'Active Purchase Order pending delivery'
+                        }, 'PO Issued')
+                      )
                       : React.createElement('span', { style: { fontSize: '0.80rem', color: 'var(--text-tertiary, #9CA3AF)' } }, '—')
                   ),
 
@@ -1973,7 +2075,7 @@
                           },
                           title: r.recommendationReason === 'FORECAST' ? 'Demand forecast over planning horizon exceeds current inventory'
                             : (r.recommendationReason === 'MINIMUM_STOCK' ? 'Inventory below minimum configured threshold'
-                            : 'Both forecast and minimum stock rule triggered reorder')
+                              : 'Both forecast and minimum stock rule triggered reorder')
                         }, reasonLabel)
                       )
                     )
@@ -2563,18 +2665,79 @@
                     })
                   )
                 ) : (
-                  // STEP 3: SUCCESS HUB
+                  // STEP 3: COMPLETION HUB (Supports successes & isolated failures)
                   workspaceStep === 3 ? React.createElement('div', { style: { textAlign: 'center', padding: '24px 20px' } },
-                    React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } }, '🎉'),
+                    React.createElement('div', { style: { fontSize: '2.5rem', marginBottom: 8 } },
+                      failedPos.length === 0 ? '🎉' : (createdPos.length > 0 ? '⚡' : '⚠️')
+                    ),
                     React.createElement('h3', { style: { margin: 0, fontSize: '1.3rem', fontWeight: 800 } },
-                      `${createdPos.length} Purchase Order(s) Created Successfully`
+                      failedPos.length === 0
+                        ? `${createdPos.length} Purchase Order(s) Created Successfully`
+                        : (createdPos.length > 0
+                            ? `${createdPos.length} Purchase Order(s) Created, ${failedPos.length} Failed`
+                            : `${failedPos.length} Purchase Order(s) Failed to Generate`)
                     ),
                     React.createElement('p', { style: { margin: '6px 0 20px', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
-                      'All purchase orders have been saved in ISSUED status and linked to respective suppliers.'
+                      failedPos.length === 0
+                        ? 'All purchase orders have been saved in ISSUED status and linked to respective suppliers.'
+                        : 'Independent transaction boundaries were preserved. Successful vendor orders are saved; failed vendor orders can be retried.'
                     ),
 
-                    // Quick Actions
-                    React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 24 } },
+                    // Partial Failures Alert & Retry Card
+                    failedPos && failedPos.length > 0 && React.createElement('div', {
+                      style: {
+                        maxWidth: 640,
+                        margin: '0 auto 20px',
+                        textAlign: 'left',
+                        background: 'rgba(239, 68, 68, 0.08)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 8,
+                        padding: '12px 16px'
+                      }
+                    },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          React.createElement('span', { style: { fontSize: '1.1rem' } }, '⚠️'),
+                          React.createElement('span', { style: { fontWeight: 700, color: 'var(--status-error)', fontSize: '0.88rem' } },
+                            `${failedPos.length} Supplier Order(s) Failed`
+                          )
+                        ),
+                        React.createElement('button', {
+                          className: 'btn btn-xs btn-primary',
+                          disabled: orderExecuting,
+                          onClick: handleRetryFailedOrders,
+                          style: { fontWeight: 700 }
+                        }, orderExecuting ? 'Retrying...' : '🔄 Retry Failed Orders')
+                      ),
+                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 8 } },
+                        'Successful vendor orders were isolated and saved. Click "Retry Failed Orders" to resubmit only the failed supplier orders.'
+                      ),
+                      failedPos.map((f, idx) => React.createElement('div', {
+                        key: f.partyId || idx,
+                        style: {
+                          background: 'var(--bg-card)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          borderRadius: 6,
+                          padding: '8px 12px',
+                          marginTop: 6,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }
+                      },
+                        React.createElement('div', null,
+                          React.createElement('div', { style: { fontWeight: 600, fontSize: '0.82rem' } }, f.partyName || `Vendor #${f.partyId}`),
+                          React.createElement('div', { style: { fontSize: '0.74rem', color: 'var(--status-error)' } }, f.errorMessage || 'Unknown error occurred')
+                        ),
+                        React.createElement('span', {
+                          className: 'badge',
+                          style: { background: 'rgba(239, 68, 68, 0.15)', color: 'var(--status-error)', fontSize: '0.68rem', fontWeight: 600 }
+                        }, f.retryable !== false ? 'Retryable' : 'Failed')
+                      ))
+                    ),
+
+                    // Quick Actions for Successful POs
+                    createdPos.length > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 24 } },
                       React.createElement('button', {
                         className: 'btn btn-primary',
                         style: { fontWeight: 700 },
@@ -2593,7 +2756,7 @@
                     ),
 
                     // PO Summary Cards
-                    React.createElement('div', { style: { maxWidth: 640, margin: '0 auto', textAlign: 'left', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' } },
+                    createdPos.length > 0 && React.createElement('div', { style: { maxWidth: 640, margin: '0 auto', textAlign: 'left', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' } },
                       React.createElement('div', { style: { background: 'var(--bg-secondary)', padding: '10px 16px', fontWeight: 700, fontSize: '0.82rem', borderBottom: '1px solid var(--border)' } },
                         'Generated Purchase Orders'
                       ),
@@ -4712,7 +4875,7 @@
               paginatedSimProducts.map(prod => {
                 const base = Number(prod.price || 0);
                 const appliedRule = (rules || []).find(r => r.pricingProfileId === simProfileId && r.categoryName && prod.category && r.categoryName.trim().toLowerCase() === prod.category.trim().toLowerCase());
-                
+
                 // Calculate effective price: use map if present, or compute following exact calculation semantics
                 let effective;
                 if (effectivePriceMap[prod.id] != null) {
@@ -5018,7 +5181,7 @@
         }
       };
       const handleForecastSynced = () => {
-        try { loadProducts(); } catch (e) {}
+        try { loadProducts(); } catch (e) { }
       };
       window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
       window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
@@ -5051,23 +5214,28 @@
     };
 
     const handleUseRecommendation = (prodId, suggestedQty) => {
+      setSelectedProductId(null);
       window.__billsoftPendingNav = {
         page: 'firm',
-        tab: 'orders',
+        tab: 'inventory',
+        inventoryTab: 'ORDER_PRODUCTS',
         prefillPoItem: {
           productId: prodId,
           suggestedQty: suggestedQty
         },
         ts: Date.now()
       };
-      window.dispatchEvent(new CustomEvent('billsoft:navigate-subtab', {
+      window.dispatchEvent(new CustomEvent('billsoft:navigate', {
         detail: {
           page: 'firm',
-          tab: 'orders',
-          prefillPoItem: {
-            productId: prodId,
-            suggestedQty: suggestedQty
-          }
+          tab: 'inventory',
+          inventoryTab: 'ORDER_PRODUCTS'
+        }
+      }));
+      window.dispatchEvent(new CustomEvent('billsoft:add-order-item', {
+        detail: {
+          productId: prodId,
+          quantity: suggestedQty
         }
       }));
     };
@@ -5471,13 +5639,20 @@
           React.createElement('button', {
             className: `btn ${hubTab === 'PRICING' ? 'btn-primary' : 'btn-ghost'}`,
             onClick: () => handleTabChange('PRICING')
-          }, '🏷️ Pricing Profiles & Matrix'),
-          React.createElement('button', {
-            className: `btn ${hubTab === 'SMART_REORDER' ? 'btn-primary' : 'btn-ghost'}`,
-            onClick: () => handleTabChange('SMART_REORDER')
-          }, '⚡ Smart Replenishment Queue')
+          }, '🏷️ Pricing Profiles & Matrix')
         ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+          React.createElement('button', {
+            id: 'btn-nav-order-products',
+            className: 'btn btn-gold',
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent('billsoft:navigate', {
+                detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' }
+              }));
+            },
+            style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }
+          }, '⚡ Order Products'),
+
           hubTab === 'INTELLIGENCE' && React.createElement('button', {
             className: `btn ${isWorkspaceEditing ? 'btn-secondary' : 'btn-primary'}`,
             onClick: () => {
@@ -5516,15 +5691,7 @@
               }
             },
             style: { display: 'flex', alignItems: 'center', gap: 6 }
-          }, '📥 Export CSV'),
-
-          hubTab === 'INTELLIGENCE' && React.createElement('button', {
-            id: 'btn-resync-forecasts-intelligence',
-            className: 'btn btn-outline',
-            onClick: handleSync,
-            disabled: syncing,
-            style: { display: 'flex', alignItems: 'center', gap: 6 }
-          }, syncing ? '⏳ Computing...' : '🔄 Re-sync Forecasts')
+          }, '📥 Export CSV')
         )
       ),
 
@@ -6087,7 +6254,13 @@
       selectedProductId && React.createElement(ProductDetailDrawer, {
         productId: selectedProductId,
         onClose: () => setSelectedProductId(null),
-        onUseRecommendation: handleUseRecommendation
+        onUseRecommendation: handleUseRecommendation,
+        onViewSmartReorder: () => {
+          setSelectedProductId(null);
+          window.dispatchEvent(new CustomEvent('billsoft:navigate', {
+            detail: { page: 'firm', tab: 'inventory', inventoryTab: 'ORDER_PRODUCTS' }
+          }));
+        }
       }),
 
       // Bulk Add Modal

@@ -226,10 +226,12 @@ public class StatementsController {
     public ResponseEntity<com.billing.simple.billsoft.dtos.ForecastAnalyticsStatementResponse> forecastAnalyticsStatement(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(name = "firmId", required = false) String firmIdParam,
-            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "horizon", required = false) Integer horizonParam,
+            @RequestParam(name = "horizonDays", required = false) Integer horizonDaysParam,
             @RequestParam(name = "category", required = false) String category,
             @RequestParam(name = "urgency", required = false) String urgency
     ) {
+        Integer horizon = horizonParam != null ? horizonParam : (horizonDaysParam != null ? horizonDaysParam : 30);
         Long clientFirmId = parseFirmId(firmIdParam);
         Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
         return ResponseEntity.ok(statementService.getForecastAnalyticsStatement(effFirmId, horizon, category, urgency));
@@ -239,7 +241,8 @@ public class StatementsController {
     public ResponseEntity<byte[]> forecastAnalyticsStatementPdf(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(name = "firmId", required = false) String firmIdParam,
-            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "horizon", required = false) Integer horizonParam,
+            @RequestParam(name = "horizonDays", required = false) Integer horizonDaysParam,
             @RequestParam(name = "category", required = false) String category,
             @RequestParam(name = "urgency", required = false) String urgency,
             @RequestParam(name = "theme", required = false) String theme,
@@ -247,6 +250,7 @@ public class StatementsController {
             @RequestParam(name = "format", required = false) String format
     ) throws Exception {
         validatePrintOptions(format, theme, color);
+        Integer horizon = horizonParam != null ? horizonParam : (horizonDaysParam != null ? horizonDaysParam : 30);
         Long clientFirmId = parseFirmId(firmIdParam);
         Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
         byte[] pdf = statementService.generateForecastAnalyticsStatementPdf(effFirmId, horizon, category, urgency, format, theme, color);
@@ -265,10 +269,12 @@ public class StatementsController {
     public ResponseEntity<String> forecastAnalyticsStatementCsv(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(name = "firmId", required = false) String firmIdParam,
-            @RequestParam(name = "horizon", required = false, defaultValue = "30") Integer horizon,
+            @RequestParam(name = "horizon", required = false) Integer horizonParam,
+            @RequestParam(name = "horizonDays", required = false) Integer horizonDaysParam,
             @RequestParam(name = "category", required = false) String category,
             @RequestParam(name = "urgency", required = false) String urgency
     ) {
+        Integer horizon = horizonParam != null ? horizonParam : (horizonDaysParam != null ? horizonDaysParam : 30);
         Long clientFirmId = parseFirmId(firmIdParam);
         Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
         String csv = statementService.generateForecastAnalyticsStatementCsv(effFirmId, horizon, category, urgency);

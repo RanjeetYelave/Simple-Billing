@@ -30,6 +30,9 @@ public class ForecastController {
     private final ForecastAggregationService aggregationService;
     private final ForecastEngineService engineService;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.forecast.service.ForecastAsyncWorkerService asyncWorkerService;
+
     private final java.util.concurrent.ConcurrentHashMap<Long, java.util.concurrent.locks.ReentrantLock> firmSyncLocks = new java.util.concurrent.ConcurrentHashMap<>();
 
     private Long resolveFirmId(Long firmIdHeader, Long firmIdParam) {
@@ -222,9 +225,17 @@ public class ForecastController {
     public ResponseEntity<?> triggerFirmSync(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        return triggerFirmSync(firmIdHeader, firmIdParam, false, false);
+    }
+
+    public ResponseEntity<?> triggerFirmSync(Long firmIdHeader, Long firmIdParam, Boolean force, Boolean isAsync) {
         Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
         if (firmId == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+        }
+
+        if (asyncWorkerService != null && (Boolean.TRUE.equals(isAsync) || !Boolean.TRUE.equals(force))) {
+            return ResponseEntity.ok(asyncWorkerService.executeSync(firmId, Boolean.TRUE.equals(force), Boolean.TRUE.equals(isAsync)));
         }
 
         java.util.concurrent.locks.ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new java.util.concurrent.locks.ReentrantLock());
@@ -279,5 +290,22 @@ public class ForecastController {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Check background forecast synchronization and data freshness status.
+     */
+    @GetMapping("/sync/status")
+    public ResponseEntity<?> getSyncStatus(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
+        if (firmId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+        }
+        if (asyncWorkerService != null) {
+            return ResponseEntity.ok(asyncWorkerService.getFirmSyncStatus(firmId));
+        }
+        return ResponseEntity.ok(Map.of("firmId", firmId, "inProgress", false, "isFresh", true));
     }
 }

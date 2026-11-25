@@ -1194,7 +1194,11 @@ const API = {
       return new Blob([blob], { type: 'application/pdf' });
     },
     forecast: (params = {}) => {
-      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/forecast', params)));
+      const p = { ...params };
+      const h = p.horizon || p.horizonDays || 30;
+      p.horizon = h;
+      p.horizonDays = h;
+      return API._ensureFirmReady().then(() => API._json(API._qs('/api/statements/forecast', p)));
     },
     forecastPdfUrl: (params = {}, options = {}) => {
       return API._qs('/api/statements/forecast/pdf', { ...params, ...options });
@@ -1710,9 +1714,16 @@ const API = {
     updateConfig: (productId, payload) => API._json(API._qs(`/api/forecast/products/${productId}/config`), { method: 'PUT', body: payload }),
     getRecommendations: (params = {}) => API._json(API._qs('/api/forecast/restock/recommendations', params)),
     getInventorySummary: () => API._json(API._qs('/api/forecast/inventory-summary')),
-    adminSync: (targetFirmId) => {
+    getSyncStatus: (targetFirmId) => {
       const fid = targetFirmId || API.firmId;
-      return API._json(API._qs('/api/forecast/admin/sync', fid ? { firmId: fid } : {}), {
+      return API._json(API._qs('/api/forecast/sync/status', fid ? { firmId: fid } : {}));
+    },
+    adminSync: (targetFirmId, options = {}) => {
+      const fid = targetFirmId || API.firmId;
+      const q = { firmId: fid };
+      if (options.force) q.force = true;
+      if (options.async) q.async = true;
+      return API._json(API._qs('/api/forecast/admin/sync', q), {
         method: 'POST',
         headers: fid ? { 'X-Firm-Id': String(fid) } : {}
       });

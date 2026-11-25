@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RupeeCRM Bulk Edit Modal Fixture</title>
+  <link rel="stylesheet" href="../../billsoft/src/main/webapp/css/style.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #root {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="../../billsoft/src/main/webapp/js/vendor/react.production.min.js"></script>
+  <script src="../../billsoft/src/main/webapp/js/vendor/react-dom.production.min.js"></script>
+  <script>
+    // Stub API & window objects
+    window.API = {
+      firmId: 1,
+      products: {
+        list: () => Promise.resolve([]),
+        batchUpdate: (payload) => Promise.resolve({ updated: (payload.updates || []).length })
+      },
+      inventory: {
+        reconcileStock: (payload) => Promise.resolve({ success: true, count: payload.length })
+      },
+      forecast: {
+        adminSync: () => Promise.resolve({ forecastsGenerated: 10 }),
+        getSyncStatus: () => Promise.resolve({ inProgress: false, isFresh: true })
+      }
+    };
+    window.RupeeModalStack = { getZIndex: () => 10100 };
+    window.showToast = (msg, type) => console.log('Toast:', msg, type);
+  </script>
+  <script src="../../billsoft/src/main/webapp/js/components/CompactEditableGrid.js"></script>
+  <script src="../../billsoft/src/main/webapp/js/components/ProductIntelligence.js"></script>
+
+  <script>
+    const sampleProducts = [
+      { id: 101, name: 'Epoxy Tile Grout 2-Part Water Cleanable High Performance Tile Joint Filler', category: 'Adhesives & Chemicals', unit: 'pcs', stockQuantity: 35, costPrice: 371.25, price: 44, hsnCode: '7318', minStockLevel: 5, trackInInventory: true, gstPercentage: 18, preferredPartyId: 201 },
+      { id: 102, name: 'Epoxy Tile Grout 2-Part Water Cleanable Extra Durable White', category: 'Adhesives & Chemicals', unit: 'pcs', stockQuantity: 35, costPrice: 412.50, price: 23, hsnCode: '7318', minStockLevel: 5, trackInInventory: true, gstPercentage: 18, preferredPartyId: 201 },
+      { id: 103, name: 'Heavy Duty Waterproof Concrete Primer 20L Drum with Anti-Efflorescence', category: 'Paints & Primers', unit: 'pcs', stockQuantity: 120, costPrice: 242.00, price: 342, hsnCode: '7318', minStockLevel: 10, trackInInventory: true, gstPercentage: 18, preferredPartyId: 202 },
+      { id: 104, name: 'Precision Diamond Cut Core Drill Bit 65mm for Reinforced Concrete', category: 'Tools & Hardware', unit: 'pcs', stockQuantity: 250, costPrice: 280.50, price: 399, hsnCode: '7318', minStockLevel: 15, trackInInventory: true, gstPercentage: 18, preferredPartyId: 203 },
+      { id: 105, name: 'Polymer Modified Cementitious Tile Adhesive Grey 50kg Bag', category: 'Adhesives & Chemicals', unit: 'pcs', stockQuantity: 15, costPrice: 225.50, price: 323, hsnCode: '7318', minStockLevel: 5, trackInInventory: true, gstPercentage: 18, preferredPartyId: 201 },
+      { id: 106, name: 'Stainless Steel Grade 304 Anchor Bolts M12 x 150mm with Washers', category: 'Fasteners & Fixings', unit: 'pcs', stockQuantity: 15, costPrice: 563.75, price: 798, hsnCode: '7318', minStockLevel: 20, trackInInventory: true, gstPercentage: 18, preferredPartyId: 203 },
+      { id: 107, name: 'Self-Adhesive Fiberglass Mesh Tape 50mm x 90m Anti-Crack Roll', category: 'Drywall & Plaster', unit: 'pcs', stockQuantity: 120, costPrice: 426.25, price: 608, hsnCode: '7318', minStockLevel: 12, trackInInventory: true, gstPercentage: 18, preferredPartyId: 202 },
+      { id: 108, name: 'High-Tensile Structural Expansion Joint Sealant Polyurethane Grey 600ml Sausage', category: 'Sealants & Foams', unit: 'pcs', stockQuantity: 15, costPrice: 308.00, price: 437, hsnCode: '7318', minStockLevel: 8, trackInInventory: true, gstPercentage: 18, preferredPartyId: 201 }
+    ];
+
+    const sampleCategories = [
+      'Adhesives & Chemicals',
+      'Drywall & Plaster',
+      'Fasteners & Fixings',
+      'Paints & Primers',
+      'Sealants & Foams',
+      'Tools & Hardware'
+    ];
+
+    const sampleParties = [
+      { id: 201, name: 'Pidilite Industries Ltd' },
+      { id: 202, name: 'Asian Paints Industrial' },
+      { id: 203, name: 'Bosch Professional Tools' }
+    ];
+
+    window.renderModal = function(type) {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      if (type === 'PRODUCT_MASTER') {
+        const Comp = window.ProductMasterBulkEditModal || (window.ProductIntelligence && window.ProductIntelligence.ProductMasterBulkEditModal);
+        root.render(React.createElement(Comp, {
+          products: sampleProducts,
+          categories: sampleCategories,
+          parties: sampleParties,
+          onClose: () => console.log('Close clicked'),
+          onSuccess: () => console.log('Success clicked')
+        }));
+      } else {
+        const Comp = window.InventoryBulkEditModal || (window.ProductIntelligence && window.ProductIntelligence.InventoryBulkEditModal);
+        root.render(React.createElement(Comp, {
+          products: sampleProducts,
+          categories: sampleCategories,
+          onClose: () => console.log('Close clicked'),
+          onSuccess: () => console.log('Success clicked')
+        }));
+      }
+    };
+  </script>
+</body>
+</html>

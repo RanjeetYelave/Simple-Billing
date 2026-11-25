@@ -4,25 +4,25 @@ import com.billing.simple.billsoft.forecast.dto.ForecastAdminSyncResponse;
 import com.billing.simple.billsoft.forecast.dto.ForecastSyncStatusDto;
 import com.billing.simple.billsoft.forecast.entity.ForecastSyncJobRecord;
 import com.billing.simple.billsoft.forecast.repository.ForecastSyncJobRecordRepository;
+import com.billing.simple.billsoft.repo.InvoiceRepository;
+import com.billing.simple.billsoft.repo.StockMovementRepository;
 import com.billing.simple.billsoft.security.TenantContext;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Headless asynchronous worker managing forecast synchronization lifecycle.
  * Provides firm-level isolation, bounded background worker pool, durable job state,
- * in-flight deduplication, and a defensible freshness policy.
+ * in-flight deduplication, heartbeat tracking, stale job recovery, and a defensible freshness policy.
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ForecastAsyncWorkerService {
 
     private final ForecastIngestionService ingestionService;
@@ -30,8 +30,13 @@ public class ForecastAsyncWorkerService {
     private final ForecastEngineService engineService;
     private final RestockAdvisoryService restockAdvisoryService;
     private final ForecastSyncJobRecordRepository jobRecordRepository;
+    private final InvoiceRepository invoiceRepo;
+    private final StockMovementRepository stockMovementRepo;
 
-    private final Map<Long, ReentrantLock> firmSyncLocks = new ConcurrentHashMap<>();
+    // Per-firm active execution locks safe across thread boundaries
+    private final ConcurrentHashMap<Long, Boolean> activeFirmSyncs = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Long> activeJobIdsByFirm = new ConcurrentHashMap<>();
+
     private final ExecutorService backgroundPool = Executors.newFixedThreadPool(
             Math.max(2, Runtime.getRuntime().availableProcessors()),
             new ThreadFactory() {
@@ -50,8 +55,37 @@ public class ForecastAsyncWorkerService {
      */
     private static final long FRESHNESS_THRESHOLD_HOURS = 6;
 
+    public ForecastAsyncWorkerService(
+            ForecastIngestionService ingestionService,
+            ForecastAggregationService aggregationService,
+            ForecastEngineService engineService,
+            RestockAdvisoryService restockAdvisoryService,
+            ForecastSyncJobRecordRepository jobRecordRepository) {
+        this(ingestionService, aggregationService, engineService, restockAdvisoryService, jobRecordRepository, null, null);
+    }
+
+    @Autowired
+    public ForecastAsyncWorkerService(
+            ForecastIngestionService ingestionService,
+            ForecastAggregationService aggregationService,
+            ForecastEngineService engineService,
+            RestockAdvisoryService restockAdvisoryService,
+            ForecastSyncJobRecordRepository jobRecordRepository,
+            @Autowired(required = false) InvoiceRepository invoiceRepo,
+            @Autowired(required = false) StockMovementRepository stockMovementRepo) {
+        this.ingestionService = ingestionService;
+        this.aggregationService = aggregationService;
+        this.engineService = engineService;
+        this.restockAdvisoryService = restockAdvisoryService;
+        this.jobRecordRepository = jobRecordRepository;
+        this.invoiceRepo = invoiceRepo;
+        this.stockMovementRepo = stockMovementRepo;
+    }
+
     /**
      * Determines whether active firm's forecast is fresh enough to bypass full recalculation.
+     * Enforces source-aware invalidations: if new invoices or stock movements occurred
+     * since the last completed synchronization, the forecast is considered stale.
      */
     public boolean isForecastFresh(Long firmId) {
         if (firmId == null) return false;
@@ -64,38 +98,129 @@ public class ForecastAsyncWorkerService {
             return false;
         }
         LocalDateTime cutoff = LocalDateTime.now().minusHours(FRESHNESS_THRESHOLD_HOURS);
-        return lastJob.getCompletedAt().isAfter(cutoff);
+        if (lastJob.getCompletedAt().isBefore(cutoff)) {
+            return false;
+        }
+
+        // Source-aware invalidation checks:
+        if (invoiceRepo != null) {
+            try {
+                long modifiedInvoices = invoiceRepo.countModifiedSince(firmId, lastJob.getCompletedAt());
+                if (modifiedInvoices > 0) {
+                    log.info("Forecast for firm {} invalidated: {} invoices created/modified since last sync", firmId, modifiedInvoices);
+                    return false;
+                }
+            } catch (Exception e) {
+                log.debug("Could not verify invoice modifications for firm {}: {}", firmId, e.getMessage());
+            }
+        }
+        if (stockMovementRepo != null) {
+            try {
+                long newMovements = stockMovementRepo.countCreatedSince(firmId, lastJob.getCompletedAt());
+                if (newMovements > 0) {
+                    log.info("Forecast for firm {} invalidated: {} stock movements created since last sync", firmId, newMovements);
+                    return false;
+                }
+            } catch (Exception e) {
+                log.debug("Could not verify stock movements for firm {}: {}", firmId, e.getMessage());
+            }
+        }
+
+        return true;
     }
 
     /**
      * Current synchronisation status for the specified firm.
+     * Detects and recovers hung or stalled jobs automatically.
      */
     public ForecastSyncStatusDto getFirmSyncStatus(Long firmId) {
-        ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new ReentrantLock());
-        boolean inProgress = lock.isLocked();
+        if (firmId == null) {
+            return ForecastSyncStatusDto.builder().inProgress(false).isFresh(false).build();
+        }
 
+        boolean activelyRunning = activeFirmSyncs.containsKey(firmId);
         Optional<ForecastSyncJobRecord> lastJobOpt = jobRecordRepository.findTopByFirmIdOrderByStartedAtDesc(firmId);
-        LocalDateTime completedAt = null;
-        String status = "NEVER_RUN";
-        String message = "No prior synchronization recorded.";
-        long duration = 0L;
 
         if (lastJobOpt.isPresent()) {
             ForecastSyncJobRecord j = lastJobOpt.get();
-            completedAt = j.getCompletedAt();
-            status = j.getStatus();
-            message = j.getMessage();
-            duration = j.getDurationMs();
+            String status = j.getStatus();
+
+            // Stale job recovery: if recorded as PENDING/RUNNING/IN_PROGRESS but no active thread is running it,
+            // or if heartbeat has timed out (> 90 seconds without heartbeat)
+            boolean isPendingOrRunning = "RUNNING".equalsIgnoreCase(status) || "PENDING".equalsIgnoreCase(status) || "IN_PROGRESS".equalsIgnoreCase(status);
+            boolean heartbeatTimedOut = false;
+            long secondsSinceHeartbeat = 0L;
+
+            if (j.getHeartbeatAt() != null) {
+                secondsSinceHeartbeat = Duration.between(j.getHeartbeatAt(), LocalDateTime.now()).getSeconds();
+                if (secondsSinceHeartbeat > 90) {
+                    heartbeatTimedOut = true;
+                }
+            } else if (j.getStartedAt() != null) {
+                secondsSinceHeartbeat = Duration.between(j.getStartedAt(), LocalDateTime.now()).getSeconds();
+                if (secondsSinceHeartbeat > 90) {
+                    heartbeatTimedOut = true;
+                }
+            }
+
+            if (isPendingOrRunning && (!activelyRunning || heartbeatTimedOut)) {
+                log.warn("Recovering stale forecast sync job #{} for firm {}. Active thread: {}, Heartbeat age: {}s",
+                        j.getId(), firmId, activelyRunning, secondsSinceHeartbeat);
+                j.setStatus("FAILED");
+                j.setStage("STALLED");
+                j.setStageText("Forecast sync stalled");
+                j.setMessage("Job timed out or worker interrupted");
+                j.setErrorMessage("Synchronization stalled: worker heartbeat timed out");
+                j.setCompletedAt(LocalDateTime.now());
+                jobRecordRepository.save(j);
+                activeFirmSyncs.remove(firmId);
+                activeJobIdsByFirm.remove(firmId);
+                activelyRunning = false;
+                status = "FAILED";
+            }
+
+            boolean isStalled = "STALLED".equalsIgnoreCase(j.getStage()) || heartbeatTimedOut;
+            String stageText = j.getStageText();
+            if (stageText == null) {
+                if ("COMPLETED".equalsIgnoreCase(status)) stageText = "Forecasts updated ✓";
+                else if ("FAILED".equalsIgnoreCase(status)) stageText = isStalled ? "Forecast sync stalled" : "Forecast sync failed";
+                else if ("SKIPPED_FRESH".equalsIgnoreCase(status)) stageText = "Forecasts up to date";
+                else stageText = "Calculating forecasts...";
+            }
+
+            return ForecastSyncStatusDto.builder()
+                    .firmId(firmId)
+                    .jobId(j.getId())
+                    .inProgress(activelyRunning && isPendingOrRunning)
+                    .isFresh(isForecastFresh(firmId))
+                    .isStalled(isStalled)
+                    .stage(j.getStage() != null ? j.getStage() : status)
+                    .stageText(stageText)
+                    .progressPercent(j.getProgressPercent())
+                    .lastSyncCompletedAt(j.getCompletedAt())
+                    .lastSyncStatus(status)
+                    .message(j.getMessage())
+                    .durationMs(j.getDurationMs())
+                    .invoicesProcessed(j.getInvoicesProcessed())
+                    .productsAggregated(j.getProductsAggregated())
+                    .forecastsGenerated(j.getForecastsGenerated())
+                    .recommendationsGenerated(j.getRecommendationsGenerated())
+                    .heartbeatAt(j.getHeartbeatAt())
+                    .secondsSinceHeartbeat(secondsSinceHeartbeat)
+                    .build();
         }
 
         return ForecastSyncStatusDto.builder()
                 .firmId(firmId)
-                .inProgress(inProgress)
+                .inProgress(activelyRunning)
                 .isFresh(isForecastFresh(firmId))
-                .lastSyncCompletedAt(completedAt)
-                .lastSyncStatus(status)
-                .message(message)
-                .durationMs(duration)
+                .isStalled(false)
+                .stage("NEVER_RUN")
+                .stageText("Forecasts not yet initialized")
+                .progressPercent(0)
+                .lastSyncStatus("NEVER_RUN")
+                .message("No prior synchronization recorded.")
+                .durationMs(0L)
                 .build();
     }
 
@@ -124,8 +249,8 @@ public class ForecastAsyncWorkerService {
                     .build();
         }
 
-        ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new ReentrantLock());
-        if (!lock.tryLock()) {
+        // Concurrency check using thread-safe per-firm lock
+        if (activeFirmSyncs.putIfAbsent(firmId, Boolean.TRUE) != null) {
             log.info("Forecast synchronization already in progress for firm {}. Returning concurrent-safe status.", firmId);
             return ForecastAdminSyncResponse.builder()
                     .success(true)
@@ -140,22 +265,31 @@ public class ForecastAsyncWorkerService {
                     .build();
         }
 
-        // Record IN_PROGRESS job
+        // Record initial PENDING / RUNNING job
         ForecastSyncJobRecord jobRecord = ForecastSyncJobRecord.builder()
                 .firmId(firmId)
-                .status("IN_PROGRESS")
+                .status("PENDING")
+                .stage("INITIALIZING")
+                .stageText("Checking freshness...")
+                .progressPercent(5)
                 .startedAt(LocalDateTime.now())
-                .message("Pipeline executing")
+                .heartbeatAt(LocalDateTime.now())
+                .message("Pipeline execution queued")
                 .build();
         jobRecordRepository.save(jobRecord);
+        if (jobRecord.getId() != null) {
+            activeJobIdsByFirm.put(firmId, jobRecord.getId());
+        }
 
         if (isAsync) {
             backgroundPool.submit(() -> {
                 try {
                     TenantContext.setCurrentFirmId(firmId);
-                    runPipelineCore(firmId, lock, jobRecord);
+                    runPipelineCore(firmId, jobRecord);
                 } finally {
                     TenantContext.clear();
+                    activeFirmSyncs.remove(firmId);
+                    activeJobIdsByFirm.remove(firmId);
                 }
             });
             return ForecastAdminSyncResponse.builder()
@@ -170,22 +304,51 @@ public class ForecastAsyncWorkerService {
                     .message("Forecast synchronization dispatched in background.")
                     .build();
         } else {
-            return runPipelineCore(firmId, lock, jobRecord);
+            try {
+                return runPipelineCore(firmId, jobRecord);
+            } finally {
+                activeFirmSyncs.remove(firmId);
+                activeJobIdsByFirm.remove(firmId);
+            }
         }
     }
 
-    private ForecastAdminSyncResponse runPipelineCore(Long firmId, ReentrantLock lock, ForecastSyncJobRecord jobRecord) {
+    private void updateProgress(ForecastSyncJobRecord job, String stage, String stageText, int percent) {
+        job.setStage(stage);
+        job.setStageText(stageText);
+        job.setProgressPercent(percent);
+        job.setHeartbeatAt(LocalDateTime.now());
+        try {
+            jobRecordRepository.save(job);
+        } catch (Exception e) {
+            log.warn("Failed to persist progress update for job #{}: {}", job.getId(), e.getMessage());
+        }
+    }
+
+    private ForecastAdminSyncResponse runPipelineCore(Long firmId, ForecastSyncJobRecord jobRecord) {
         long start = System.currentTimeMillis();
         try {
+            jobRecord.setStatus("RUNNING");
+            updateProgress(jobRecord, "READING_SALES", "Reading sales data...", 20);
+
             int inv = ingestionService.syncAllInvoicesForFirm(firmId);
             int ret = ingestionService.syncAllSalesReturnsForFirm(firmId);
+
+            updateProgress(jobRecord, "AGGREGATING_METRICS", "Aggregating sales patterns...", 45);
             int agg = aggregationService.aggregateAllProductsForFirm(firmId);
+
+            updateProgress(jobRecord, "CALCULATING_FORECASTS", "Calculating forecasts...", 70);
             int fc = engineService.generateForecastsForCatalog(firmId);
+
+            updateProgress(jobRecord, "UPDATING_RECOMMENDATIONS", "Updating recommendations...", 90);
             int rec = restockAdvisoryService.generateCatalogRecommendations(firmId);
 
             long duration = System.currentTimeMillis() - start;
 
             jobRecord.setStatus("COMPLETED");
+            jobRecord.setStage("COMPLETED");
+            jobRecord.setStageText("Forecasts updated ✓");
+            jobRecord.setProgressPercent(100);
             jobRecord.setInvoicesProcessed(inv);
             jobRecord.setReturnsProcessed(ret);
             jobRecord.setProductsAggregated(agg);
@@ -193,6 +356,7 @@ public class ForecastAsyncWorkerService {
             jobRecord.setRecommendationsGenerated(rec);
             jobRecord.setDurationMs(duration);
             jobRecord.setCompletedAt(LocalDateTime.now());
+            jobRecord.setHeartbeatAt(LocalDateTime.now());
             jobRecord.setMessage("Pipeline executed successfully.");
             jobRecord.setErrorMessage(null);
             jobRecordRepository.save(jobRecord);
@@ -216,8 +380,11 @@ public class ForecastAsyncWorkerService {
             log.error("Failed to execute forecast sync pipeline for firm {}", firmId, e);
 
             jobRecord.setStatus("FAILED");
+            jobRecord.setStage("FAILED");
+            jobRecord.setStageText("Forecast sync failed");
             jobRecord.setDurationMs(duration);
             jobRecord.setCompletedAt(LocalDateTime.now());
+            jobRecord.setHeartbeatAt(LocalDateTime.now());
             jobRecord.setMessage("Pipeline execution failed");
             jobRecord.setErrorMessage(e.getMessage());
             jobRecordRepository.save(jobRecord);
@@ -233,8 +400,6 @@ public class ForecastAsyncWorkerService {
                     .executionDurationMs(duration)
                     .message("Forecast sync failed: " + e.getMessage())
                     .build();
-        } finally {
-            lock.unlock();
         }
     }
 }

@@ -23026,7 +23026,21 @@ if (typeof window !== 'undefined') {
 
       // Inventory Intelligence & Demand Forecasting State
       const [inventorySummary, setInventorySummary] = useState(null);
-      const [syncingForecasts, setSyncingForecasts] = useState(false);
+      const [syncingForecasts, setSyncingForecasts] = useState(() => (typeof window !== 'undefined' && window.ForecastSyncService ? window.ForecastSyncService.isSyncing() : false));
+      const [forecastSyncStatus, setForecastSyncStatus] = useState({
+        inProgress: false,
+        isFresh: true,
+        isStalled: false,
+        stage: 'COMPLETED',
+        stageText: 'Forecasts up to date',
+        progressPercent: 100,
+        lastSyncCompletedAt: null,
+        lastSyncStatus: 'COMPLETED',
+        forecastsGenerated: 0,
+        invoicesProcessed: 0,
+        durationMs: 0
+      });
+      const [showForecastSyncDetails, setShowForecastSyncDetails] = useState(false);
 
       // Inline Quick Stock Edit States
       const [editingStockId, setEditingStockId] = useState(null);
@@ -23326,14 +23340,32 @@ if (typeof window !== 'undefined') {
         };
         const handleSilent = () => load({ silent: true });
         const handleForecastSynced = () => load({ silent: true });
+        const handleSyncState = (e) => {
+          if (e && e.detail) {
+            const activeFid = API.firmId || (window.currentFirm && window.currentFirm.id);
+            if (!e.detail.firmId || String(e.detail.firmId) === String(activeFid)) {
+              setSyncingForecasts(Boolean(e.detail.isSyncing));
+            }
+          }
+        };
+        const handleSyncProgress = (e) => {
+          if (e && e.detail && e.detail.status) {
+            setForecastSyncStatus(prev => ({ ...prev, ...e.detail.status }));
+            setSyncingForecasts(Boolean(e.detail.status.inProgress));
+          }
+        };
         window.addEventListener('billsoft:app-refresh', load);
         window.addEventListener('billsoft:silent-data-refresh', handleSilent);
         window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
+        window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
+        window.addEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
         window.addEventListener('billsoft:navigate-subtab', handleSubtabNav);
         return () => {
           window.removeEventListener('billsoft:app-refresh', load);
           window.removeEventListener('billsoft:silent-data-refresh', handleSilent);
           window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
+          window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
+          window.removeEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
           window.removeEventListener('billsoft:navigate-subtab', handleSubtabNav);
         };
       }, [load]);
@@ -24229,30 +24261,149 @@ if (typeof window !== 'undefined') {
           ),
           // Right: Quick Actions
           React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' } },
+            // Unified Compact Progress Pill (Replaces competing status badge + resync button)
             React.createElement('div', {
+              id: 'btn-inventory-forecast-sync-pill',
+              role: 'button',
+              tabIndex: 0,
+              disabled: syncingForecasts,
+              title: 'Resync Forecasts — Click to view details or trigger manual sync',
+              onClick: handleResyncForecasts,
+              onMouseEnter: () => setShowForecastSyncDetails(true),
+              onMouseLeave: () => setShowForecastSyncDetails(false),
               style: {
+                position: 'relative',
+                overflow: 'visible',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 5,
+                height: 26,
+                minWidth: 155,
+                borderRadius: 20,
+                padding: '0 10px',
                 fontSize: '0.74rem',
-                padding: '3px 8px',
-                borderRadius: 4,
-                background: syncingForecasts ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                color: syncingForecasts ? '#4f46e5' : '#047857',
                 fontWeight: 600,
-                border: syncingForecasts ? '1px solid rgba(99, 102, 241, 0.25)' : '1px solid rgba(16, 185, 129, 0.25)'
+                cursor: 'pointer',
+                userSelect: 'none',
+                background: 'var(--bg-card, #ffffff)',
+                border: forecastSyncStatus.isStalled || forecastSyncStatus.lastSyncStatus === 'FAILED'
+                  ? '1px solid rgba(239, 68, 68, 0.4)'
+                  : syncingForecasts
+                    ? '1px solid rgba(99, 102, 241, 0.4)'
+                    : '1px solid rgba(16, 185, 129, 0.4)',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
               }
             },
-              React.createElement('span', null, syncingForecasts ? '⏳' : '⚡'),
-              syncingForecasts ? 'Syncing...' : 'Forecasts Synced'
+              // 1. Cohesive Left-to-Right Progress Fill Background
+              React.createElement('div', {
+                style: {
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: syncingForecasts ? `${Math.max(12, forecastSyncStatus.progressPercent || 25)}%` : '100%',
+                  borderRadius: 20,
+                  background: forecastSyncStatus.isStalled || forecastSyncStatus.lastSyncStatus === 'FAILED'
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : syncingForecasts
+                      ? 'linear-gradient(to right, rgba(16, 185, 129, 0.26), rgba(16, 185, 129, 0.45))'
+                      : 'rgba(16, 185, 129, 0.12)',
+                  transition: 'width 0.4s ease, background 0.3s ease',
+                  pointerEvents: 'none'
+                }
+              }),
+
+              // 2. High-contrast Foreground Content
+              React.createElement('div', {
+                style: {
+                  position: 'relative',
+                  zIndex: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  width: '100%',
+                  justifyContent: 'center',
+                  color: forecastSyncStatus.isStalled || forecastSyncStatus.lastSyncStatus === 'FAILED'
+                    ? '#b91c1c'
+                    : syncingForecasts
+                      ? '#4f46e5'
+                      : '#047857'
+                }
+              },
+                React.createElement('span', { style: { fontSize: '0.8rem' } },
+                  forecastSyncStatus.isStalled ? '⏸️' :
+                  forecastSyncStatus.lastSyncStatus === 'FAILED' ? '⚠️' :
+                  syncingForecasts ? '⏳' : '⚡'
+                ),
+                React.createElement('span', { style: { whiteSpace: 'nowrap' } },
+                  syncingForecasts
+                    ? (forecastSyncStatus.stageText || 'Computing Forecasts...')
+                    : forecastSyncStatus.isStalled
+                      ? 'Forecast sync stalled'
+                      : forecastSyncStatus.lastSyncStatus === 'FAILED'
+                        ? 'Forecast sync failed'
+                        : 'Forecasts up to date'
+                )
+              ),
+
+              // 3. Compact Hover Details Popover
+              showForecastSyncDetails && React.createElement('div', {
+                style: {
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  width: 250,
+                  zIndex: 9999,
+                  background: 'var(--bg-card, #ffffff)',
+                  border: '1px solid var(--border-color, #e2e8f0)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                  fontSize: '0.74rem',
+                  color: 'var(--text-primary, #1e293b)',
+                  pointerEvents: 'auto',
+                  lineHeight: 1.5
+                },
+                onClick: (e) => e.stopPropagation()
+              },
+                React.createElement('div', { style: { fontWeight: 700, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                  React.createElement('span', null, 'Forecast Sync Intelligence'),
+                  React.createElement('span', {
+                    style: {
+                      fontSize: '0.68rem',
+                      padding: '2px 5px',
+                      borderRadius: 4,
+                      background: syncingForecasts ? '#e0e7ff' : (forecastSyncStatus.isFresh ? '#d1fae5' : '#fee2e2'),
+                      color: syncingForecasts ? '#4338ca' : (forecastSyncStatus.isFresh ? '#065f46' : '#991b1b')
+                    }
+                  }, syncingForecasts ? `${forecastSyncStatus.progressPercent || 0}%` : (forecastSyncStatus.isFresh ? 'Fresh (<6h)' : 'Stale'))
+                ),
+                React.createElement('div', { style: { color: 'var(--text-secondary, #64748b)', marginBottom: 2 } },
+                  'Stage: ',
+                  React.createElement('strong', { style: { color: 'var(--text-primary, #334155)' } }, forecastSyncStatus.stageText || forecastSyncStatus.stage || 'Ready')
+                ),
+                React.createElement('div', { style: { color: 'var(--text-secondary, #64748b)', marginBottom: 2 } },
+                  'Last Completed: ',
+                  React.createElement('strong', { style: { color: 'var(--text-primary, #334155)' } },
+                    forecastSyncStatus.lastSyncCompletedAt
+                      ? new Date(forecastSyncStatus.lastSyncCompletedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : 'Not yet recorded'
+                  )
+                ),
+                React.createElement('div', { style: { marginTop: 8, display: 'flex', justifyContent: 'flex-end' } },
+                  React.createElement('button', {
+                    type: 'button',
+                    className: 'btn btn-outline',
+                    style: { fontSize: '0.70rem', padding: '2px 6px' },
+                    disabled: syncingForecasts,
+                    onClick: (e) => {
+                      setShowForecastSyncDetails(false);
+                      handleResyncForecasts(e);
+                    }
+                  }, syncingForecasts ? 'Syncing...' : '🔄 Force Resync Now')
+                )
+              )
             ),
-            React.createElement('button', {
-              className: 'btn btn-xs btn-outline',
-              onClick: handleResyncForecasts,
-              disabled: syncingForecasts,
-              style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600, fontSize: '0.74rem', height: 26, padding: '2px 8px' },
-              title: 'Resync Forecasts'
-            }, syncingForecasts ? 'Computing Forecasts...' : '🔄 Resync Forecasts'),
             React.createElement('button', {
               className: 'btn btn-xs btn-outline',
               onClick: () => setInventoryTab('FORECAST_DASHBOARD'),

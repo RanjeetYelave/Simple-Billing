@@ -30,6 +30,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     
     Optional<Invoice> findByIdAndFirmId(Long id, Long firmId);
 
+    @Query("SELECT COUNT(i) FROM Invoice i WHERE i.firmId = :firmId AND (i.updatedAt > :since OR i.createdAt > :since)")
+    long countModifiedSince(@Param("firmId") Long firmId, @Param("since") LocalDateTime since);
+
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT i FROM Invoice i WHERE i.id = :id")
     Optional<Invoice> findByIdForUpdate(@Param("id") Long id);

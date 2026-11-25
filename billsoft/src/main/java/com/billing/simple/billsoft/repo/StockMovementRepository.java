@@ -32,6 +32,9 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, Lo
 
     long countByFirmId(Long firmId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(sm) FROM StockMovement sm WHERE sm.firmId = :firmId AND sm.createdAt > :since")
+    long countCreatedSince(@org.springframework.data.repository.query.Param("firmId") Long firmId, @org.springframework.data.repository.query.Param("since") java.time.LocalDateTime since);
+
     List<StockMovement> findByReferenceTypeAndReferenceId(String referenceType, String referenceId);
 
     @org.springframework.data.jpa.repository.Query("SELECT sm.productId, SUM(sm.quantityChange) FROM StockMovement sm " +

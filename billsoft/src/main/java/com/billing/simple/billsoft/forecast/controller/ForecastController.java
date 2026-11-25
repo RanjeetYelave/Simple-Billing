@@ -224,17 +224,15 @@ public class ForecastController {
     @PostMapping("/admin/sync")
     public ResponseEntity<?> triggerFirmSync(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
-            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        return triggerFirmSync(firmIdHeader, firmIdParam, false, false);
-    }
-
-    public ResponseEntity<?> triggerFirmSync(Long firmIdHeader, Long firmIdParam, Boolean force, Boolean isAsync) {
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
+            @RequestParam(value = "force", required = false, defaultValue = "false") Boolean force,
+            @RequestParam(value = "async", required = false, defaultValue = "false") Boolean isAsync) {
         Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
         if (firmId == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
         }
 
-        if (asyncWorkerService != null && (Boolean.TRUE.equals(isAsync) || !Boolean.TRUE.equals(force))) {
+        if (asyncWorkerService != null) {
             return ResponseEntity.ok(asyncWorkerService.executeSync(firmId, Boolean.TRUE.equals(force), Boolean.TRUE.equals(isAsync)));
         }
 
@@ -290,6 +288,10 @@ public class ForecastController {
         } finally {
             lock.unlock();
         }
+    }
+
+    public ResponseEntity<?> triggerFirmSync(Long firmIdHeader, Long firmIdParam) {
+        return triggerFirmSync(firmIdHeader, firmIdParam, false, false);
     }
 
     /**

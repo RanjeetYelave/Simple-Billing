@@ -936,8 +936,22 @@
     // Session duplicate tracker
     const [recentlyOrderedMap, setRecentlyOrderedMap] = useState({});
 
-    // Forecast synchronisation state (mirrored from ForecastSyncService)
+    // Forecast synchronisation state (mirrored from ForecastSyncService & backend status)
     const [syncing, setSyncing] = useState(() => (typeof window !== 'undefined' && window.ForecastSyncService ? window.ForecastSyncService.isSyncing() : false));
+    const [syncStatus, setSyncStatus] = useState({
+      inProgress: false,
+      isFresh: true,
+      isStalled: false,
+      stage: 'COMPLETED',
+      stageText: 'Forecasts up to date',
+      progressPercent: 100,
+      lastSyncCompletedAt: null,
+      lastSyncStatus: 'COMPLETED',
+      forecastsGenerated: 0,
+      invoicesProcessed: 0,
+      durationMs: 0
+    });
+    const [showSyncDetails, setShowSyncDetails] = useState(false);
 
     const [pageSize, setPageSize] = useState(25);
     const [totalElements, setTotalElements] = useState(0);
@@ -965,6 +979,41 @@
       loadRecommendations();
     }, [loadRecommendations]);
 
+    // Refresh sync status from backend
+    const checkSyncStatus = useCallback(async () => {
+      const activeFid = typeof API !== 'undefined' ? API.firmId : null;
+      if (!activeFid || !API.forecast || typeof API.forecast.getSyncStatus !== 'function') return null;
+      try {
+        const dto = await API.forecast.getSyncStatus(activeFid);
+        if (dto) {
+          setSyncStatus(prev => ({ ...prev, ...dto }));
+          setSyncing(Boolean(dto.inProgress));
+          return dto;
+        }
+      } catch (e) {
+        console.debug('Failed to check sync status:', e);
+      }
+      return null;
+    }, []);
+
+    // Initial sync status check on mount
+    useEffect(() => {
+      checkSyncStatus();
+    }, [checkSyncStatus]);
+
+    // Active polling while synchronisation is running
+    useEffect(() => {
+      if (!syncing) return;
+      const interval = setInterval(async () => {
+        const dto = await checkSyncStatus();
+        if (dto && !dto.inProgress) {
+          clearInterval(interval);
+          loadRecommendations();
+        }
+      }, 1500);
+      return () => clearInterval(interval);
+    }, [syncing, checkSyncStatus, loadRecommendations]);
+
     // Synchronisation state and event listeners
     useEffect(() => {
       const handleSyncState = (e) => {
@@ -972,40 +1021,62 @@
           const activeFid = typeof API !== 'undefined' ? API.firmId : null;
           if (!e.detail.firmId || String(e.detail.firmId) === String(activeFid)) {
             setSyncing(Boolean(e.detail.isSyncing));
+            checkSyncStatus();
           }
+        }
+      };
+      const handleSyncProgress = (e) => {
+        if (e && e.detail && e.detail.status) {
+          setSyncStatus(prev => ({ ...prev, ...e.detail.status }));
+          setSyncing(Boolean(e.detail.status.inProgress));
         }
       };
       const handleForecastSynced = (e) => {
         try {
+          checkSyncStatus();
           loadRecommendations();
         } catch (err) { }
       };
       window.addEventListener('billsoft:forecast-sync-state', handleSyncState);
+      window.addEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
       window.addEventListener('billsoft:forecast-synced', handleForecastSynced);
       return () => {
         window.removeEventListener('billsoft:forecast-sync-state', handleSyncState);
+        window.removeEventListener('billsoft:forecast-sync-progress', handleSyncProgress);
         window.removeEventListener('billsoft:forecast-synced', handleForecastSynced);
       };
-    }, [loadRecommendations]);
+    }, [loadRecommendations, checkSyncStatus]);
 
     // Resync Forecasts button handler inside Smart Reorder Queue
-    const handleResyncForecasts = async () => {
-      if (syncing) return;
+    const handleResyncForecasts = async (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      if (syncing) {
+        setShowSyncDetails(prev => !prev);
+        return;
+      }
       const activeFid = typeof API !== 'undefined' ? API.firmId : null;
       if (!activeFid) {
         if (typeof showToast === 'function') showToast('Active firm ID is required to sync forecasts.', 'error');
         return;
       }
       setSyncing(true);
+      setSyncStatus(prev => ({
+        ...prev,
+        inProgress: true,
+        stage: 'INITIALIZING',
+        stageText: 'Checking freshness...',
+        progressPercent: 10
+      }));
       try {
         if (typeof window !== 'undefined' && window.ForecastSyncService) {
-          await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false });
+          await window.ForecastSyncService.triggerSync(activeFid, { isAutomatic: false, force: true });
         } else {
-          const res = await API.forecast.adminSync(activeFid);
+          const res = await API.forecast.adminSync(activeFid, { force: true, async: false });
           if (typeof showToast === 'function') {
             showToast(`Forecast sync complete: ${res.forecastsGenerated || 0} models computed.`, 'success');
           }
         }
+        await checkSyncStatus();
         loadRecommendations();
       } catch (err) {
         console.error('Manual forecast sync error:', err);
@@ -1842,33 +1913,154 @@
             )
           ),
 
-          // Auto-sync status badge
+          // Unified Compact Progress Pill (Replaces competing status badge + resync button)
           React.createElement('div', {
-            id: 'badge-forecast-sync-status',
+            id: 'btn-resync-forecasts-queue',
+            role: 'button',
+            tabIndex: 0,
+            disabled: syncing,
+            title: 'Resync Forecasts — Click to view details or trigger manual sync',
+            onClick: handleResyncForecasts,
+            onMouseEnter: () => setShowSyncDetails(true),
+            onMouseLeave: () => setShowSyncDetails(false),
             style: {
+              position: 'relative',
+              overflow: 'visible',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
+              height: 32,
+              minWidth: 175,
+              borderRadius: 20,
+              padding: '0 12px',
               fontSize: '0.78rem',
-              padding: '5px 12px',
-              borderRadius: 6,
-              background: syncing ? 'rgba(99, 102, 241, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-              color: syncing ? '#4f46e5' : '#047857',
               fontWeight: 600,
-              border: syncing ? '1px solid rgba(99, 102, 241, 0.25)' : '1px solid rgba(16, 185, 129, 0.25)'
+              cursor: 'pointer',
+              userSelect: 'none',
+              background: 'var(--bg-card, #ffffff)',
+              border: syncStatus.isStalled || syncStatus.lastSyncStatus === 'FAILED'
+                ? '1px solid rgba(239, 68, 68, 0.4)'
+                : syncing
+                  ? '1px solid rgba(99, 102, 241, 0.4)'
+                  : '1px solid rgba(16, 185, 129, 0.4)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              transition: 'border-color 0.2s ease, box-shadow 0.2s ease'
             }
           },
-            React.createElement('span', null, syncing ? '⏳' : '⚡'),
-            syncing ? 'Syncing forecasts...' : 'Forecasts synchronized'
-          ),
+            // 1. Cohesive Left-to-Right Progress Fill Background
+            React.createElement('div', {
+              style: {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: syncing ? `${Math.max(12, syncStatus.progressPercent || 25)}%` : '100%',
+                borderRadius: 20,
+                background: syncStatus.isStalled || syncStatus.lastSyncStatus === 'FAILED'
+                  ? 'rgba(239, 68, 68, 0.14)'
+                  : syncing
+                    ? 'linear-gradient(to right, rgba(16, 185, 129, 0.26), rgba(16, 185, 129, 0.45))'
+                    : 'rgba(16, 185, 129, 0.12)',
+                transition: 'width 0.4s ease, background 0.3s ease',
+                pointerEvents: 'none'
+              }
+            }),
 
-          React.createElement('button', {
-            id: 'btn-resync-forecasts-queue',
-            className: 'btn btn-outline',
-            onClick: handleResyncForecasts,
-            disabled: syncing,
-            style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', padding: '5px 10px' }
-          }, syncing ? '⏳ Computing Forecasts...' : '🔄 Resync Forecasts'),
+            // 2. High-contrast Foreground Content
+            React.createElement('div', {
+              id: 'badge-forecast-sync-status',
+              style: {
+                position: 'relative',
+                zIndex: 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                width: '100%',
+                justifyContent: 'center',
+                color: syncStatus.isStalled || syncStatus.lastSyncStatus === 'FAILED'
+                  ? '#b91c1c'
+                  : syncing
+                    ? '#065f46'
+                    : '#047857'
+              }
+            },
+              React.createElement('span', { style: { fontSize: '0.85rem' } },
+                syncStatus.isStalled ? '⏸️' :
+                syncStatus.lastSyncStatus === 'FAILED' ? '⚠️' :
+                syncing ? '⏳' : '⚡'
+              ),
+              React.createElement('span', { style: { whiteSpace: 'nowrap' } },
+                syncing
+                  ? (syncStatus.stageText || 'Computing Forecasts...')
+                  : syncStatus.isStalled
+                    ? 'Forecast sync stalled'
+                    : syncStatus.lastSyncStatus === 'FAILED'
+                      ? 'Forecast sync failed'
+                      : 'Forecasts up to date'
+              )
+            ),
+
+            // 3. Compact Hover/Click Details Popover
+            showSyncDetails && React.createElement('div', {
+              style: {
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                width: 260,
+                zIndex: 9999,
+                background: 'var(--bg-card, #ffffff)',
+                border: '1px solid var(--border-color, #e2e8f0)',
+                borderRadius: 8,
+                padding: '10px 14px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                fontSize: '0.75rem',
+                color: 'var(--text-primary, #1e293b)',
+                pointerEvents: 'auto',
+                lineHeight: 1.5
+              },
+              onClick: (e) => e.stopPropagation()
+            },
+              React.createElement('div', { style: { fontWeight: 700, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+                React.createElement('span', null, 'Forecast Sync Intelligence'),
+                React.createElement('span', {
+                  style: {
+                    fontSize: '0.7rem',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: syncing ? '#e0e7ff' : (syncStatus.isFresh ? '#d1fae5' : '#fee2e2'),
+                    color: syncing ? '#4338ca' : (syncStatus.isFresh ? '#065f46' : '#991b1b')
+                  }
+                }, syncing ? `${syncStatus.progressPercent || 0}%` : (syncStatus.isFresh ? 'Fresh (<6h)' : 'Stale'))
+              ),
+              React.createElement('div', { style: { color: 'var(--text-secondary, #64748b)', marginBottom: 2 } },
+                'Stage: ',
+                React.createElement('strong', { style: { color: 'var(--text-primary, #334155)' } }, syncStatus.stageText || syncStatus.stage || 'Ready')
+              ),
+              React.createElement('div', { style: { color: 'var(--text-secondary, #64748b)', marginBottom: 2 } },
+                'Last Completed: ',
+                React.createElement('strong', { style: { color: 'var(--text-primary, #334155)' } },
+                  syncStatus.lastSyncCompletedAt
+                    ? new Date(syncStatus.lastSyncCompletedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : 'Not yet recorded'
+                )
+              ),
+              syncStatus.forecastsGenerated > 0 && React.createElement('div', { style: { color: 'var(--text-secondary, #64748b)', marginBottom: 2 } },
+                'Catalog Models: ',
+                React.createElement('strong', { style: { color: 'var(--text-primary, #334155)' } }, `${syncStatus.forecastsGenerated} models`)
+              ),
+              React.createElement('div', { style: { marginTop: 8, display: 'flex', justifyContent: 'flex-end' } },
+                React.createElement('button', {
+                  type: 'button',
+                  className: 'btn btn-outline',
+                  style: { fontSize: '0.72rem', padding: '3px 8px' },
+                  disabled: syncing,
+                  onClick: (e) => {
+                    setShowSyncDetails(false);
+                    handleResyncForecasts(e);
+                  }
+                }, syncing ? 'Syncing...' : '🔄 Force Resync Now')
+              )
+            )
+          ),
 
           // Single Unified Primary Action
           React.createElement('button', {
@@ -4412,7 +4604,7 @@
     const masterBulkEditColumns = masterColumns;
 
     // Filter displayed rows
-    const displayedRows = useMemo(() => {
+    const filteredRows = useMemo(() => {
       return rows.filter(r => {
         if (selectedCategory === 'UNCATEGORIZED') {
           if (r.category && r.category.trim() !== '' && r.category.trim().toUpperCase() !== 'UNCATEGORIZED') return false;
@@ -4436,6 +4628,8 @@
         return true;
       });
     }, [rows, searchQuery, selectedCategory, statusFilter, needsSetupOnly]);
+
+    const displayedRows = filteredRows;
 
     // Update row cell
     const updateRow = (rowIdx, field, val) => {
@@ -4730,8 +4924,8 @@
             React.createElement('select', {
               className: 'form-control form-control-sm',
               style: { width: 'auto' },
-              value: inventoryFilter,
-              onChange: (e) => setInventoryFilter(e.target.value)
+              value: statusFilter,
+              onChange: (e) => setStatusFilter(e.target.value)
             },
               React.createElement('option', { value: 'ALL' }, 'All Status'),
               React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),
@@ -6079,8 +6273,8 @@
             React.createElement('select', {
               className: 'form-control form-control-sm',
               style: { width: 'auto' },
-              value: inventoryFilter,
-              onChange: (e) => setInventoryFilter(e.target.value)
+              value: statusFilter,
+              onChange: (e) => setStatusFilter(e.target.value)
             },
               React.createElement('option', { value: 'ALL' }, 'All Status'),
               React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),

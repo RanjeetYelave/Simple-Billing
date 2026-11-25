@@ -28,7 +28,16 @@ public class ForecastSyncJobRecord {
     private Long firmId;
 
     @Column(nullable = false, length = 30)
-    private String status; // IN_PROGRESS, COMPLETED, FAILED, SKIPPED_FRESH
+    private String status; // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED_FRESH
+
+    @Column(length = 50)
+    private String stage; // INITIALIZING, INGESTING_SALES, AGGREGATING_METRICS, COMPUTING_FORECASTS, GENERATING_RECOMMENDATIONS, COMPLETED, FAILED
+
+    @Column(length = 100)
+    private String stageText;
+
+    @Builder.Default
+    private int progressPercent = 0;
 
     @Builder.Default
     private int invoicesProcessed = 0;
@@ -59,13 +68,21 @@ public class ForecastSyncJobRecord {
 
     private LocalDateTime completedAt;
 
+    private LocalDateTime heartbeatAt;
+
     @PrePersist
     public void prePersist() {
         if (this.startedAt == null) {
             this.startedAt = LocalDateTime.now();
         }
+        if (this.heartbeatAt == null) {
+            this.heartbeatAt = this.startedAt;
+        }
         if (this.status == null) {
-            this.status = "IN_PROGRESS";
+            this.status = "PENDING";
+        }
+        if (this.stage == null) {
+            this.stage = "INITIALIZING";
         }
     }
 }

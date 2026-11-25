@@ -15,10 +15,15 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @Entity
-@Table(name = "purchase_order_batch_records", indexes = {
-    @Index(name = "idx_pobatch_firm_req", columnList = "firmId, clientRequestId"),
-    @Index(name = "idx_pobatch_firm_supplier_op", columnList = "firmId, supplierOpId")
-})
+@Table(name = "purchase_order_batch_records",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_pobatch_firm_supplier_op", columnNames = {"firmId", "supplierOpId"})
+    },
+    indexes = {
+        @Index(name = "idx_pobatch_firm_req", columnList = "firmId, clientRequestId"),
+        @Index(name = "idx_pobatch_firm_supplier_op", columnList = "firmId, supplierOpId")
+    }
+)
 public class PurchaseOrderBatchRecord {
 
     @Id

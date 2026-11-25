@@ -142,3 +142,8 @@ SoftwareManagementTool.html
 *.mv.db
 *.trace.db
 data/
+forensic_evidence_snapshot/
+forensic_incident_cross_firm_restore_*/
+test_validation_db/
+billsoft/test_validation_db/
+pre_financial_fixes_backup_*.mv.db

@@ -128,6 +128,30 @@
 
           console.log(`[ForecastSyncService] Forecast sync dispatched/completed for firm ${firmId}:`, res);
 
+          // If background async execution was requested, poll until completion or timeout
+          if ((isAutomatic || options.async) && typeof API !== 'undefined' && API.forecast && typeof API.forecast.getSyncStatus === 'function') {
+            let pollAttempts = 0;
+            const maxPolls = 60; // 60 * 1.5s = 90s safety timeout
+            while (pollAttempts < maxPolls) {
+              await new Promise(r => setTimeout(r, 1500));
+              pollAttempts++;
+              try {
+                const statusDto = await API.forecast.getSyncStatus(firmId);
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                  window.dispatchEvent(new CustomEvent('billsoft:forecast-sync-progress', {
+                    detail: { firmId, status: statusDto }
+                  }));
+                }
+                if (!statusDto || !statusDto.inProgress) {
+                  res = statusDto;
+                  break;
+                }
+              } catch (pErr) {
+                console.debug('[ForecastSyncService] Polling check error:', pErr);
+              }
+            }
+          }
+
           // Dispatched so Order Products workspace and Product Master refresh recommendations
           if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
             window.dispatchEvent(new CustomEvent('billsoft:forecast-synced', {

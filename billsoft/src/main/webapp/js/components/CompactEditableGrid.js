@@ -640,12 +640,40 @@
                       style: tdStyle,
                       title: cellError || (cellVal != null ? String(cellVal) : '')
                     },
+                      !isCellActive ? React.createElement('div', {
+                        tabIndex: 0,
+                        'data-row': rowIdx,
+                        'data-col': col.key,
+                        onFocus: function () { focusCell(rowIdx, col.key); },
+                        onClick: function () { focusCell(rowIdx, col.key); },
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          maxHeight: '36px',
+                          padding: '2px 6px',
+                          fontSize: '0.78rem',
+                          lineHeight: '1.25',
+                          textAlign: col.align || 'left',
+                          color: isModified ? 'var(--primary, #10b981)' : 'var(--text-primary)',
+                          fontWeight: isModified ? 600 : 'normal',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          boxSizing: 'border-box',
+                          cursor: 'text'
+                        }
+                      }, cellVal != null ? String(cellVal) : '') :
                       React.createElement('textarea', {
                         rows: 2,
                         'data-row': rowIdx,
                         'data-col': col.key,
                         placeholder: col.placeholder || '',
                         value: cellVal != null ? String(cellVal) : '',
+                        autoFocus: true,
                         onChange: function (e) {
                           var val = e.target.value.replace(/[\r\n]+/g, ' ');
                           if (onChangeRow) onChangeRow(rowIdx, col.key, val);
@@ -659,12 +687,12 @@
                         style: {
                           width: '100%',
                           height: '100%',
-                          minHeight: '34px',
+                          minHeight: '32px',
                           maxHeight: '38px',
                           border: 'none',
                           outline: 'none',
                           background: 'transparent',
-                          padding: '3px 6px',
+                          padding: '2px 6px',
                           fontSize: '0.78rem',
                           lineHeight: '1.25',
                           color: 'var(--text-primary)',

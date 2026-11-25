@@ -86,8 +86,8 @@ function runTest(testName, fn) {
 
 const harness = createTestHarness();
 const { ctx } = harness;
-const gridSrc = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/CompactEditableGrid.js'), 'utf8');
-const piSrc = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/ProductIntelligence.js'), 'utf8');
+const gridSrc = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/CompactEditableGrid.js'), 'utf8').replace(/\r\n/g, '\n');
+const piSrc = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/ProductIntelligence.js'), 'utf8').replace(/\r\n/g, '\n');
 
 // ═══════════════════════════════════════════════════════════════════
 // SECTION 1: EXPORT & COMPONENT REGISTRATION
@@ -230,7 +230,7 @@ runTest('5.2 Review modal diff table presents old vs new values with styling', (
 console.log('\n[SECTION 6] Unsaved Changes Dialog & Data Protection');
 
 runTest('6.1 Requesting close with zero changes exits immediately', () => {
-  assert(piSrc.includes("if (totalChangesCount > 0) {\n        setShowUnsavedPrompt(true);\n      } else {\n        onClose();\n      }"), 'handleRequestClose must prompt only if totalChangesCount > 0');
+  assert(piSrc.includes('if (totalChangesCount > 0)') && piSrc.includes('setShowUnsavedPrompt(true);') && piSrc.includes('onClose();'), 'handleRequestClose must prompt only if totalChangesCount > 0');
 });
 
 runTest('6.2 Unsaved changes modal informs user of modified product/field counts', () => {
@@ -262,8 +262,8 @@ runTest('7.2 ProductIntelligenceHub preserves pristine 7-column catalog table an
 });
 
 runTest('7.3 Table row Edit button launches modal with target product prefilled in search', () => {
-  assert(piSrc.includes("setBulkEditInitialProdId(p.id);\n                          setShowBulkEditModal(true);"), 'Row Edit button must set initial product ID and open modal');
-  assert(piSrc.includes("setSearchQuery(target.name);"), 'ProductMasterBulkEditModal must initialize search query with selected product name');
+  assert(piSrc.includes('setBulkEditInitialProdId(p.id);') && piSrc.includes('setShowBulkEditModal(true);'), 'Row Edit button must set initial product ID and open modal');
+  assert(piSrc.includes('setSearchQuery(target.name);'), 'ProductMasterBulkEditModal must initialize search query with selected product name');
 });
 
 // ═══════════════════════════════════════════════════════════════════

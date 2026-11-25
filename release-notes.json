@@ -1,4 +1,8 @@
 {
+  "1.0.397": [
+    "\ud83d\udee0\ufe0f Product Page Runtime Restoration: Resolved statusFilter undefined reference in ProductIntelligenceHub, ensuring seamless catalog browsing, status filtering, and setup alerts.",
+    "\ud83d\udcc8 Forecast & Movement Statement Number Formatting: Implemented canonical BillsoftUtils.formatNumber utility with localized en-IN grouping, resolving runtime exceptions during forecast and movement statement generation."
+  ],
   "1.0.396": [
     "\ud83d\udce6 Partial Goods Receiving & Immutable Audit Trail: Multi-receipt tracking with pending quantity calculations, dedicated receipt ledger, and authoritative PURCHASE_RECEIPT stock movements.",
     "\ud83d\udd12 Transaction-Scoped Vendor Preference: Selected supplier preferences persist strictly upon successful purchase order creation, guaranteeing zero corruption from failed orders.",

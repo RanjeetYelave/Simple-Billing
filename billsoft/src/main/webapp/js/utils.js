@@ -178,6 +178,23 @@ const BillsoftUtils = {
     }).format(amount);
   },
 
+  formatNumber(val, options = {}) {
+    if (val == null || val === '') return '0';
+    const num = Number(val);
+    if (isNaN(num)) return '0';
+    const maxFrac = options.maximumFractionDigits !== undefined
+      ? options.maximumFractionDigits
+      : (Number.isInteger(num) ? 0 : 2);
+    const minFrac = options.minimumFractionDigits !== undefined
+      ? options.minimumFractionDigits
+      : 0;
+    return new Intl.NumberFormat('en-IN', {
+      maximumFractionDigits: maxFrac,
+      minimumFractionDigits: minFrac,
+      ...options
+    }).format(num);
+  },
+
   formatDate(dateStr) {
     if (!dateStr) return '';
     const d = new Date(dateStr);

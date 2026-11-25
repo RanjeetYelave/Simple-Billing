@@ -4502,6 +4502,8 @@
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('ALL');
     const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
+    const inventoryFilter = statusFilter;
+    const setInventoryFilter = setStatusFilter;
     const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [draftChanges, setDraftChanges] = useState({}); // { [productId]: { field: val, ... } }
@@ -4925,8 +4927,8 @@
             React.createElement('select', {
               className: 'form-control form-control-sm',
               style: { width: 'auto' },
-              value: statusFilter,
-              onChange: (e) => setStatusFilter(e.target.value)
+              value: inventoryFilter,
+              onChange: (e) => setInventoryFilter(e.target.value)
             },
               React.createElement('option', { value: 'ALL' }, 'All Status'),
               React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),
@@ -5925,6 +5927,8 @@
     const [selectedCategory, setSelectedCategory] = useState('ALL');
     const [itemTypeFilter, setItemTypeFilter] = useState('ALL');
     const [inventoryFilter, setInventoryFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
+    const statusFilter = inventoryFilter;
+    const setStatusFilter = setInventoryFilter;
     const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
     const [selectedProductId, setSelectedProductId] = useState(null);
 
@@ -6277,8 +6281,8 @@
             React.createElement('select', {
               className: 'form-control form-control-sm',
               style: { width: 'auto' },
-              value: statusFilter,
-              onChange: (e) => setStatusFilter(e.target.value)
+              value: inventoryFilter,
+              onChange: (e) => setInventoryFilter(e.target.value)
             },
               React.createElement('option', { value: 'ALL' }, 'All Status'),
               React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),

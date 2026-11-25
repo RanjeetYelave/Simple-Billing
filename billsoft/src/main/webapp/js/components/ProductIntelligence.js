@@ -4308,13 +4308,14 @@
   function ProductMasterBulkEditModal({ products = [], categories = [], parties = [], onClose, onSuccess, initialProductId = null }) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('ALL');
-    const [inventoryFilter, setInventoryFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
+    const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
     const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [draftChanges, setDraftChanges] = useState({}); // { [productId]: { field: val, ... } }
     const [saving, setSaving] = useState(false);
     const [errorMsg, setErrorMsg] = useState(null);
     const [showReviewModal, setShowReviewModal] = useState(false);
+    const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
 
     // Initial products mapped to rows
     const initialRows = useMemo(() => {
@@ -4345,9 +4346,9 @@
     // If initialProductId was provided, set initial filter or highlight
     useEffect(() => {
       if (initialProductId) {
-        const p = products.find(x => x.id === initialProductId);
-        if (p && p.name) {
-          setSearchQuery(p.name);
+        const target = products.find(p => p.id === initialProductId);
+        if (target && target.name) {
+          setSearchQuery(target.name);
         }
       }
     }, [initialProductId, products]);
@@ -4363,8 +4364,8 @@
       return rows.filter(isNeedsSetup).length;
     }, [rows]);
 
-    // Master bulk edit columns
-    const masterBulkEditColumns = useMemo(() => [
+    // Columns definition
+    const masterColumns = useMemo(() => [
       { key: 'name', label: 'Product Name', required: true, minWidth: 200, multiline: true },
       { key: 'hsnCode', label: 'HSN/SAC Code', width: 110 },
       { key: 'category', label: 'Category', datalistId: 'pm-bulk-cat-list', width: 140 },
@@ -4408,8 +4409,10 @@
       { key: 'barcode', label: 'Barcode', isAdvanced: true, width: 120 }
     ], [parties]);
 
+    const masterBulkEditColumns = masterColumns;
+
     // Filter displayed rows
-    const filteredRows = useMemo(() => {
+    const displayedRows = useMemo(() => {
       return rows.filter(r => {
         if (selectedCategory === 'UNCATEGORIZED') {
           if (r.category && r.category.trim() !== '' && r.category.trim().toUpperCase() !== 'UNCATEGORIZED') return false;
@@ -4417,8 +4420,8 @@
           if ((r.category || '').trim() !== selectedCategory) return false;
         }
 
-        if (inventoryFilter === 'IN_INVENTORY' && r.trackInInventory !== 'true' && r.trackInInventory !== true) return false;
-        if (inventoryFilter === 'NOT_IN_INVENTORY' && (r.trackInInventory === 'true' || r.trackInInventory === true)) return false;
+        if (statusFilter === 'IN_INVENTORY' && r.trackInInventory !== 'true' && r.trackInInventory !== true) return false;
+        if (statusFilter === 'NOT_IN_INVENTORY' && (r.trackInInventory === 'true' || r.trackInInventory === true)) return false;
 
         if (needsSetupOnly && !isNeedsSetup(r)) return false;
 
@@ -4432,11 +4435,11 @@
         }
         return true;
       });
-    }, [rows, searchQuery, selectedCategory, inventoryFilter, needsSetupOnly]);
+    }, [rows, searchQuery, selectedCategory, statusFilter, needsSetupOnly]);
 
     // Update row cell
     const updateRow = (rowIdx, field, val) => {
-      const targetRow = filteredRows[rowIdx];
+      const targetRow = displayedRows[rowIdx];
       if (!targetRow) return;
       const prodId = targetRow.id;
       const origProd = products.find(p => p.id === prodId) || {};
@@ -4727,8 +4730,8 @@
             React.createElement('select', {
               className: 'form-control form-control-sm',
               style: { width: 'auto' },
-              value: statusFilter,
-              onChange: (e) => setStatusFilter(e.target.value)
+              value: inventoryFilter,
+              onChange: (e) => setInventoryFilter(e.target.value)
             },
               React.createElement('option', { value: 'ALL' }, 'All Status'),
               React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),
@@ -4751,7 +4754,7 @@
             )
           ),
           React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
-            `Showing ${displayedRows.length} of ${rows.length} products (${changedProductIds.length} modified)`
+            `Showing ${filteredRows.length} of ${products.length} products (${changedProductIds.length} modified)`
           )
         ),
 
@@ -4771,12 +4774,12 @@
           React.createElement('div', {
             style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.75rem', color: 'var(--text-secondary)' }
           },
-            React.createElement('span', null, `${displayedRows.length} rows total`),
+            React.createElement('span', null, `${filteredRows.length} rows total`),
             React.createElement('span', null, '💡 Tip: Arrow keys navigate cells. Enter moves down. Paste (Ctrl+V / ⌘V) supports Excel / Sheets.')
           ),
           React.createElement(Grid || CompactEditableGrid, {
-            columns: masterColumns,
-            rows: displayedRows,
+            columns: masterBulkEditColumns,
+            rows: filteredRows,
             onChangeRow: updateRow,
             modifiedTracker: modifiedTracker,
             showAdvanced: showAdvanced,

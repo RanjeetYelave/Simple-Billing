@@ -1,0 +1,25 @@
+{
+  "1.0.389": [
+    "⚡ Unified Order Products Workspace: Combined manual stock ordering and demand forecast replenishment into one cohesive workspace.",
+    "📦 Multi-Vendor Purchasing: Create purchase orders for multiple suppliers in a single session with automatic vendor segregation.",
+    "🔒 Independent Supplier Transactions: Isolated database transactions per supplier preventing one vendor issue from aborting other orders.",
+    "🔄 Durable Batch Idempotency: Persistent order tracking ensuring unique purchase orders and reliable retry for partial failures.",
+    "📊 Headless Forecast Worker: Automated 6-hour background synchronization with non-intrusive status indicators.",
+    "📋 Contextual Inventory Subtabs: Five dedicated subtabs (Products & Stock, Order Products, Demand & Forecasts, Archive, Movement Ledger) with full toolbar preservation."
+  ],
+  "1.0.386": [
+    "Application-wide Auto-Hide Sidebar preference under Settings → Appearance.",
+    "Space-optimized Inventory toolbar layout preserving all existing bulk tools, search filters, and statistics."
+  ],
+  "1.0.385": [
+    "Product and Inventory Bulk Edit mode featuring rapid keyboard navigation and multi-row copy/paste from spreadsheets.",
+    "Streamlined bulk entry interfaces hiding SKU and barcode by default while preserving backend auto-generation and scanner lookup."
+  ],
+  "1.0.384": [
+    "Comprehensive Smart Reorder queue and demand forecasting intelligence overhaul with mathematical model verification.",
+    "Explainable product-level forecasting insights with confidence scoring and stockout risk estimation."
+  ],
+  "1.0.374": [
+    "Core billing and multi-tenant inventory management stability improvements."
+  ]
+}

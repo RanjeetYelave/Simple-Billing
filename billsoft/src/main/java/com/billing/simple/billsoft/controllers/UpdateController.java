@@ -269,4 +269,35 @@ public class UpdateController {
                 "timestamp", java.time.Instant.now().toString()
         ));
     }
+
+    @GetMapping("/release-notes")
+    public ResponseEntity<Map<String, Object>> getReleaseNotes(
+            @RequestParam(name = "version", required = false) String version,
+            @RequestParam(name = "refresh", required = false, defaultValue = "false") boolean refresh) {
+        com.billing.simple.billsoft.service.ReleaseNotesService rns = updateService.getReleaseNotesService();
+        if (rns == null) {
+            return ResponseEntity.ok(Map.of(
+                    "status", "unavailable",
+                    "message", "Release notes service is not configured"
+            ));
+        }
+        if (refresh) {
+            rns.refreshFromRemote(true);
+        }
+        if (version != null && !version.isBlank()) {
+            boolean available = rns.hasReleaseNotesForVersion(version);
+            String notes = rns.getReleaseNotesForVersion(version);
+            java.util.List<String> items = rns.getReleaseNoteItemsForVersion(version);
+            return ResponseEntity.ok(Map.of(
+                    "version", com.billing.simple.billsoft.service.ReleaseNotesService.normalizeVersion(version),
+                    "available", available,
+                    "releaseNotes", notes,
+                    "releaseNoteItems", items
+            ));
+        }
+        return ResponseEntity.ok(Map.of(
+                "status", "success",
+                "notes", rns.getAllReleaseNotes()
+        ));
+    }
 }

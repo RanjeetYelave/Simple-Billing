@@ -46,8 +46,10 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Enterprise-grade OTA update engine for RupeeCRM.
- * Enforces cryptographic Ed25519 manifest verification, resumable partial downloads,
- * OS-level transaction locking, online H2 database quarantine snapshots, and safe handoff.
+ * Enforces cryptographic Ed25519 manifest verification, resumable partial
+ * downloads,
+ * OS-level transaction locking, online H2 database quarantine snapshots, and
+ * safe handoff.
  */
 @Service
 public class UpdateService {
@@ -73,6 +75,9 @@ public class UpdateService {
     private String publicKeyBase64;
 
     private com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService;
+
+    @Autowired(required = false)
+    private ReleaseNotesService releaseNotesService;
 
     private final RestTemplate restTemplate;
     private final DataSource dataSource;
@@ -175,7 +180,8 @@ public class UpdateService {
     }
 
     public static String extractWarAppVersion(Path warPath) {
-        if (warPath == null || !Files.exists(warPath)) return null;
+        if (warPath == null || !Files.exists(warPath))
+            return null;
         try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(warPath.toFile())) {
             java.util.zip.ZipEntry entry = zip.getEntry("WEB-INF/classes/application.properties");
             if (entry != null) {
@@ -188,7 +194,8 @@ public class UpdateService {
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         return null;
     }
 
@@ -196,15 +203,18 @@ public class UpdateService {
     public void reconcileStartupState() {
         try {
             Path stateFile = getStateFilePath();
-            if (!Files.exists(stateFile)) return;
+            if (!Files.exists(stateFile))
+                return;
             UpdateState state = UpdateState.load(stateFile);
-            if (state == null) return;
+            if (state == null)
+                return;
             String status = state.getStatus();
             String currentRunning = getCurrentVersion();
 
             if (UpdateState.STATUS_DOWNLOADING.equals(status) || UpdateState.STATUS_PREPARING_DOWNLOAD.equals(status)
                     || UpdateState.STATUS_DOWNLOAD_RETRYING.equals(status)) {
-                log.info("Startup reconciliation: Interrupted download transaction {} detected. Transitioning to DOWNLOAD_INTERRUPTED.",
+                log.info(
+                        "Startup reconciliation: Interrupted download transaction {} detected. Transitioning to DOWNLOAD_INTERRUPTED.",
                         state.getTransactionId());
                 state.setStatus(UpdateState.STATUS_DOWNLOAD_INTERRUPTED);
                 state.setErrorMessage("Download was interrupted by application shutdown or restart");
@@ -220,7 +230,8 @@ public class UpdateService {
                     state.setCurrentVersion(currentRunning);
                     state.saveAtomic(stateFile);
                 } else {
-                    log.warn("Startup reconciliation: Update activation to {} did not take effect (currently running: {}). Transitioning to ROLLED_BACK.",
+                    log.warn(
+                            "Startup reconciliation: Update activation to {} did not take effect (currently running: {}). Transitioning to ROLLED_BACK.",
                             target, currentRunning);
                     state.setStatus(UpdateState.STATUS_ROLLED_BACK);
                     state.setErrorMessage("New version startup failed; restored previous version " + currentRunning);
@@ -233,11 +244,13 @@ public class UpdateService {
     }
 
     public String getAuthoritativeBinaryVersion() {
-        if (defaultVersion != null && !defaultVersion.isBlank() && !"v1.0.0".equalsIgnoreCase(defaultVersion) && !"1.0.0".equalsIgnoreCase(defaultVersion) && !defaultVersion.contains("SNAPSHOT")) {
+        if (defaultVersion != null && !defaultVersion.isBlank() && !"v1.0.0".equalsIgnoreCase(defaultVersion)
+                && !"1.0.0".equalsIgnoreCase(defaultVersion) && !defaultVersion.contains("SNAPSHOT")) {
             return defaultVersion.trim();
         }
         Package pkg = UpdateService.class.getPackage();
-        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank() && !pkg.getImplementationVersion().contains("SNAPSHOT")) {
+        if (pkg != null && pkg.getImplementationVersion() != null && !pkg.getImplementationVersion().isBlank()
+                && !pkg.getImplementationVersion().contains("SNAPSHOT")) {
             return pkg.getImplementationVersion().trim();
         }
         if (defaultVersion != null && !defaultVersion.isBlank() && !defaultVersion.contains("SNAPSHOT")) {
@@ -247,12 +260,14 @@ public class UpdateService {
     }
 
     public String getCurrentVersion() {
-        // 1. Authoritative running binary version (source of truth compiled into WAR / JAR)
+        // 1. Authoritative running binary version (source of truth compiled into WAR /
+        // JAR)
         String authoritativeVersion = getAuthoritativeBinaryVersion();
         boolean allowMockOverride = "true".equalsIgnoreCase(System.getProperty("app.version.allow-mock-override"))
                 || "true".equalsIgnoreCase(System.getenv("RUPEECRM_ALLOW_MOCK_VERSION"));
 
-        // 2. Check for .billsoft-version metadata override files and purge stale/downgrade remnants
+        // 2. Check for .billsoft-version metadata override files and purge
+        // stale/downgrade remnants
         try {
             List<Path> candidateVersionFiles = new ArrayList<>();
             java.io.File dataDirFile = DataDirectoryResolver.resolveDataDirectory();
@@ -301,12 +316,15 @@ public class UpdateService {
                         int cmp = compareVersions(authoritativeVersion, ver);
                         if (cmp >= 0 && !allowMockOverride) {
                             // On-disk file is older than or equal to the currently executing binary.
-                            // Purge this obsolete metadata so it never masquerades as or downgrades the running application!
-                            log.warn("Detected stale version metadata file {} (contained: {}, actual running binary: {}). Purging obsolete file.",
+                            // Purge this obsolete metadata so it never masquerades as or downgrades the
+                            // running application!
+                            log.warn(
+                                    "Detected stale version metadata file {} (contained: {}, actual running binary: {}). Purging obsolete file.",
                                     verFile, ver, authoritativeVersion);
                             try {
                                 Files.deleteIfExists(verFile);
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+                            }
                         } else {
                             // Strictly newer version (e.g. pending candidate) or explicit mock override
                             return ver;
@@ -317,7 +335,8 @@ public class UpdateService {
         } catch (Exception ignored) {
         }
 
-        // 3. Inspect durable update-state.json and reconcile stale or contradictory metadata
+        // 3. Inspect durable update-state.json and reconcile stale or contradictory
+        // metadata
         try {
             Path stateFile = getStateFilePath();
             if (Files.exists(stateFile)) {
@@ -327,16 +346,21 @@ public class UpdateService {
                     String targetVer = state.getTargetVersion();
                     boolean isStale = false;
 
-                    if (stateVer != null && !stateVer.isBlank() && compareVersions(authoritativeVersion, stateVer) != 0) {
+                    if (stateVer != null && !stateVer.isBlank()
+                            && compareVersions(authoritativeVersion, stateVer) != 0) {
                         isStale = true;
                     }
-                    if (targetVer != null && !targetVer.isBlank() && compareVersions(authoritativeVersion, targetVer) < 0
-                            && (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()) || UpdateState.STATUS_UPDATE_SUCCESS.equals(state.getStatus()))) {
+                    if (targetVer != null && !targetVer.isBlank()
+                            && compareVersions(authoritativeVersion, targetVer) < 0
+                            && (UpdateState.STATUS_COMMITTED.equals(state.getStatus())
+                                    || UpdateState.STATUS_SUCCESS.equals(state.getStatus())
+                                    || UpdateState.STATUS_UPDATE_SUCCESS.equals(state.getStatus()))) {
                         isStale = true;
                     }
 
                     if (isStale) {
-                        log.warn("Detected stale update-state metadata (recorded current: {}, recorded target: {}, actual running binary: {}). Reconciling.",
+                        log.warn(
+                                "Detected stale update-state metadata (recorded current: {}, recorded target: {}, actual running binary: {}). Reconciling.",
                                 stateVer, targetVer, authoritativeVersion);
                         state.setCurrentVersion(authoritativeVersion);
                         if (targetVer != null && compareVersions(authoritativeVersion, targetVer) >= 0) {
@@ -344,14 +368,22 @@ public class UpdateService {
                         }
                         try {
                             state.saveAtomic(stateFile);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                         return authoritativeVersion;
-                    } else if (stateVer != null && !stateVer.isBlank() && compareVersions(authoritativeVersion, stateVer) == 0) {
+                    } else if (stateVer != null && !stateVer.isBlank()
+                            && compareVersions(authoritativeVersion, stateVer) == 0) {
                         return stateVer;
-                    } else if (state.getStatus() != null && (UpdateState.STATUS_COMMITTED.equals(state.getStatus()) || UpdateState.STATUS_SUCCESS.equals(state.getStatus()) || UpdateState.STATUS_UPDATE_SUCCESS.equals(state.getStatus()))) {
-                        if (targetVer != null && compareVersions(authoritativeVersion, targetVer) >= 0 && !authoritativeVersion.equalsIgnoreCase(stateVer)) {
+                    } else if (state.getStatus() != null && (UpdateState.STATUS_COMMITTED.equals(state.getStatus())
+                            || UpdateState.STATUS_SUCCESS.equals(state.getStatus())
+                            || UpdateState.STATUS_UPDATE_SUCCESS.equals(state.getStatus()))) {
+                        if (targetVer != null && compareVersions(authoritativeVersion, targetVer) >= 0
+                                && !authoritativeVersion.equalsIgnoreCase(stateVer)) {
                             state.setCurrentVersion(authoritativeVersion);
-                            try { state.saveAtomic(stateFile); } catch (Exception ignored) {}
+                            try {
+                                state.saveAtomic(stateFile);
+                            } catch (Exception ignored) {
+                            }
                         }
                     }
                 }
@@ -425,13 +457,45 @@ public class UpdateService {
         return null;
     }
 
-    public void setSchedulerService(com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService) {
+    public void setSchedulerService(
+            com.billing.simple.billsoft.service.scheduler.GitCheckSchedulerService schedulerService) {
         this.schedulerService = schedulerService;
+    }
+
+    public void setReleaseNotesService(ReleaseNotesService releaseNotesService) {
+        this.releaseNotesService = releaseNotesService;
+    }
+
+    public ReleaseNotesService getReleaseNotesService() {
+        return this.releaseNotesService;
+    }
+
+    public String resolveReleaseNotes(String targetVersion, String fallbackNotes) {
+        if (targetVersion != null && releaseNotesService != null && releaseNotesService.hasReleaseNotesForVersion(targetVersion)) {
+            return releaseNotesService.getReleaseNotesForVersion(targetVersion);
+        }
+        if (fallbackNotes != null && !fallbackNotes.isBlank()
+                && !fallbackNotes.startsWith("RupeeCRM release build")
+                && !fallbackNotes.contains("integrity manifest")) {
+            return fallbackNotes;
+        }
+        if (targetVersion != null && releaseNotesService != null) {
+            return releaseNotesService.getReleaseNotesForVersion(targetVersion);
+        }
+        return ReleaseNotesService.DEFAULT_NO_NOTES;
+    }
+
+    public List<String> resolveReleaseNoteItems(String targetVersion) {
+        if (targetVersion != null && releaseNotesService != null) {
+            return releaseNotesService.getReleaseNoteItemsForVersion(targetVersion);
+        }
+        return Collections.emptyList();
     }
 
     /**
      * Inspects on-disk staged update package and durable transaction state.
-     * Returns metadata for verified updates waiting to be installed (READY_TO_INSTALL / VERIFIED_STAGED).
+     * Returns metadata for verified updates waiting to be installed
+     * (READY_TO_INSTALL / VERIFIED_STAGED).
      */
     public Map<String, Object> getStagedUpdateInfo() {
         Map<String, Object> info = new HashMap<>();
@@ -444,7 +508,8 @@ public class UpdateService {
             if (Files.exists(stateFile) && Files.exists(stagedWar)) {
                 UpdateState state = UpdateState.load(stateFile);
                 String status = state.getStatus();
-                if (UpdateState.STATUS_READY_TO_INSTALL.equals(status) || UpdateState.STATUS_VERIFIED_STAGED.equals(status)) {
+                if (UpdateState.STATUS_READY_TO_INSTALL.equals(status)
+                        || UpdateState.STATUS_VERIFIED_STAGED.equals(status)) {
                     String targetVer = state.getTargetVersion();
                     String currentVer = getCurrentVersion();
                     if (targetVer != null && !targetVer.isBlank() && compareVersions(targetVer, currentVer) > 0) {
@@ -463,7 +528,8 @@ public class UpdateService {
                                     if (vm.find()) {
                                         String manifestVer = vm.group(1).trim();
                                         if (!manifestVer.equals(targetVer)) {
-                                            log.warn("Staged manifest version ({}) does not match transaction target version ({}); ignoring corrupt staged update",
+                                            log.warn(
+                                                    "Staged manifest version ({}) does not match transaction target version ({}); ignoring corrupt staged update",
                                                     manifestVer, targetVer);
                                             info.put("stagedUpdateAvailable", false);
                                             return info;
@@ -471,10 +537,11 @@ public class UpdateService {
                                     }
                                     Pattern p = Pattern.compile("\"releaseNotes\"\\s*:\\s*\"([^\"]+)\"");
                                     Matcher m = p.matcher(json);
-                                    if (m.find()) {
-                                        info.put("stagedReleaseNotes", m.group(1).replace("\\n", "\n"));
-                                    }
-                                } catch (Exception ignored) {}
+                                    String rawNotes = m.find() ? m.group(1).replace("\\n", "\n") : null;
+                                    info.put("stagedReleaseNotes", resolveReleaseNotes(targetVer, rawNotes));
+                                    info.put("stagedReleaseNoteItems", resolveReleaseNoteItems(targetVer));
+                                } catch (Exception ignored) {
+                                }
                             }
                             return info;
                         }
@@ -497,6 +564,7 @@ public class UpdateService {
             response.put("stagedVersion", stagedVer);
             response.put("stagedStatus", staged.get("stagedStatus"));
             response.put("stagedReleaseNotes", staged.get("stagedReleaseNotes"));
+            response.put("stagedReleaseNoteItems", staged.get("stagedReleaseNoteItems"));
             String latestVer = (String) response.get("latestVersion");
             if (latestVer != null && !latestVer.isBlank()) {
                 response.put("hasNewerRelease", compareVersions(latestVer, stagedVer) > 0);
@@ -507,14 +575,21 @@ public class UpdateService {
             response.put("stagedVersion", null);
             response.put("stagedStatus", null);
             response.put("stagedReleaseNotes", null);
+            response.put("stagedReleaseNoteItems", Collections.emptyList());
             response.put("hasNewerRelease", false);
         }
     }
 
     public synchronized Map<String, Object> checkUpdate(boolean forceRefresh) {
+        if (forceRefresh && releaseNotesService != null) {
+            try {
+                releaseNotesService.refreshFromRemote(true);
+            } catch (Exception ignored) {}
+        }
         long now = System.currentTimeMillis();
         if (!forceRefresh) {
-            if (schedulerService != null && !schedulerService.isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.APP_UPDATES)) {
+            if (schedulerService != null && !schedulerService
+                    .isCheckDue(com.billing.simple.billsoft.service.scheduler.CheckType.APP_UPDATES)) {
                 if (cachedResponse != null) {
                     Map<String, Object> res = new HashMap<>(cachedResponse);
                     enrichResponseWithStagedInfo(res);
@@ -568,7 +643,8 @@ public class UpdateService {
             String latestVer = manifest.getAppVersion();
             response.put("latestVersion", latestVer);
             response.put("releaseTag", manifest.getReleaseTag());
-            response.put("releaseNotes", manifest.getReleaseNotes());
+            response.put("releaseNotes", resolveReleaseNotes(latestVer, manifest.getReleaseNotes()));
+            response.put("releaseNoteItems", resolveReleaseNoteItems(latestVer));
             response.put("publishedAt", manifest.getPublishedAt());
 
             int cmp = compareVersions(latestVer, currentVer);
@@ -586,7 +662,8 @@ public class UpdateService {
             response.put("updateAvailable", false);
             String errorMsg = e.getMessage();
             if (e instanceof org.springframework.web.client.ResourceAccessException ||
-                (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("Read timed out") || errorMsg.contains("Connect timed out") || errorMsg.contains("I/O error")))) {
+                    (errorMsg != null && (errorMsg.contains("timed out") || errorMsg.contains("Read timed out")
+                            || errorMsg.contains("Connect timed out") || errorMsg.contains("I/O error")))) {
                 errorMsg = "Unable to reach update server (connection timed out). Please check your internet connection.";
             } else if (errorMsg != null && errorMsg.startsWith("Update check failed:")) {
                 // Keep formatted message
@@ -616,13 +693,15 @@ public class UpdateService {
             Path stateFile = getStateFilePath();
             if (Files.exists(stateFile)) {
                 UpdateState state = UpdateState.load(stateFile);
-                if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus()) || UpdateState.STATUS_UPDATE_FAILED.equals(state.getStatus()))) {
+                if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus())
+                        || UpdateState.STATUS_UPDATE_FAILED.equals(state.getStatus()))) {
                     state.setStatus(UpdateState.STATUS_IDLE);
                     state.setErrorMessage(null);
                     state.saveAtomic(stateFile);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         sendProgressEvent();
     }
 
@@ -666,8 +745,10 @@ public class UpdateService {
 
     /**
      * Applies update based on user preference or staged package presence.
-     * If preferredTargetVersion matches stagedVersion, proceeds directly to install without downloading.
-     * If preferredTargetVersion is specified for newer version, initiates download of newer version.
+     * If preferredTargetVersion matches stagedVersion, proceeds directly to install
+     * without downloading.
+     * If preferredTargetVersion is specified for newer version, initiates download
+     * of newer version.
      * If no version is specified, prioritizes staged package if ready.
      */
     public boolean applyUpdate(String preferredTargetVersion) {
@@ -693,7 +774,8 @@ public class UpdateService {
     }
 
     /**
-     * User selected Remind Me Later. Preserves staged update package and marks state deferred.
+     * User selected Remind Me Later. Preserves staged update package and marks
+     * state deferred.
      */
     public boolean remindLater() {
         log.info("User selected Remind Me Later. Preserving staged update state.");
@@ -702,7 +784,7 @@ public class UpdateService {
             if (Files.exists(stateFile)) {
                 UpdateState state = UpdateState.load(stateFile);
                 if (UpdateState.STATUS_READY_TO_INSTALL.equals(state.getStatus()) ||
-                    UpdateState.STATUS_VERIFIED_STAGED.equals(state.getStatus())) {
+                        UpdateState.STATUS_VERIFIED_STAGED.equals(state.getStatus())) {
                     state.setUpdatedAt(System.currentTimeMillis());
                     state.saveAtomic(stateFile);
                 }
@@ -718,14 +800,16 @@ public class UpdateService {
     /**
      * Inspects, authenticates, and stages an offline manual update package (.zip)
      * containing manifest.json, manifest.sig, and rupeecrm.war.
-     * All checks are performed completely offline using the pinned Ed25519 public key.
+     * All checks are performed completely offline using the pinned Ed25519 public
+     * key.
      *
-     * @param zipStream Input stream of the selected update ZIP file
+     * @param zipStream        Input stream of the selected update ZIP file
      * @param originalFilename Original filename (for diagnostic logging)
-     * @param confirmReplace If true, allows replacing an already staged package
+     * @param confirmReplace   If true, allows replacing an already staged package
      * @return Map with staged update metadata
      */
-    public synchronized Map<String, Object> stageManualUpdatePackage(InputStream zipStream, String originalFilename, boolean confirmReplace) throws Exception {
+    public synchronized Map<String, Object> stageManualUpdatePackage(InputStream zipStream, String originalFilename,
+            boolean confirmReplace) throws Exception {
         if (!hasSufficientDiskSpace()) {
             throw new IllegalStateException("Insufficient disk space. At least 250MB free disk space is required.");
         }
@@ -754,7 +838,8 @@ public class UpdateService {
                 while ((entry = zis.getNextEntry()) != null) {
                     totalEntries++;
                     if (totalEntries > MAX_ENTRIES) {
-                        throw new SecurityException("Too many entries in update package: exceeds limit of " + MAX_ENTRIES);
+                        throw new SecurityException(
+                                "Too many entries in update package: exceeds limit of " + MAX_ENTRIES);
                     }
                     String entryName = entry.getName();
                     if (entryName == null || entryName.trim().isEmpty()) {
@@ -781,7 +866,8 @@ public class UpdateService {
                             while ((len = zis.read(buf)) != -1) {
                                 totalBytesExtracted += len;
                                 if (totalBytesExtracted > MAX_EXTRACT_BYTES) {
-                                    throw new SecurityException("Extracted update package exceeds maximum uncompressed size limit of 350MB.");
+                                    throw new SecurityException(
+                                            "Extracted update package exceeds maximum uncompressed size limit of 350MB.");
                                 }
                                 fos.write(buf, 0, len);
                             }
@@ -800,21 +886,26 @@ public class UpdateService {
             Path sigFile = findFileRecursive(extractDir, "manifest.sig");
 
             if (manifestFile == null || sigFile == null || !Files.exists(manifestFile) || !Files.exists(sigFile)) {
-                throw new IllegalArgumentException("Invalid update package: missing required manifest.json or manifest.sig.");
+                throw new IllegalArgumentException(
+                        "Invalid update package: missing required manifest.json or manifest.sig.");
             }
 
             byte[] manifestBytes = Files.readAllBytes(manifestFile);
             String signatureBase64 = Files.readString(sigFile, StandardCharsets.UTF_8).trim();
 
-            // 3. Cryptographically authenticate manifest offline using pinned Ed25519 public key
-            String pubKeyStr = (publicKeyBase64 != null && !publicKeyBase64.isBlank()) ? publicKeyBase64 : DEFAULT_PUBLIC_KEY;
+            // 3. Cryptographically authenticate manifest offline using pinned Ed25519
+            // public key
+            String pubKeyStr = (publicKeyBase64 != null && !publicKeyBase64.isBlank()) ? publicKeyBase64
+                    : DEFAULT_PUBLIC_KEY;
             PublicKey trustedKey = UpdateCrypto.decodePublicKey(pubKeyStr);
             if (!UpdateCrypto.verifySignature(manifestBytes, signatureBase64, trustedKey)) {
-                throw new java.security.GeneralSecurityException("Cryptographic verification failed: Ed25519 signature on manifest.json is invalid.");
+                throw new java.security.GeneralSecurityException(
+                        "Cryptographic verification failed: Ed25519 signature on manifest.json is invalid.");
             }
 
             UpdateManifest manifest = UpdateManifest.parse(new String(manifestBytes, StandardCharsets.UTF_8));
-            log.info("Successfully authenticated manual update manifest for target version v{}", manifest.getAppVersion());
+            log.info("Successfully authenticated manual update manifest for target version v{}",
+                    manifest.getAppVersion());
 
             // 4. Locate binary artifact (e.g. rupeecrm.war)
             String expectedArtifact = manifest.getArtifactFilename();
@@ -826,20 +917,24 @@ public class UpdateService {
                 }
             }
             if (warFile == null || !Files.exists(warFile)) {
-                throw new FileNotFoundException("Binary artifact '" + expectedArtifact + "' referenced in manifest not found in package.");
+                throw new FileNotFoundException(
+                        "Binary artifact '" + expectedArtifact + "' referenced in manifest not found in package.");
             }
 
             // 5. Binary integrity verification
             if (!UpdateCrypto.isZipFile(warFile)) {
-                throw new IllegalStateException("Extracted binary artifact is not a valid ZIP/WAR archive (magic bytes mismatch).");
+                throw new IllegalStateException(
+                        "Extracted binary artifact is not a valid ZIP/WAR archive (magic bytes mismatch).");
             }
             long warSize = Files.size(warFile);
             if (warSize != manifest.getArtifactSizeBytes()) {
-                throw new IllegalStateException("Artifact size mismatch: Expected " + manifest.getArtifactSizeBytes() + " bytes, but found " + warSize + " bytes.");
+                throw new IllegalStateException("Artifact size mismatch: Expected " + manifest.getArtifactSizeBytes()
+                        + " bytes, but found " + warSize + " bytes.");
             }
             String actualSha256 = UpdateCrypto.computeSha256(warFile);
             if (!actualSha256.equalsIgnoreCase(manifest.getArtifactSha256())) {
-                throw new IllegalStateException("Artifact checksum mismatch: Expected SHA-256 " + manifest.getArtifactSha256() + ", got " + actualSha256);
+                throw new IllegalStateException("Artifact checksum mismatch: Expected SHA-256 "
+                        + manifest.getArtifactSha256() + ", got " + actualSha256);
             }
 
             // 5b. Embedded WAR internal version inspection
@@ -858,13 +953,16 @@ public class UpdateService {
             int cmp = compareVersions(targetVersion, currentVersion);
 
             if (cmp < 0) {
-                throw new IllegalArgumentException("Downgrade rejected: Current installed version is " + UpdateState.formatDisplayVersion(currentVersion) +
-                        ", but the package version is older " + UpdateState.formatDisplayVersion(targetVersion) + ". Downgrades are not permitted.");
+                throw new IllegalArgumentException("Downgrade rejected: Current installed version is "
+                        + UpdateState.formatDisplayVersion(currentVersion) +
+                        ", but the package version is older " + UpdateState.formatDisplayVersion(targetVersion)
+                        + ". Downgrades are not permitted.");
             }
             if (cmp == 0) {
                 Map<String, Object> alreadyInstalled = new HashMap<>();
                 alreadyInstalled.put("status", "already_installed");
-                alreadyInstalled.put("message", "Version " + UpdateState.formatDisplayVersion(targetVersion) + " is already installed.");
+                alreadyInstalled.put("message",
+                        "Version " + UpdateState.formatDisplayVersion(targetVersion) + " is already installed.");
                 alreadyInstalled.put("currentVersion", UpdateState.formatDisplayVersion(currentVersion));
                 alreadyInstalled.put("targetVersion", UpdateState.formatDisplayVersion(targetVersion));
                 return alreadyInstalled;
@@ -879,7 +977,8 @@ public class UpdateService {
                     conflict.put("status", "confirm_required");
                     conflict.put("existingStagedVersion", existingStagedVer);
                     conflict.put("newVersion", targetVersion);
-                    conflict.put("message", "An update for version v" + existingStagedVer + " is already staged. Do you want to replace it with v" + targetVersion + "?");
+                    conflict.put("message", "An update for version v" + existingStagedVer
+                            + " is already staged. Do you want to replace it with v" + targetVersion + "?");
                     return conflict;
                 }
             }
@@ -923,7 +1022,8 @@ public class UpdateService {
             result.put("stagedVersion", targetVersion);
             result.put("currentVersion", currentVersion);
             result.put("releaseTag", manifest.getReleaseTag());
-            result.put("releaseNotes", manifest.getReleaseNotes());
+            result.put("releaseNotes", resolveReleaseNotes(targetVersion, manifest.getReleaseNotes()));
+            result.put("releaseNoteItems", resolveReleaseNoteItems(targetVersion));
             result.put("sha256", manifest.getArtifactSha256());
             result.put("sizeBytes", manifest.getArtifactSizeBytes());
             result.put("message", "Update package v" + targetVersion + " verified offline and ready to install.");
@@ -932,11 +1032,13 @@ public class UpdateService {
             // Clean up temporary extraction directory
             try {
                 deleteDirectoryRecursively(extractDir);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
-    public synchronized Map<String, Object> stageManualUpdatePackage(Path zipPath, boolean confirmReplace) throws Exception {
+    public synchronized Map<String, Object> stageManualUpdatePackage(Path zipPath, boolean confirmReplace)
+            throws Exception {
         if (zipPath == null || !Files.exists(zipPath)) {
             throw new FileNotFoundException("Specified update package path does not exist: " + zipPath);
         }
@@ -949,7 +1051,8 @@ public class UpdateService {
     }
 
     private Path findFileRecursive(Path dir, String targetName) throws IOException {
-        if (!Files.exists(dir)) return null;
+        if (!Files.exists(dir))
+            return null;
         try (var stream = Files.walk(dir)) {
             return stream.filter(Files::isRegularFile)
                     .filter(p -> p.getFileName().toString().equalsIgnoreCase(targetName))
@@ -959,13 +1062,16 @@ public class UpdateService {
     }
 
     private void deleteDirectoryRecursively(Path dir) throws IOException {
-        if (!Files.exists(dir)) return;
+        if (!Files.exists(dir))
+            return;
         Files.walkFileTree(dir, new java.nio.file.SimpleFileVisitor<Path>() {
             @Override
-            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) throws IOException {
+            public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs)
+                    throws IOException {
                 Files.deleteIfExists(file);
                 return java.nio.file.FileVisitResult.CONTINUE;
             }
+
             @Override
             public java.nio.file.FileVisitResult postVisitDirectory(Path d, IOException exc) throws IOException {
                 Files.deleteIfExists(d);
@@ -976,7 +1082,8 @@ public class UpdateService {
 
     public boolean pauseUpdate() {
         String currentStatus = progressStatus.get();
-        if ("restarting".equalsIgnoreCase(currentStatus) || "installing".equalsIgnoreCase(currentStatus) || "ready_to_install".equalsIgnoreCase(currentStatus)) {
+        if ("restarting".equalsIgnoreCase(currentStatus) || "installing".equalsIgnoreCase(currentStatus)
+                || "ready_to_install".equalsIgnoreCase(currentStatus)) {
             return false;
         }
 
@@ -989,13 +1096,15 @@ public class UpdateService {
                 state.setBytesDownloaded(Files.size(partFile));
             }
             state.saveAtomic(getStateFilePath());
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         HttpURLConnection conn = activeDownloadConnection;
         if (conn != null) {
             try {
                 conn.disconnect();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
         return true;
     }
@@ -1024,10 +1133,12 @@ public class UpdateService {
             if (Files.exists(stateFile)) {
                 try {
                     UpdateState state = UpdateState.load(stateFile);
-                    if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus()) || "cancelled".equalsIgnoreCase(progressStatus.get()))) {
+                    if (state != null && (UpdateState.STATUS_DOWNLOAD_CANCELLED.equals(state.getStatus())
+                            || "cancelled".equalsIgnoreCase(progressStatus.get()))) {
                         return true;
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
             cancelRequested.set(false);
             return false;
@@ -1042,7 +1153,8 @@ public class UpdateService {
         if (conn != null) {
             try {
                 conn.disconnect();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         Thread t = activeDownloadThread;
@@ -1050,7 +1162,8 @@ public class UpdateService {
             try {
                 t.interrupt();
                 t.join(2500);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         try {
@@ -1068,7 +1181,8 @@ public class UpdateService {
                     state.saveAtomic(stateFile);
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
 
         setProgress("cancelled", 0, "Update was cancelled by the user.");
         updateInProgress.set(false);
@@ -1078,8 +1192,10 @@ public class UpdateService {
     }
 
     /**
-     * Executes atomic update handoff and requests supervisor service restart via Exit Code 10.
-     * Decoupled from downloading so billing operations are never interrupted unexpectedly.
+     * Executes atomic update handoff and requests supervisor service restart via
+     * Exit Code 10.
+     * Decoupled from downloading so billing operations are never interrupted
+     * unexpectedly.
      */
     public synchronized boolean installStagedUpdate() {
         if (updateInProgress.get()) {
@@ -1091,9 +1207,12 @@ public class UpdateService {
         Path stagedWar = txDir.resolve("rupeecrm-update.war");
         Path stateFile = getStateFilePath();
 
-        if (!Files.exists(manifestFile) || !Files.exists(sigFile) || !Files.exists(stagedWar) || !Files.exists(stateFile)) {
-            log.error("Cannot install update: Staged update files or state not found in {} (manifest={}, sig={}, war={}, state={})",
-                    txDir, Files.exists(manifestFile), Files.exists(sigFile), Files.exists(stagedWar), Files.exists(stateFile));
+        if (!Files.exists(manifestFile) || !Files.exists(sigFile) || !Files.exists(stagedWar)
+                || !Files.exists(stateFile)) {
+            log.error(
+                    "Cannot install update: Staged update files or state not found in {} (manifest={}, sig={}, war={}, state={})",
+                    txDir, Files.exists(manifestFile), Files.exists(sigFile), Files.exists(stagedWar),
+                    Files.exists(stateFile));
             return false;
         }
 
@@ -1108,10 +1227,12 @@ public class UpdateService {
                 String manifestVer = verMatcher.group(1).trim();
                 if (state.getTargetVersion() != null && !state.getTargetVersion().isBlank()
                         && !manifestVer.equals(state.getTargetVersion())) {
-                    log.error("Cannot install update: manifest version ({}) does not match transaction target version ({})",
+                    log.error(
+                            "Cannot install update: manifest version ({}) does not match transaction target version ({})",
                             manifestVer, state.getTargetVersion());
                     state.setStatus(UpdateState.STATUS_FAILED);
-                    state.setErrorMessage("Manifest version mismatch: " + manifestVer + " vs " + state.getTargetVersion());
+                    state.setErrorMessage(
+                            "Manifest version mismatch: " + manifestVer + " vs " + state.getTargetVersion());
                     state.saveAtomic(stateFile);
                     return false;
                 }
@@ -1163,10 +1284,12 @@ public class UpdateService {
             if (warAppVersion != null && !warAppVersion.isBlank()) {
                 String normTarget = UpdateState.normalizeVersion(state.getTargetVersion());
                 if (!warAppVersion.equals(normTarget)) {
-                    log.error("Cannot install update: staged WAR internal version ({}) does not match target version ({})",
+                    log.error(
+                            "Cannot install update: staged WAR internal version ({}) does not match target version ({})",
                             warAppVersion, normTarget);
                     state.setStatus(UpdateState.STATUS_VERSION_MISMATCH);
-                    state.setErrorMessage("Staged WAR internal version mismatch: " + warAppVersion + " vs " + normTarget);
+                    state.setErrorMessage(
+                            "Staged WAR internal version mismatch: " + warAppVersion + " vs " + normTarget);
                     state.saveAtomic(stateFile);
                     return false;
                 }
@@ -1187,29 +1310,34 @@ public class UpdateService {
             state.setStatus(UpdateState.STATUS_APPLICATION_SHUTDOWN_PENDING);
             state.saveAtomic(stateFile);
 
-            setProgress("restarting", 100, "Update verified and staged. Restarting service to activate...", state.getTargetVersion());
+            setProgress("restarting", 100, "Update verified and staged. Restarting service to activate...",
+                    state.getTargetVersion());
 
             new Thread(() -> {
                 try {
                     Thread.sleep(1000);
-                    // Explicitly complete/close all progress emitters so Tomcat does not hang on shutdown!
+                    // Explicitly complete/close all progress emitters so Tomcat does not hang on
+                    // shutdown!
                     if (this.progressEmitter != null) {
                         try {
                             this.progressEmitter.complete();
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                         this.progressEmitter = null;
                     }
                     for (SseEmitter emitter : progressEmitters) {
                         try {
                             emitter.complete();
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
                     progressEmitters.clear();
                     log.info("Requesting supervisor update restart via Exit Code 10");
                     if (exitOnInstall && !Boolean.getBoolean("rupeecrm.prevent.exit")) {
                         System.exit(10);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }, "ota-install-exit-thread").start();
 
             return true;
@@ -1230,8 +1358,10 @@ public class UpdateService {
             long freeMb = 0L;
             try {
                 freeMb = getStagingDirectory().toFile().getUsableSpace() / (1024 * 1024);
-            } catch (Exception ignored) {}
-            String msg = "Insufficient disk space: " + freeMb + " MB available, but at least 250 MB is required for safe updates.";
+            } catch (Exception ignored) {
+            }
+            String msg = "Insufficient disk space: " + freeMb
+                    + " MB available, but at least 250 MB is required for safe updates.";
             log.error(msg);
             setProgress("error", 0, msg);
             try {
@@ -1240,7 +1370,8 @@ public class UpdateService {
                 state.setErrorCategory("DISK_SPACE");
                 state.setErrorMessage(msg);
                 state.saveAtomic(getStateFilePath());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
             updateInProgress.set(false);
             return;
         }
@@ -1265,19 +1396,21 @@ public class UpdateService {
             if (Files.exists(stateFile)) {
                 try {
                     existingState = UpdateState.load(stateFile);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
 
             final boolean hasProtectedStagedPackage = existingState != null
                     && (UpdateState.STATUS_READY_TO_INSTALL.equals(existingState.getStatus())
-                        || UpdateState.STATUS_VERIFIED_STAGED.equals(existingState.getStatus()))
+                            || UpdateState.STATUS_VERIFIED_STAGED.equals(existingState.getStatus()))
                     && Files.exists(finalWar) && Files.size(finalWar) > 0
                     && !manifest.getAppVersion().equals(existingState.getTargetVersion());
             if (hasProtectedStagedPackage) {
                 preservedStagedState = existingState;
             }
 
-            // If a valid older update is staged, download into candidate part file so the older package is NEVER destroyed prematurely!
+            // If a valid older update is staged, download into candidate part file so the
+            // older package is NEVER destroyed prematurely!
             Path partFile = hasProtectedStagedPackage
                     ? txDir.resolve("rupeecrm-update-candidate.war.part")
                     : txDir.resolve("rupeecrm-update.war.part");
@@ -1298,8 +1431,7 @@ public class UpdateService {
                         manifest.getArtifactSha256(),
                         manifest.getArtifactSizeBytes(),
                         manifest.getSchemaVersion(),
-                        latestVerifiedSignature.get()
-                );
+                        latestVerifiedSignature.get());
                 log.info("Downloading newer update v{} while safely preserving staged update v{}",
                         manifest.getAppVersion(), preservedStagedState.getTargetVersion());
             } else if (existingState != null
@@ -1334,8 +1466,7 @@ public class UpdateService {
                         manifest.getArtifactSha256(),
                         manifest.getArtifactSizeBytes(),
                         manifest.getSchemaVersion(),
-                        latestVerifiedSignature.get()
-                );
+                        latestVerifiedSignature.get());
 
                 byte[] mBytes = latestVerifiedManifestBytes.get();
                 if (mBytes == null) {
@@ -1352,7 +1483,8 @@ public class UpdateService {
             state.saveAtomic(getStateFilePath());
 
             int initPercent = (canResume && manifest.getArtifactSizeBytes() > 0)
-                    ? (int) (Files.size(partFile) * 90 / manifest.getArtifactSizeBytes()) : 0;
+                    ? (int) (Files.size(partFile) * 90 / manifest.getArtifactSizeBytes())
+                    : 0;
             setProgress("downloading", initPercent, canResume ? "Resuming update download..." : "Starting download...",
                     manifest.getAppVersion());
 
@@ -1365,9 +1497,11 @@ public class UpdateService {
                 if (hasProtectedStagedPackage) {
                     try {
                         preservedStagedState.saveAtomic(stateFile);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                     setProgress("ready_to_install", 100,
-                            "Download of newer version paused. Staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                            "Download of newer version paused. Staged update v"
+                                    + preservedStagedState.getTargetVersion() + " is ready to install.",
                             preservedStagedState.getTargetVersion());
                 }
                 return;
@@ -1380,9 +1514,11 @@ public class UpdateService {
                             manifest.getAppVersion(), preservedStagedState.getTargetVersion());
                     try {
                         preservedStagedState.saveAtomic(stateFile);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                     setProgress("ready_to_install", 100,
-                            "Download cancelled. Staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                            "Download cancelled. Staged update v" + preservedStagedState.getTargetVersion()
+                                    + " is ready to install.",
                             preservedStagedState.getTargetVersion());
                 } else {
                     setProgress("cancelled", 0, "Update was cancelled by the user.");
@@ -1430,7 +1566,8 @@ public class UpdateService {
                 }
             }
 
-            // 5. Promote .part to final staged war (Candidate is verified, safe to replace now)
+            // 5. Promote .part to final staged war (Candidate is verified, safe to replace
+            // now)
             try {
                 Files.move(partFile, manifestArtifact, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
@@ -1441,7 +1578,8 @@ public class UpdateService {
             if (!finalWar.equals(manifestArtifact)) {
                 try {
                     Files.copy(manifestArtifact, finalWar, StandardCopyOption.REPLACE_EXISTING);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
 
             byte[] mBytes = latestVerifiedManifestBytes.get();
@@ -1474,7 +1612,8 @@ public class UpdateService {
 
             setProgress("ready_to_install", 100, "Update v" + manifest.getAppVersion() + " is ready to install.",
                     manifest.getAppVersion());
-            log.info("Update package v{} staged and READY_TO_INSTALL. User can install now or postpone.", manifest.getAppVersion());
+            log.info("Update package v{} staged and READY_TO_INSTALL. User can install now or postpone.",
+                    manifest.getAppVersion());
 
         } catch (DownloadPausedException de) {
             log.info("Update pipeline paused: {}", de.getMessage());
@@ -1488,7 +1627,8 @@ public class UpdateService {
             try {
                 Files.deleteIfExists(partFile);
                 Files.deleteIfExists(candidatePart);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             Path stateFile = getStateFilePath();
             if (preservedStagedState != null) {
@@ -1496,9 +1636,12 @@ public class UpdateService {
                         preservedStagedState.getTargetVersion(), e.getMessage());
                 try {
                     preservedStagedState.saveAtomic(stateFile);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
                 setProgress("ready_to_install", 100,
-                        "Download of v" + manifest.getAppVersion() + " failed (" + e.getMessage() + "). Preserved staged update v" + preservedStagedState.getTargetVersion() + " is ready to install.",
+                        "Download of v" + manifest.getAppVersion() + " failed (" + e.getMessage()
+                                + "). Preserved staged update v" + preservedStagedState.getTargetVersion()
+                                + " is ready to install.",
                         preservedStagedState.getTargetVersion());
             } else {
                 setProgress("error", 0, "Update failed: " + e.getMessage());
@@ -1507,7 +1650,8 @@ public class UpdateService {
                     state.setStatus(UpdateState.STATUS_UPDATE_FAILED);
                     state.setErrorMessage(e.getMessage());
                     state.saveAtomic(stateFile);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
         } finally {
             updateInProgress.set(false);
@@ -1537,10 +1681,12 @@ public class UpdateService {
 
                 if (existingBytes > 0 && expectedSize > 0) {
                     if (existingBytes == expectedSize) {
-                        log.info("Existing partial file size ({} bytes) equals expected size ({} bytes).", existingBytes, expectedSize);
+                        log.info("Existing partial file size ({} bytes) equals expected size ({} bytes).",
+                                existingBytes, expectedSize);
                         return;
                     } else if (existingBytes > expectedSize) {
-                        log.warn("Existing partial file size ({} bytes) exceeds expected size ({} bytes). Resetting.", existingBytes, expectedSize);
+                        log.warn("Existing partial file size ({} bytes) exceeds expected size ({} bytes). Resetting.",
+                                existingBytes, expectedSize);
                         Files.deleteIfExists(partFile);
                         existingBytes = 0L;
                     }
@@ -1586,7 +1732,8 @@ public class UpdateService {
                     this.activeDownloadConnection = conn;
                     responseCode = conn.getResponseCode();
                     if (responseCode < 200 || responseCode >= 300) {
-                        throw new IllegalStateException("Failed to download update after Range 416 reset (HTTP " + responseCode + ")");
+                        throw new IllegalStateException(
+                                "Failed to download update after Range 416 reset (HTTP " + responseCode + ")");
                     }
                     append = false;
                     totalBytesRead = 0;
@@ -1602,16 +1749,21 @@ public class UpdateService {
                 if (lastMod != null && !lastMod.isBlank()) {
                     state.setLastModified(lastMod);
                 }
-                try { state.saveAtomic(getStateFilePath()); } catch (Exception ignored) {}
+                try {
+                    state.saveAtomic(getStateFilePath());
+                } catch (Exception ignored) {
+                }
 
                 long startTime = System.currentTimeMillis();
                 long lastProgressTime = startTime;
                 long bytesAtIntervalStart = totalBytesRead;
 
                 try (InputStream in = conn.getInputStream();
-                     OutputStream out = Files.newOutputStream(partFile,
-                             append ? new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE}
-                                    : new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE})) {
+                        OutputStream out = Files.newOutputStream(partFile,
+                                append ? new OpenOption[] { StandardOpenOption.CREATE, StandardOpenOption.APPEND,
+                                        StandardOpenOption.WRITE }
+                                        : new OpenOption[] { StandardOpenOption.CREATE,
+                                                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE })) {
 
                     byte[] buffer = new byte[32768];
                     int read;
@@ -1620,7 +1772,10 @@ public class UpdateService {
                             out.flush();
                             state.setBytesDownloaded(totalBytesRead);
                             state.setStatus(UpdateState.STATUS_DOWNLOAD_PAUSED);
-                            try { state.saveAtomic(getStateFilePath()); } catch (Exception ignored) {}
+                            try {
+                                state.saveAtomic(getStateFilePath());
+                            } catch (Exception ignored) {
+                            }
                             int percent = (expectedSize > 0) ? (int) (totalBytesRead * 90 / expectedSize) : 0;
                             double mb = totalBytesRead / (1024.0 * 1024.0);
                             String sizeStr = String.format("%.1f MB / %.1f MB", mb, expectedSize / (1024.0 * 1024.0));
@@ -1642,7 +1797,8 @@ public class UpdateService {
                         if (now - lastProgressTime > 200) {
                             long intervalDuration = Math.max(1, now - lastProgressTime);
                             long bytesThisInterval = totalBytesRead - bytesAtIntervalStart;
-                            double speedMbPerSec = (bytesThisInterval / (1024.0 * 1024.0)) / (intervalDuration / 1000.0);
+                            double speedMbPerSec = (bytesThisInterval / (1024.0 * 1024.0))
+                                    / (intervalDuration / 1000.0);
 
                             lastProgressTime = now;
                             bytesAtIntervalStart = totalBytesRead;
@@ -1661,7 +1817,8 @@ public class UpdateService {
                                 etaStr = m > 0 ? (m + "m " + s + "s") : (s + "s");
                             }
 
-                            setProgress("downloading", percent, "Downloading update...", targetVersion, speedStr, sizeStr, etaStr);
+                            setProgress("downloading", percent, "Downloading update...", targetVersion, speedStr,
+                                    sizeStr, etaStr);
                             state.setBytesDownloaded(totalBytesRead);
                         }
                     }
@@ -1679,7 +1836,8 @@ public class UpdateService {
                         state.setStatus(UpdateState.STATUS_DOWNLOAD_PAUSED);
                         state.setBytesDownloaded(Files.exists(partFile) ? Files.size(partFile) : 0L);
                         state.saveAtomic(getStateFilePath());
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                     throw new DownloadPausedException("Update download paused by user");
                 }
                 if (cancelRequested.get()) {
@@ -1689,8 +1847,8 @@ public class UpdateService {
 
                 // Permanent non-retryable failures fail fast without retry delay
                 if (e instanceof SecurityException || e instanceof FileNotFoundException ||
-                    e instanceof MalformedURLException || e instanceof ConnectException ||
-                    e instanceof UnknownHostException) {
+                        e instanceof MalformedURLException || e instanceof ConnectException ||
+                        e instanceof UnknownHostException) {
                     Files.deleteIfExists(partFile);
                     throw e;
                 }
@@ -1698,7 +1856,8 @@ public class UpdateService {
                 retryCount++;
                 if (retryCount <= maxRetries) {
                     long backoffMs = Math.min(16000L, 1000L * (1L << (retryCount - 1)));
-                    log.warn("Download interrupted: {} (retry {}/{} in {}ms)", e.getMessage(), retryCount, maxRetries, backoffMs);
+                    log.warn("Download interrupted: {} (retry {}/{} in {}ms)", e.getMessage(), retryCount, maxRetries,
+                            backoffMs);
 
                     try {
                         UpdateState state = UpdateState.load(getStateFilePath());
@@ -1707,15 +1866,19 @@ public class UpdateService {
                         state.setNextRetryTime(System.currentTimeMillis() + backoffMs);
                         state.setErrorMessage("Transient network failure: " + e.getMessage());
                         state.saveAtomic(getStateFilePath());
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
 
                     int percent = 0;
                     if (Files.exists(partFile) && expectedSize > 0) {
                         try {
                             percent = (int) (Files.size(partFile) * 90 / expectedSize);
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
-                    setProgress("retrying", percent, "Connection lost (" + e.getMessage() + "). Retrying in " + (backoffMs / 1000) + "s...", targetVersion);
+                    setProgress("retrying", percent,
+                            "Connection lost (" + e.getMessage() + "). Retrying in " + (backoffMs / 1000) + "s...",
+                            targetVersion);
 
                     try {
                         Thread.sleep(backoffMs);
@@ -1731,13 +1894,17 @@ public class UpdateService {
             } finally {
                 this.activeDownloadConnection = null;
                 if (conn != null) {
-                    try { conn.disconnect(); } catch (Exception ignored) {}
+                    try {
+                        conn.disconnect();
+                    } catch (Exception ignored) {
+                    }
                 }
             }
         }
     }
 
-    private HttpURLConnection createDownloadConnection(String currentUrl, Map<String, String> requestHeaders) throws Exception {
+    private HttpURLConnection createDownloadConnection(String currentUrl, Map<String, String> requestHeaders)
+            throws Exception {
         int redirectCount = 0;
         final int MAX_REDIRECTS = 5;
 
@@ -1807,7 +1974,7 @@ public class UpdateService {
             File backupsDir = DataDirectoryResolver.resolveBackupsDirectory();
             Path targetZip = backupsDir.toPath().resolve("pre-update-backup-" + txId + ".zip");
             try (Connection conn = dataSource.getConnection();
-                 Statement stmt = conn.createStatement()) {
+                    Statement stmt = conn.createStatement()) {
                 String escapedPath = targetZip.toFile().getAbsolutePath().replace("'", "''");
                 stmt.execute("BACKUP TO '" + escapedPath + "'");
             }
@@ -1873,9 +2040,11 @@ public class UpdateService {
                 result.put("justUpdated", false);
                 result.put("justRolledBack", false);
                 result.put("updateFailed", true);
-                result.put("currentVersion", state.getCurrentVersion() != null ? state.getCurrentVersion() : getCurrentVersion());
+                result.put("currentVersion",
+                        state.getCurrentVersion() != null ? state.getCurrentVersion() : getCurrentVersion());
                 result.put("failedVersion", state.getTargetVersion());
-                result.put("errorMessage", state.getErrorMessage() != null ? state.getErrorMessage() : "Update installation failed");
+                result.put("errorMessage",
+                        state.getErrorMessage() != null ? state.getErrorMessage() : "Update installation failed");
                 result.put("status", "UPDATE_FAILED");
                 state.setTargetVersion("");
                 state.setStatus(UpdateState.STATUS_IDLE);
@@ -1933,7 +2102,8 @@ public class UpdateService {
         long usableSpace = 0L;
         try {
             usableSpace = getStagingDirectory().toFile().getUsableSpace();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
         diag.put("freeDiskSpaceBytes", usableSpace);
         diag.put("freeDiskSpaceMB", usableSpace / (1024 * 1024));
         diag.put("hasSufficientDiskSpace", hasSufficientDiskSpace());
@@ -1948,15 +2118,18 @@ public class UpdateService {
         this.progressEmitter = emitter;
         emitter.onCompletion(() -> {
             this.progressEmitters.remove(emitter);
-            if (this.progressEmitter == emitter) this.progressEmitter = null;
+            if (this.progressEmitter == emitter)
+                this.progressEmitter = null;
         });
         emitter.onTimeout(() -> {
             this.progressEmitters.remove(emitter);
-            if (this.progressEmitter == emitter) this.progressEmitter = null;
+            if (this.progressEmitter == emitter)
+                this.progressEmitter = null;
         });
         emitter.onError(e -> {
             this.progressEmitters.remove(emitter);
-            if (this.progressEmitter == emitter) this.progressEmitter = null;
+            if (this.progressEmitter == emitter)
+                this.progressEmitter = null;
         });
         try {
             emitter.send(SseEmitter.event().name("connected").data("{}"));
@@ -1966,7 +2139,8 @@ public class UpdateService {
             }
         } catch (Exception ignored) {
             this.progressEmitters.remove(emitter);
-            if (this.progressEmitter == emitter) this.progressEmitter = null;
+            if (this.progressEmitter == emitter)
+                this.progressEmitter = null;
         }
         return emitter;
     }
@@ -1999,12 +2173,12 @@ public class UpdateService {
     }
 
     private void setProgress(String status, int percent, String message, String latestVersion, String speed,
-                             String size) {
+            String size) {
         setProgress(status, percent, message, latestVersion, speed, size, "");
     }
 
     private void setProgress(String status, int percent, String message, String latestVersion, String speed,
-                             String size, String eta) {
+            String size, String eta) {
         if (status != null)
             progressStatus.set(status);
         progressPercent.set(percent);
@@ -2043,15 +2217,18 @@ public class UpdateService {
         return UpdateState.compareVersions(v1, v2);
     }
 
-    public synchronized Map<String, Object> executeAuthorizedRollback(boolean confirmRollback, String reason) throws Exception {
+    public synchronized Map<String, Object> executeAuthorizedRollback(boolean confirmRollback, String reason)
+            throws Exception {
         if (!confirmRollback) {
-            throw new IllegalArgumentException("Authorized rollback requires explicit user confirmation (confirmRollback=true).");
+            throw new IllegalArgumentException(
+                    "Authorized rollback requires explicit user confirmation (confirmRollback=true).");
         }
         if (reason == null || reason.trim().isBlank()) {
             throw new IllegalArgumentException("A valid rollback reason or justification must be provided.");
         }
         if (updateInProgress.get()) {
-            throw new IllegalStateException("Cannot initiate rollback while an update download or verification is in progress.");
+            throw new IllegalStateException(
+                    "Cannot initiate rollback while an update download or verification is in progress.");
         }
 
         Path stateFile = getStateFilePath();
@@ -2081,30 +2258,39 @@ public class UpdateService {
         }
         state.saveAtomic(stateFile);
 
-        setProgress("restarting", 100, "Rollback initiated. Restarting supervisor to restore previous binary...", "ROLLBACK");
+        setProgress("restarting", 100, "Rollback initiated. Restarting supervisor to restore previous binary...",
+                "ROLLBACK");
 
         new Thread(() -> {
             try {
                 Thread.sleep(1000);
                 if (this.progressEmitter != null) {
-                    try { this.progressEmitter.complete(); } catch (Exception ignored) {}
+                    try {
+                        this.progressEmitter.complete();
+                    } catch (Exception ignored) {
+                    }
                     this.progressEmitter = null;
                 }
                 for (SseEmitter emitter : progressEmitters) {
-                    try { emitter.complete(); } catch (Exception ignored) {}
+                    try {
+                        emitter.complete();
+                    } catch (Exception ignored) {
+                    }
                 }
                 progressEmitters.clear();
                 log.info("Requesting supervisor rollback restart via Exit Code 10");
                 if (exitOnInstall && !Boolean.getBoolean("rupeecrm.prevent.exit")) {
                     System.exit(10);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }, "rollback-exit-thread").start();
 
         Map<String, Object> resp = new HashMap<>();
         resp.put("status", "initiating_rollback");
         resp.put("transactionId", rollbackTxId);
-        resp.put("message", "Authorized emergency recovery rollback initiated. The service is restarting to restore the previous binary.");
+        resp.put("message",
+                "Authorized emergency recovery rollback initiated. The service is restarting to restore the previous binary.");
         if (rollbackSafetyDb != null) {
             resp.put("safetyBackup", rollbackSafetyDb.toAbsolutePath().toString());
         }

@@ -1565,6 +1565,7 @@ const API = {
   // ─── System & Updates ───
   system: {
     updateStatus: (forceRefresh = false) => API._json(forceRefresh ? '/api/system/update-status?force=true' : '/api/system/update-status'),
+    getReleaseNotes: (version, refresh = false) => API._json('/api/system/release-notes' + (version ? '?version=' + encodeURIComponent(version) + (refresh ? '&refresh=true' : '') : (refresh ? '?refresh=true' : ''))),
     applyUpdate: (targetVersion) => API._json('/api/system/apply-update' + (targetVersion ? '?targetVersion=' + encodeURIComponent(targetVersion) : ''), {
       method: 'POST'
     }),

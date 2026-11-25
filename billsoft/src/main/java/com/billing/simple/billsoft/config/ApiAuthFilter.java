@@ -48,6 +48,7 @@ public class ApiAuthFilter implements Filter {
                 || uri.equals("/api/system/version-info")
                 || uri.equals("/api/system/runtime-identity")
                 || uri.equals("/api/system/update-status")
+                || uri.equals("/api/system/release-notes")
                 || uri.equals("/api/system/update-diagnostics")
                 || uri.equals("/api/shutdown")
                 || uri.equals("/api/system/shutdown")) {

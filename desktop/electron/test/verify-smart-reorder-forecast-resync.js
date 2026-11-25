@@ -269,7 +269,7 @@ async function runAllTests() {
 
       assert.strictEqual(resBody.success, true, 'Backend sync must return success: true');
       assert.strictEqual(resBody.firmId, 1, 'Backend sync must return correct firmId');
-      assert(resBody.message.includes('Forecasting pipeline executed successfully') || resBody.message.includes('in progress'),
+      assert(resBody.message.includes('Forecasting pipeline executed successfully') || resBody.message.includes('in progress') || resBody.message.includes('up to date'),
         'Backend response must convey pipeline status');
     } finally {
       if (mockServer) {

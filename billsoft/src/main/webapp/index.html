@@ -45408,14 +45408,29 @@ function PartyDetailModal({
         }
       };
 
-      // Clean, readable release notes formatter
+      // Clean, readable version-based release notes formatter
       const renderReleaseNotes = (rawNotes) => {
-        if (!rawNotes || !rawNotes.trim()) {
+        if (!rawNotes) {
           return React.createElement('p', {
             style: { color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.88rem', margin: '8px 0' }
           }, 'Release notes are not available for this version.');
         }
-        const lines = rawNotes.split('\n');
+        let noteString = '';
+        if (Array.isArray(rawNotes)) {
+          noteString = rawNotes.map(item => {
+            const str = String(item || '').trim();
+            return (str.startsWith('- ') || str.startsWith('* ') || str.startsWith('• ')) ? str : `- ${str}`;
+          }).join('\n');
+        } else if (typeof rawNotes === 'string') {
+          noteString = rawNotes.trim();
+        }
+        // Do not display raw internal build manifest placeholder strings as user-facing notes
+        if (!noteString || noteString.startsWith('RupeeCRM release build') || noteString.includes('integrity manifest')) {
+          return React.createElement('p', {
+            style: { color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.88rem', margin: '8px 0' }
+          }, 'Release notes are not available for this version.');
+        }
+        const lines = noteString.split('\n');
         return lines.map((line, idx) => {
           const trimmed = line.trim();
           if (!trimmed) return React.createElement('div', { key: idx, style: { height: 6 } });
@@ -45435,8 +45450,8 @@ function PartyDetailModal({
           }
 
           // Bullet points
-          if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-            const content = trimmed.replace(/^[-*]\s+/, '');
+          if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+            const content = trimmed.replace(/^[-*•]\s+/, '');
             const parts = content.split(/(\*\*.*?\*\*|`.*?`)/g);
             return React.createElement('div', {
               key: idx,
@@ -45807,7 +45822,7 @@ function PartyDetailModal({
                 borderRadius: 8,
                 padding: '14px 18px',
                 fontSize: '0.84rem',
-                maxHeight: '210px',
+                maxHeight: '220px',
                 overflowY: 'auto',
                 margin: '14px 0 18px 0',
                 lineHeight: 1.55
@@ -45815,7 +45830,7 @@ function PartyDetailModal({
             },
               React.createElement('div', {
                 style: { fontWeight: 700, marginBottom: 8, color: 'var(--text)', fontSize: '0.82rem' }
-              }, 'What\'s New:'),
+              }, `What's New in ${info.latestVersion}:`),
               renderReleaseNotes(info.releaseNotes)
             ),
 

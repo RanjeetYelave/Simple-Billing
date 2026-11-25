@@ -248,4 +248,32 @@ class UpdateControllerTest {
 
         verify(service).resetUpdateState();
     }
+
+    @Test
+    void testGetReleaseNotesWithVersion() throws Exception {
+        com.billing.simple.billsoft.service.ReleaseNotesService mockRns = org.mockito.Mockito.mock(com.billing.simple.billsoft.service.ReleaseNotesService.class);
+        when(service.getReleaseNotesService()).thenReturn(mockRns);
+        when(mockRns.hasReleaseNotesForVersion("1.0.389")).thenReturn(true);
+        when(mockRns.getReleaseNotesForVersion("1.0.389")).thenReturn("- Unified Order Products Workspace");
+        when(mockRns.getReleaseNoteItemsForVersion("1.0.389")).thenReturn(java.util.List.of("Unified Order Products Workspace"));
+
+        mockMvc.perform(get("/api/system/release-notes?version=1.0.389"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value("1.0.389"))
+                .andExpect(jsonPath("$.available").value(true))
+                .andExpect(jsonPath("$.releaseNotes").value("- Unified Order Products Workspace"))
+                .andExpect(jsonPath("$.releaseNoteItems[0]").value("Unified Order Products Workspace"));
+    }
+
+    @Test
+    void testGetReleaseNotesAll() throws Exception {
+        com.billing.simple.billsoft.service.ReleaseNotesService mockRns = org.mockito.Mockito.mock(com.billing.simple.billsoft.service.ReleaseNotesService.class);
+        when(service.getReleaseNotesService()).thenReturn(mockRns);
+        when(mockRns.getAllReleaseNotes()).thenReturn(Map.of("1.0.389", "Notes"));
+
+        mockMvc.perform(get("/api/system/release-notes"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.notes['1.0.389']").value("Notes"));
+    }
 }

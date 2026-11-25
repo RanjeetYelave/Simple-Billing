@@ -22691,24 +22691,35 @@ if (typeof window !== 'undefined') {
           )
         ),
 
-        // Filter & Horizon Control Card
+        // Compact Single-Row Filter Toolbar
         React.createElement('div', {
-          className: 'card',
+          className: 'card forecast-filter-toolbar',
           style: {
-            padding: '10px 14px',
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
+            padding: '12px 14px',
+            background: 'var(--bg-card, #ffffff)',
+            border: '1px solid var(--border, #e2e8f0)',
+            borderRadius: 12,
             display: 'flex',
             flexWrap: 'wrap',
             gap: 12,
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            boxSizing: 'border-box'
           }
         },
-          // Left: Horizon Pills
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
-            React.createElement('span', { style: { fontSize: '0.80rem', fontWeight: 700, color: 'var(--text-secondary)' } }, '⏱️ Horizon:'),
+          // Left: Horizon Label & Segmented Pill Buttons
+          React.createElement('div', {
+            className: 'filter-left',
+            style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }
+          },
+            React.createElement('span', {
+              style: {
+                fontSize: '0.80rem',
+                fontWeight: 700,
+                color: 'var(--text-secondary, #64748b)',
+                marginRight: 2
+              }
+            }, '⏱️ Horizon:'),
             [
               { days: 30, label: '30 Days' },
               { days: 90, label: '90 Days (Quarter)' },
@@ -22719,17 +22730,46 @@ if (typeof window !== 'undefined') {
               type: 'button',
               className: `btn btn-xs ${horizonDays === h.days ? 'btn-primary' : 'btn-outline'}`,
               onClick: () => setHorizonDays(h.days),
-              style: { fontWeight: 600 }
+              style: {
+                fontWeight: 600,
+                height: 32,
+                padding: '0 10px',
+                borderRadius: 16,
+                display: 'inline-flex',
+                alignItems: 'center'
+              }
             }, h.label))
           ),
 
           // Right: Category, Urgency & Search
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          React.createElement('div', {
+            className: 'filter-right',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              flex: 1,
+              justifyContent: 'flex-end'
+            }
+          },
             React.createElement('select', {
               className: 'select select-sm',
               value: selectedCategory,
               onChange: e => setSelectedCategory(e.target.value),
-              style: { height: 30, fontSize: '0.80rem' }
+              style: {
+                height: 36,
+                lineHeight: 'normal',
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                borderRadius: 8,
+                border: '1px solid var(--border, #e2e8f0)',
+                background: 'var(--bg-card, #ffffff)',
+                color: 'var(--text, inherit)',
+                boxSizing: 'border-box',
+                outline: 'none',
+                cursor: 'pointer'
+              }
             },
               React.createElement('option', { value: 'ALL' }, '📁 All Categories'),
               categories.map(c => React.createElement('option', { key: c, value: c }, c))
@@ -22738,7 +22778,19 @@ if (typeof window !== 'undefined') {
               className: 'select select-sm',
               value: urgencyFilter,
               onChange: e => setUrgencyFilter(e.target.value),
-              style: { height: 30, fontSize: '0.80rem' }
+              style: {
+                height: 36,
+                lineHeight: 'normal',
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                borderRadius: 8,
+                border: '1px solid var(--border, #e2e8f0)',
+                background: 'var(--bg-card, #ffffff)',
+                color: 'var(--text, inherit)',
+                boxSizing: 'border-box',
+                outline: 'none',
+                cursor: 'pointer'
+              }
             },
               React.createElement('option', { value: 'ALL' }, '⚡ All Statuses'),
               React.createElement('option', { value: 'OUT_OF_STOCK' }, '🚫 Out of Stock'),
@@ -22747,11 +22799,25 @@ if (typeof window !== 'undefined') {
               React.createElement('option', { value: 'HEALTHY' }, '✓ Healthy')
             ),
             React.createElement('input', {
+              type: 'text',
               className: 'input input-sm',
               placeholder: '🔍 Search product name or SKU...',
               value: searchQuery,
               onChange: e => setSearchQuery(e.target.value),
-              style: { height: 30, fontSize: '0.80rem', width: 180 }
+              style: {
+                height: 36,
+                lineHeight: 'normal',
+                padding: '6px 12px',
+                fontSize: '0.82rem',
+                borderRadius: 8,
+                border: '1px solid var(--border, #e2e8f0)',
+                background: 'var(--bg-card, #ffffff)',
+                color: 'var(--text, inherit)',
+                minWidth: 260,
+                width: 280,
+                boxSizing: 'border-box',
+                outline: 'none'
+              }
             })
           )
         ),
@@ -22760,46 +22826,295 @@ if (typeof window !== 'undefined') {
         loading ? React.createElement(RupeeCRMLoader, { message: 'Computing forecast intelligence & stockout risks...', size: 52, style: { minHeight: 240 } }) :
           !statementData ? React.createElement('div', { style: { textAlign: 'center', padding: '40px 16px', color: 'var(--text-secondary)' } }, 'No forecast data available') :
             React.createElement(Fragment, null,
-              // KPI Ribbon
-              React.createElement('div', { className: 'firm-kpi-ribbon', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 } },
-                React.createElement('div', { className: 'firm-kpi-ribbon-item' },
-                  React.createElement('span', { className: 'label' }, 'Total Tracked Products'),
-                  React.createElement('span', { className: 'value' }, statementData.totalProducts || 0),
-                  React.createElement('span', { className: 'subtext' }, `${horizonDays}-day planning horizon`)
+              // 4-Column Equal-Height KPI Grid
+              React.createElement('div', {
+                className: 'forecast-kpi-grid',
+                style: {
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: 16,
+                  alignItems: 'stretch',
+                  marginBottom: 16
+                }
+              },
+                // Card 1: Total Tracked Products
+                React.createElement('div', {
+                  className: 'card forecast-kpi-card',
+                  style: {
+                    padding: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border, #e2e8f0)',
+                    background: 'var(--bg-card, #ffffff)',
+                    height: '100%',
+                    minHeight: 124,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box',
+                    boxShadow: 'var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.04))'
+                  }
+                },
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary, #64748b)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }
+                  }, 'Total Tracked Products'),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '1.5rem',
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
+                      margin: '4px 0',
+                      color: 'var(--text-primary, #0f172a)'
+                    }
+                  }, Number(statementData.totalProducts || 0).toLocaleString()),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary, #64748b)'
+                    }
+                  }, `${horizonDays}-day planning horizon`)
                 ),
-                React.createElement('div', { className: 'firm-kpi-ribbon-item' },
-                  React.createElement('span', { className: 'label' }, 'Projected Demand'),
-                  React.createElement('span', { className: 'value', style: { color: '#4f46e5' } },
-                    `${Number(statementData.totalProjectedDemand || 0).toLocaleString()} units`
-                  ),
-                  React.createElement('span', { className: 'subtext' }, 'Statistical demand projection')
+
+                // Card 2: Projected Demand
+                React.createElement('div', {
+                  className: 'card forecast-kpi-card',
+                  style: {
+                    padding: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border, #e2e8f0)',
+                    background: 'var(--bg-card, #ffffff)',
+                    height: '100%',
+                    minHeight: 124,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box',
+                    boxShadow: 'var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.04))'
+                  }
+                },
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary, #64748b)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }
+                  }, 'Projected Demand'),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '1.5rem',
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
+                      margin: '4px 0',
+                      color: '#4f46e5'
+                    }
+                  }, `${Number(statementData.totalProjectedDemand || 0).toLocaleString()} units`),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary, #64748b)'
+                    }
+                  }, 'Statistical demand projection')
                 ),
-                React.createElement('div', { className: 'firm-kpi-ribbon-item' },
-                  React.createElement('span', { className: 'label' }, 'Shortfall Replenishment'),
-                  React.createElement('span', { className: 'value', style: { color: (statementData.totalShortfallUnits || 0) > 0 ? '#ef4444' : '#10b981' } },
-                    `${Number(statementData.totalShortfallUnits || 0).toLocaleString()} units`
-                  ),
-                  React.createElement('span', { className: 'subtext' },
-                    `Est. Capital: ${BillsoftUtils.formatCurrency(statementData.estimatedReplenishmentCost || 0)}`
+
+                // Card 3: Shortfall Replenishment
+                React.createElement('div', {
+                  className: 'card forecast-kpi-card',
+                  style: {
+                    padding: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border, #e2e8f0)',
+                    background: 'var(--bg-card, #ffffff)',
+                    height: '100%',
+                    minHeight: 124,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box',
+                    boxShadow: 'var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.04))'
+                  }
+                },
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary, #64748b)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }
+                  }, 'Shortfall Replenishment'),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '1.5rem',
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
+                      margin: '4px 0',
+                      color: (statementData.totalShortfallUnits || 0) > 0 ? '#ef4444' : '#10b981'
+                    }
+                  }, `${Number(statementData.totalShortfallUnits || 0).toLocaleString()} units`),
+                  React.createElement('div', {
+                    style: {
+                      fontSize: '0.75rem',
+                      color: 'var(--text-secondary, #64748b)'
+                    }
+                  },
+                    'Est. Capital: ',
+                    React.createElement('strong', {
+                      style: { color: 'var(--text-primary, #0f172a)', fontWeight: 700 }
+                    }, BillsoftUtils.formatCurrency(statementData.estimatedReplenishmentCost || 0))
                   )
                 ),
-                React.createElement('div', { className: 'firm-kpi-ribbon-item' },
-                  React.createElement('span', { className: 'label' }, 'Risk Breakdown'),
-                  React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' } },
-                    React.createElement('span', { className: 'badge', style: { background: 'rgba(239, 68, 68, 0.15)', color: 'var(--status-error)', fontSize: '0.72rem', fontWeight: 700 } },
-                      `🚫 ${statementData.outOfStockCount || 0}`
-                    ),
-                    React.createElement('span', { className: 'badge', style: { background: 'rgba(245, 158, 11, 0.15)', color: 'var(--status-warning)', fontSize: '0.72rem', fontWeight: 700 } },
-                      `⚠️ ${statementData.criticalCount || 0}`
-                    ),
-                    React.createElement('span', { className: 'badge', style: { background: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', fontSize: '0.72rem', fontWeight: 700 } },
-                      `⚡ ${statementData.reorderNeededCount || 0}`
-                    ),
-                    React.createElement('span', { className: 'badge', style: { background: 'rgba(16, 185, 129, 0.12)', color: '#047857', fontSize: '0.72rem', fontWeight: 700 } },
-                      `✓ ${statementData.healthyCount || 0}`
-                    )
+
+                // Card 4: Risk Breakdown (Compact 2x2 Badge Grid)
+                React.createElement('div', {
+                  className: 'card forecast-kpi-card',
+                  style: {
+                    padding: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border, #e2e8f0)',
+                    background: 'var(--bg-card, #ffffff)',
+                    height: '100%',
+                    minHeight: 124,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxSizing: 'border-box',
+                    boxShadow: 'var(--shadow-sm, 0 1px 2px 0 rgba(0, 0, 0, 0.04))'
+                  }
+                },
+                  React.createElement('div', null,
+                    React.createElement('div', {
+                      style: {
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: 'var(--text-secondary, #64748b)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }
+                    }, 'Risk Breakdown'),
+                    React.createElement('div', {
+                      style: {
+                        fontSize: '0.75rem',
+                        color: 'var(--text-secondary, #64748b)',
+                        marginTop: 2
+                      }
+                    }, 'Stockout status classification')
                   ),
-                  React.createElement('span', { className: 'subtext', style: { marginTop: 4 } }, 'Stockout status classification')
+                  React.createElement('div', {
+                    style: {
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, 1fr)',
+                      gap: 6,
+                      marginTop: 8
+                    }
+                  },
+                    // Out of Stock
+                    React.createElement('div', {
+                      title: `Out of Stock: ${statementData.outOfStockCount || 0} products`,
+                      style: {
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        color: '#dc2626',
+                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 4,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }
+                    },
+                      React.createElement('span', {
+                        style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }, '🚫 Out of Stock'),
+                      React.createElement('span', {
+                        style: { fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.78rem' }
+                      }, statementData.outOfStockCount || 0)
+                    ),
+                    // Critical
+                    React.createElement('div', {
+                      title: `Critical (<7d): ${statementData.criticalCount || 0} products`,
+                      style: {
+                        background: 'rgba(245, 158, 11, 0.12)',
+                        color: '#d97706',
+                        border: '1px solid rgba(245, 158, 11, 0.25)',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 4,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }
+                    },
+                      React.createElement('span', {
+                        style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }, '⚠️ Critical'),
+                      React.createElement('span', {
+                        style: { fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.78rem' }
+                      }, statementData.criticalCount || 0)
+                    ),
+                    // Low / Reorder Advised
+                    React.createElement('div', {
+                      title: `Low / Reorder Advised: ${statementData.reorderNeededCount || 0} products`,
+                      style: {
+                        background: 'rgba(99, 102, 241, 0.12)',
+                        color: '#4f46e5',
+                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 4,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }
+                    },
+                      React.createElement('span', {
+                        style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }, '⚡ Low'),
+                      React.createElement('span', {
+                        style: { fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.78rem' }
+                      }, statementData.reorderNeededCount || 0)
+                    ),
+                    // Healthy
+                    React.createElement('div', {
+                      title: `Healthy: ${statementData.healthyCount || 0} products`,
+                      style: {
+                        background: 'rgba(16, 185, 129, 0.12)',
+                        color: '#059669',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        borderRadius: 8,
+                        padding: '4px 8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 4,
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }
+                    },
+                      React.createElement('span', {
+                        style: { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }, '✓ Healthy'),
+                      React.createElement('span', {
+                        style: { fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontSize: '0.78rem' }
+                      }, statementData.healthyCount || 0)
+                    )
+                  )
                 )
               ),
 

@@ -201,10 +201,12 @@ runTest('4.2 masterBulkEditColumns includes readOnly Stock column and dropdown o
   assert(src.includes("key: 'gstPercentage', label: 'GST %', type: 'select'"), 'masterBulkEditColumns should use select for GST %');
 });
 
-runTest('4.3 ProductIntelligenceHub renders CompactEditableGrid when isWorkspaceEditing is true', () => {
+runTest('4.3 ProductMasterBulkEditModal is exported and renders CompactEditableGrid', () => {
+  assert(ctx.ProductMasterBulkEditModal, 'ProductMasterBulkEditModal should be exported');
+  assert.strictEqual(typeof ctx.ProductMasterBulkEditModal, 'function');
   const src = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/ProductIntelligence.js'), 'utf8');
-  assert(src.includes("isWorkspaceEditing ? ("), 'ProductIntelligenceHub should branch on isWorkspaceEditing');
-  assert(src.includes("React.createElement(Grid || CompactEditableGrid, {"), 'Should render CompactEditableGrid in workspace edit mode');
+  assert(src.includes("showBulkEditModal && React.createElement(ProductMasterBulkEditModal,"), 'ProductIntelligenceHub should conditionally render ProductMasterBulkEditModal');
+  assert(src.includes("React.createElement(Grid || CompactEditableGrid, {"), 'Should render CompactEditableGrid in bulk edit modal');
 });
 
 runTest('4.4 ProductIntelligenceHub preserves read-only 7-column table when isWorkspaceEditing is false', () => {

@@ -17,6 +17,7 @@
     root.SmartReorderView = exports.SmartReorderView;
     root.BulkProductAddModal = exports.BulkProductAddModal;
     root.InventoryBulkEditModal = exports.InventoryBulkEditModal;
+    root.ProductMasterBulkEditModal = exports.ProductMasterBulkEditModal;
     root.PricingProfileManager = exports.PricingProfileManager;
   }
 }(typeof self !== 'undefined' ? self : this, function (React) {
@@ -3912,7 +3913,7 @@
     };
 
     const invColumns = useMemo(() => [
-      { key: 'name', label: 'Product Name', minWidth: 190, required: true },
+      { key: 'name', label: 'Product Name', minWidth: 190, required: true, multiline: true },
       { key: 'category', label: 'Category', datalistId: 'inv-bulk-cat-list', width: 130 },
       { key: 'unit', label: 'Unit', width: 70 },
       {
@@ -4294,6 +4295,641 @@
               React.createElement('button', { className: 'btn btn-primary', onClick: handleConfirmSave, disabled: saving, style: { fontWeight: 700 } },
                 saving ? '⏳ Applying Changes...' : `✓ Confirm & Apply ${changedProductIds.length} Updates`
               )
+            )
+          )
+        )
+      )
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5C. PRODUCT MASTER BULK EDIT MODAL
+  // ═══════════════════════════════════════════════════════════════════
+  function ProductMasterBulkEditModal({ products = [], categories = [], parties = [], onClose, onSuccess, initialProductId = null }) {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('ALL');
+    const [inventoryFilter, setInventoryFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
+    const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [draftChanges, setDraftChanges] = useState({}); // { [productId]: { field: val, ... } }
+    const [saving, setSaving] = useState(false);
+    const [errorMsg, setErrorMsg] = useState(null);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+
+    // Initial products mapped to rows
+    const initialRows = useMemo(() => {
+      return (products || []).map(p => {
+        const rawTrack = p.trackInInventory !== undefined ? p.trackInInventory : p.inInventory;
+        const trackVal = rawTrack !== '' && rawTrack != null ? (rawTrack === true || rawTrack === 'true' || rawTrack === 1) : Boolean(p.inInventory);
+        return {
+          id: p.id,
+          name: p.name || '',
+          hsnCode: p.hsnCode || '',
+          category: p.category || '',
+          price: p.price != null ? Number(p.price) : '',
+          costPrice: p.costPrice != null ? Number(p.costPrice) : '',
+          minStockLevel: p.minStockLevel != null ? Number(p.minStockLevel) : 5,
+          unit: p.unit || 'pcs',
+          gstPercentage: String(p.gstPercentage ?? '0'),
+          preferredPartyId: String(p.preferredPartyId || ''),
+          trackInInventory: String(trackVal),
+          stockQuantity: Number(p.stockQuantity || 0),
+          sku: p.sku || '',
+          barcode: p.barcode || ''
+        };
+      });
+    }, [products]);
+
+    const [rows, setRows] = useState(initialRows);
+
+    // If initialProductId was provided, set initial filter or highlight
+    useEffect(() => {
+      if (initialProductId) {
+        const p = products.find(x => x.id === initialProductId);
+        if (p && p.name) {
+          setSearchQuery(p.name);
+        }
+      }
+    }, [initialProductId, products]);
+
+    // Check if a product needs setup
+    const isNeedsSetup = (r) => {
+      const noCat = !r.category || r.category.trim() === '' || r.category.trim().toUpperCase() === 'UNCATEGORIZED';
+      const noCost = r.costPrice == null || r.costPrice === '' || Number(r.costPrice) <= 0;
+      return noCat || noCost;
+    };
+
+    const needsSetupCount = useMemo(() => {
+      return rows.filter(isNeedsSetup).length;
+    }, [rows]);
+
+    // Master bulk edit columns
+    const masterBulkEditColumns = useMemo(() => [
+      { key: 'name', label: 'Product Name', required: true, minWidth: 200, multiline: true },
+      { key: 'hsnCode', label: 'HSN/SAC Code', width: 110 },
+      { key: 'category', label: 'Category', datalistId: 'pm-bulk-cat-list', width: 140 },
+      { key: 'price', label: 'Base Price (₹)', type: 'number', width: 110, align: 'right' },
+      { key: 'costPrice', label: 'Cost Price (₹)', type: 'number', width: 110, align: 'right' },
+      { key: 'minStockLevel', label: 'Min Stock', type: 'number', width: 95, align: 'right' },
+      { key: 'unit', label: 'Unit', width: 80 },
+      {
+        key: 'gstPercentage', label: 'GST %', type: 'select', width: 85, align: 'right',
+        options: [
+          { value: '0', label: '0%' },
+          { value: '5', label: '5%' },
+          { value: '12', label: '12%' },
+          { value: '18', label: '18%' },
+          { value: '28', label: '28%' }
+        ]
+      },
+      {
+        key: 'preferredPartyId', label: 'Preferred Vendor', type: 'select', width: 150,
+        options: [
+          { value: '', label: 'None' },
+          ...parties.map(p => ({ value: String(p.id), label: p.name || p.canonicalName }))
+        ]
+      },
+      {
+        key: 'trackInInventory', label: 'Track Stock', type: 'select', width: 130,
+        options: [
+          { value: 'true', label: 'Yes (Tracked)' },
+          { value: 'false', label: 'No (Catalog Only)' }
+        ]
+      },
+      {
+        key: 'stockQuantity', label: 'Stock', width: 75, align: 'right', readOnly: true,
+        format: (val, row) => {
+          if (row.trackInInventory === 'false' || row.trackInInventory === false) return 'Catalog';
+          return Number(val || 0).toLocaleString();
+        }
+      },
+      // Advanced columns (hidden by default unless showAdvanced = true)
+      { key: 'sku', label: 'SKU Code', isAdvanced: true, width: 110 },
+      { key: 'barcode', label: 'Barcode', isAdvanced: true, width: 120 }
+    ], [parties]);
+
+    // Filter displayed rows
+    const filteredRows = useMemo(() => {
+      return rows.filter(r => {
+        if (selectedCategory === 'UNCATEGORIZED') {
+          if (r.category && r.category.trim() !== '' && r.category.trim().toUpperCase() !== 'UNCATEGORIZED') return false;
+        } else if (selectedCategory !== 'ALL') {
+          if ((r.category || '').trim() !== selectedCategory) return false;
+        }
+
+        if (inventoryFilter === 'IN_INVENTORY' && r.trackInInventory !== 'true' && r.trackInInventory !== true) return false;
+        if (inventoryFilter === 'NOT_IN_INVENTORY' && (r.trackInInventory === 'true' || r.trackInInventory === true)) return false;
+
+        if (needsSetupOnly && !isNeedsSetup(r)) return false;
+
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const matchName = (r.name || '').toLowerCase().includes(q);
+          const matchHsn = (r.hsnCode || '').toLowerCase().includes(q);
+          const matchSku = (r.sku || '').toLowerCase().includes(q);
+          const matchBarcode = (r.barcode || '').toLowerCase().includes(q);
+          if (!matchName && !matchHsn && !matchSku && !matchBarcode) return false;
+        }
+        return true;
+      });
+    }, [rows, searchQuery, selectedCategory, inventoryFilter, needsSetupOnly]);
+
+    // Update row cell
+    const updateRow = (rowIdx, field, val) => {
+      const targetRow = filteredRows[rowIdx];
+      if (!targetRow) return;
+      const prodId = targetRow.id;
+      const origProd = products.find(p => p.id === prodId) || {};
+
+      let origVal = origProd[field];
+      if (field === 'trackInInventory') {
+        origVal = String(Boolean(origProd.inInventory));
+      } else if (field === 'gstPercentage') {
+        origVal = String(origProd.gstPercentage ?? '0');
+      } else if (field === 'preferredPartyId') {
+        origVal = String(origProd.preferredPartyId || '');
+      }
+
+      setDraftChanges(prev => {
+        const prodDraft = { ...(prev[prodId] || {}) };
+        const isSame = (String(val ?? '').trim() === String(origVal ?? '').trim()) || (val === origVal);
+        if (isSame) {
+          delete prodDraft[field];
+        } else {
+          prodDraft[field] = val;
+        }
+        const next = { ...prev };
+        if (Object.keys(prodDraft).length === 0) {
+          delete next[prodId];
+        } else {
+          next[prodId] = prodDraft;
+        }
+        return next;
+      });
+
+      setRows(prev => {
+        return prev.map(r => {
+          if (r.id === prodId) {
+            return { ...r, [field]: val };
+          }
+          return r;
+        });
+      });
+    };
+
+    const modifiedTracker = (row, colKey) => {
+      return Boolean(draftChanges[row.id] && draftChanges[row.id][colKey] !== undefined);
+    };
+
+    // Modification tracking
+    const changedProductIds = useMemo(() => Object.keys(draftChanges).map(Number), [draftChanges]);
+    const totalChangesCount = useMemo(() => {
+      let count = 0;
+      Object.values(draftChanges).forEach(obj => { count += Object.keys(obj).length; });
+      return count;
+    }, [draftChanges]);
+
+    const partyMap = useMemo(() => {
+      const map = {};
+      parties.forEach(pt => { map[pt.id] = pt.name || `Vendor #${pt.id}`; });
+      return map;
+    }, [parties]);
+
+    // Diff details for Review modal
+    const reviewDiffs = useMemo(() => {
+      const diffs = [];
+      let catChanges = 0;
+      let priceChanges = 0;
+      let inventoryChanges = 0;
+
+      const FIELD_LABELS = {
+        name: 'Product Name',
+        sku: 'SKU Code',
+        barcode: 'Barcode',
+        category: 'Category',
+        price: 'Base Price',
+        costPrice: 'Cost Price',
+        minStockLevel: 'Min Stock Level',
+        unit: 'Unit',
+        hsnCode: 'HSN/SAC Code',
+        gstPercentage: 'GST %',
+        preferredPartyId: 'Preferred Vendor',
+        trackInInventory: 'Track Stock'
+      };
+
+      changedProductIds.forEach(prodId => {
+        const prod = products.find(x => x.id === prodId);
+        if (!prod) return;
+        const changes = draftChanges[prodId] || {};
+        Object.keys(changes).forEach(field => {
+          const oldVal = prod[field];
+          const newVal = changes[field];
+          if (field === 'category') catChanges++;
+          if (field === 'price' || field === 'costPrice') priceChanges++;
+          if (field === 'trackInInventory') inventoryChanges++;
+
+          let oldDisplay = oldVal != null ? String(oldVal) : '—';
+          let newDisplay = newVal != null ? String(newVal) : '—';
+
+          if (field === 'price' || field === 'costPrice') {
+            oldDisplay = fmtCurrency(oldVal || 0);
+            newDisplay = fmtCurrency(newVal || 0);
+          } else if (field === 'preferredPartyId') {
+            oldDisplay = oldVal ? (partyMap[oldVal] || `Vendor #${oldVal}`) : 'None';
+            newDisplay = newVal ? (partyMap[newVal] || `Vendor #${newVal}`) : 'None';
+          } else if (field === 'category') {
+            oldDisplay = oldVal || 'UNCATEGORIZED';
+            newDisplay = newVal || 'UNCATEGORIZED';
+          } else if (field === 'trackInInventory') {
+            oldDisplay = prod.inInventory ? 'Yes (Tracked)' : 'No (Catalog Only)';
+            newDisplay = (newVal === 'true' || newVal === true) ? 'Yes (Tracked)' : 'No (Catalog Only)';
+          }
+
+          diffs.push({
+            prodId,
+            prodName: prod.name,
+            sku: prod.hsnCode ? `HSN: ${prod.hsnCode}` : (prod.sku ? `SKU: ${prod.sku}` : 'No HSN/SAC'),
+            field,
+            label: FIELD_LABELS[field] || field,
+            oldDisplay,
+            newDisplay
+          });
+        });
+      });
+
+      return {
+        diffs,
+        totalProducts: changedProductIds.length,
+        catChanges,
+        priceChanges,
+        inventoryChanges
+      };
+    }, [changedProductIds, draftChanges, products, partyMap]);
+
+    const handlePreSaveCheck = () => {
+      setErrorMsg(null);
+      if (changedProductIds.length === 0) {
+        setErrorMsg('No modifications detected. Edit cells in the table to save.');
+        return;
+      }
+
+      // Validations
+      for (const id of changedProductIds) {
+        const prod = products.find(p => p.id === id);
+        const c = draftChanges[id] || {};
+        const pName = prod ? prod.name : `Product #${id}`;
+        if (c.name !== undefined && !c.name.trim()) {
+          setErrorMsg(`'${pName}': Product name cannot be empty.`);
+          return;
+        }
+        if (c.price !== undefined && c.price !== '' && (isNaN(Number(c.price)) || Number(c.price) < 0)) {
+          setErrorMsg(`'${pName}': Base selling price cannot be negative.`);
+          return;
+        }
+        if (c.costPrice !== undefined && c.costPrice !== '' && (isNaN(Number(c.costPrice)) || Number(c.costPrice) < 0)) {
+          setErrorMsg(`'${pName}': Cost price cannot be negative.`);
+          return;
+        }
+        if (c.minStockLevel !== undefined && c.minStockLevel !== '' && (isNaN(Number(c.minStockLevel)) || Number(c.minStockLevel) < 0)) {
+          setErrorMsg(`'${pName}': Min stock level cannot be negative.`);
+          return;
+        }
+      }
+
+      setShowReviewModal(true);
+    };
+
+    const handleConfirmSave = async () => {
+      setSaving(true);
+      setErrorMsg(null);
+      try {
+        const updates = changedProductIds.map(id => {
+          const changes = draftChanges[id] || {};
+          const original = products.find(p => p.id === id);
+          const row = { productId: id };
+
+          if (original) {
+            row.expectedCurrentStock = Number(original.stockQuantity || 0);
+          }
+
+          if (changes.name !== undefined) row.name = (changes.name || '').trim();
+          if (changes.category !== undefined) row.category = (changes.category || '').trim();
+          if (changes.unit !== undefined) row.unit = (changes.unit || 'pcs').trim();
+          if (changes.price !== undefined && changes.price !== '') row.price = Number(changes.price);
+          if (changes.costPrice !== undefined && changes.costPrice !== '') row.costPrice = Number(changes.costPrice);
+          if (changes.minStockLevel !== undefined && changes.minStockLevel !== '') row.minStockLevel = Number(changes.minStockLevel);
+          if (changes.hsnCode !== undefined) row.hsnCode = (changes.hsnCode || '').trim();
+          if (changes.gstPercentage !== undefined) row.gstPercentage = Number(changes.gstPercentage);
+          if (changes.preferredPartyId !== undefined) {
+            row.preferredPartyId = changes.preferredPartyId ? Number(changes.preferredPartyId) : null;
+          }
+          if (changes.trackInInventory !== undefined) {
+            row.trackInInventory = (changes.trackInInventory === 'true' || changes.trackInInventory === true);
+          }
+
+          // Only include SKU/Barcode if explicitly edited via Advanced Columns!
+          if (changes.sku !== undefined) row.sku = (changes.sku || '').trim();
+          if (changes.barcode !== undefined) row.barcode = (changes.barcode || '').trim();
+
+          return row;
+        });
+
+        const resp = await API.products.updateBulk(updates);
+        if (typeof showToast === 'function') {
+          showToast(`Successfully updated ${resp.updatedCount || updates.length} product master records!`, 'success');
+        }
+        setShowReviewModal(false);
+        if (onSuccess) onSuccess();
+      } catch (err) {
+        console.error('Product Master bulk edit save error:', err);
+        setErrorMsg(err.message || 'Failed to save product master changes.');
+        setShowReviewModal(false);
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const handleRequestClose = () => {
+      if (totalChangesCount > 0) {
+        setShowUnsavedPrompt(true);
+      } else {
+        onClose();
+      }
+    };
+
+    return React.createElement('div', {
+      className: 'modal-backdrop',
+      style: {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16
+      },
+      onClick: (e) => { if (e.target === e.currentTarget) handleRequestClose(); }
+    },
+      React.createElement('div', {
+        className: 'card',
+        style: {
+          width: '95vw', maxWidth: 1250, maxHeight: '92vh',
+          display: 'flex', flexDirection: 'column', padding: 0,
+          background: 'var(--bg-card)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3)'
+        }
+      },
+        // Modal Header
+        React.createElement('div', {
+          style: {
+            padding: '16px 24px', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card-header)'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('span', { style: { fontSize: '1.4rem' } }, '📝'),
+            React.createElement('div', null,
+              React.createElement('h3', { style: { margin: 0, fontSize: '1.15rem', fontWeight: 700 } }, 'Product Master Bulk Edit'),
+              React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                'Edit multiple product records directly across prices, categories, HSN, tax, and inventory settings.'
+              )
+            )
+          ),
+          React.createElement('button', {
+            className: 'btn btn-ghost btn-sm',
+            onClick: handleRequestClose,
+            style: { fontSize: '1.2rem', padding: '4px 10px' }
+          }, '✕')
+        ),
+
+        // Filter & Toolbar
+        React.createElement('div', {
+          style: {
+            padding: '10px 20px', borderBottom: '1px solid var(--border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+            background: 'var(--bg-secondary, rgba(0,0,0,0.02))'
+          }
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 } },
+            React.createElement('input', {
+              type: 'text',
+              placeholder: '🔍 Search product name, HSN, barcode...',
+              className: 'form-control form-control-sm',
+              style: { maxWidth: 240 },
+              value: searchQuery,
+              onChange: (e) => setSearchQuery(e.target.value)
+            }),
+            React.createElement('select', {
+              className: 'form-control form-control-sm',
+              style: { width: 'auto' },
+              value: selectedCategory,
+              onChange: (e) => setSelectedCategory(e.target.value)
+            },
+              React.createElement('option', { value: 'ALL' }, 'All Categories'),
+              React.createElement('option', { value: 'UNCATEGORIZED' }, '⚠️ UNCATEGORIZED'),
+              categories.map(c => React.createElement('option', { key: c, value: c }, c))
+            ),
+            React.createElement('select', {
+              className: 'form-control form-control-sm',
+              style: { width: 'auto' },
+              value: statusFilter,
+              onChange: (e) => setStatusFilter(e.target.value)
+            },
+              React.createElement('option', { value: 'ALL' }, 'All Status'),
+              React.createElement('option', { value: 'IN_INVENTORY' }, '📦 In Inventory'),
+              React.createElement('option', { value: 'NOT_IN_INVENTORY' }, '📄 Catalog Only')
+            ),
+            React.createElement('button', {
+              className: `btn ${needsSetupOnly ? 'btn-primary' : 'btn-outline'} btn-sm`,
+              onClick: () => setNeedsSetupOnly(!needsSetupOnly),
+              style: { display: 'flex', alignItems: 'center', gap: 4 }
+            }, `⚠️ Needs Setup (${needsSetupCount})`),
+            React.createElement('label', {
+              style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', margin: 0, fontSize: '0.8rem', fontWeight: 500 }
+            },
+              React.createElement('input', {
+                type: 'checkbox',
+                checked: showAdvanced,
+                onChange: () => setShowAdvanced(!showAdvanced)
+              }),
+              'Show Advanced Columns (SKU, Barcode)'
+            )
+          ),
+          React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
+            `Showing ${displayedRows.length} of ${rows.length} products (${changedProductIds.length} modified)`
+          )
+        ),
+
+        // Error message banner
+        errorMsg && React.createElement('div', {
+          style: {
+            background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', padding: '10px 20px',
+            borderBottom: '1px solid rgba(239, 68, 68, 0.25)', fontSize: '0.82rem', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 8
+          }
+        }, '⚠️ ', errorMsg),
+
+        // Grid Container
+        React.createElement('div', {
+          style: { flex: 1, overflow: 'hidden', padding: '12px 20px', display: 'flex', flexDirection: 'column' }
+        },
+          React.createElement('div', {
+            style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: '0.75rem', color: 'var(--text-secondary)' }
+          },
+            React.createElement('span', null, `${displayedRows.length} rows total`),
+            React.createElement('span', null, '💡 Tip: Arrow keys navigate cells. Enter moves down. Paste (Ctrl+V / ⌘V) supports Excel / Sheets.')
+          ),
+          React.createElement(Grid || CompactEditableGrid, {
+            columns: masterColumns,
+            rows: displayedRows,
+            onChangeRow: updateRow,
+            modifiedTracker: modifiedTracker,
+            showAdvanced: showAdvanced,
+            canAddRows: false,
+            canDeleteRows: false,
+            maxHeight: 'calc(80vh - 180px)',
+            emptyMessage: 'No products match the selected criteria.'
+          }),
+          React.createElement('datalist', { id: 'pm-bulk-cat-list' },
+            categories.map(c => React.createElement('option', { key: c, value: c }))
+          )
+        ),
+
+        // Footer
+        React.createElement('div', {
+          style: {
+            padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-card-header)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+          }
+        },
+          React.createElement('div', { style: { fontSize: '0.82rem', color: 'var(--text-secondary)' } },
+            changedProductIds.length > 0
+              ? `✏️ ${changedProductIds.length} product(s) modified (${totalChangesCount} fields)`
+              : 'No modifications made yet. Click any cell to edit or paste from spreadsheet.'
+          ),
+          React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center' } },
+            React.createElement('button', {
+              className: 'btn btn-ghost',
+              onClick: handleRequestClose,
+              disabled: saving
+            }, 'Cancel'),
+            React.createElement('button', {
+              className: 'btn btn-primary',
+              disabled: saving || changedProductIds.length === 0,
+              onClick: handlePreSaveCheck,
+              style: { fontWeight: 700 }
+            }, saving ? '⏳ Saving...' : '🔍 Review & Save Changes')
+          )
+        ),
+
+        // Review Diff Confirmation Modal
+        showReviewModal && React.createElement('div', {
+          style: {
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16
+          }
+        },
+          React.createElement('div', {
+            className: 'card',
+            style: {
+              width: '90vw', maxWidth: 820, maxHeight: '88vh',
+              display: 'flex', flexDirection: 'column', padding: 0,
+              background: 'var(--bg-card)', borderRadius: 12, overflow: 'hidden'
+            }
+          },
+            React.createElement('div', {
+              style: { padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card-header)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+            },
+              React.createElement('div', { style: { fontWeight: 700, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 } },
+                '🔍 Review Bulk Product Master Changes'
+              ),
+              React.createElement('button', { className: 'btn btn-ghost btn-sm', onClick: () => setShowReviewModal(false) }, '✕')
+            ),
+            React.createElement('div', { style: { padding: '16px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 } },
+              React.createElement('div', { style: { fontSize: '0.85rem', color: 'var(--text-secondary)' } },
+                'Inspect the modified fields before confirming atomic persistence to the database.'
+              ),
+              // Summary Metrics Cards
+              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 } },
+                React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Products Changed'),
+                  React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700, color: '#6366f1' } }, reviewDiffs.totalProducts)
+                ),
+                React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Category Updates'),
+                  React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700 } }, reviewDiffs.catChanges)
+                ),
+                React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Price/Cost Changes'),
+                  React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700 } }, reviewDiffs.priceChanges)
+                ),
+                React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
+                  React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Inventory Onboardings'),
+                  React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700, color: '#10b981' } }, reviewDiffs.inventoryChanges)
+                )
+              ),
+              // Detailed Diff Table
+              React.createElement('div', { style: { overflowY: 'auto', flex: 1, border: '1px solid var(--border)', borderRadius: 6 } },
+                React.createElement('table', { className: 'data-table', style: { width: '100%', margin: 0, fontSize: '0.82rem' } },
+                  React.createElement('thead', null,
+                    React.createElement('tr', null,
+                      React.createElement('th', null, 'Product'),
+                      React.createElement('th', null, 'Field'),
+                      React.createElement('th', null, 'Original Value'),
+                      React.createElement('th', null, 'New Value')
+                    )
+                  ),
+                  React.createElement('tbody', null,
+                    reviewDiffs.diffs.map((d, i) => React.createElement('tr', { key: i },
+                      React.createElement('td', null,
+                        React.createElement('div', { style: { fontWeight: 600 } }, d.prodName),
+                        React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, `SKU: ${d.sku}`)
+                      ),
+                      React.createElement('td', null,
+                        React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem' } }, d.label)
+                      ),
+                      React.createElement('td', { style: { color: 'var(--text-secondary)', textDecoration: 'line-through' } }, d.oldDisplay),
+                      React.createElement('td', { style: { fontWeight: 700, color: '#10b981' } }, d.newDisplay)
+                    ))
+                  )
+                )
+              )
+            ),
+            React.createElement('div', {
+              style: { padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-card-header)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+            },
+              React.createElement('button', { className: 'btn btn-ghost', onClick: () => setShowReviewModal(false), disabled: saving }, '⬅️ Back to Editing'),
+              React.createElement('button', { className: 'btn btn-primary', onClick: handleConfirmSave, disabled: saving || reviewDiffs.totalProducts === 0, style: { fontWeight: 700, padding: '10px 24px' } },
+                saving ? '⏳ Persisting Changes...' : '💾 Confirm & Save Changes'
+              )
+            )
+          )
+        ),
+
+        // Unsaved changes confirmation dialog
+        showUnsavedPrompt && React.createElement('div', {
+          style: {
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(3px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300, padding: 16
+          }
+        },
+          React.createElement('div', {
+            className: 'card',
+            style: { maxWidth: 440, width: '100%', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }
+          },
+            React.createElement('h4', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, '⚠️ Unsaved Changes'),
+            React.createElement('p', { style: { margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' } },
+              `You have ${totalChangesCount} unsaved field changes across ${changedProductIds.length} product(s). If you close the modal, these draft changes will be discarded.`
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 } },
+              React.createElement('button', {
+                className: 'btn btn-ghost',
+                onClick: () => setShowUnsavedPrompt(false)
+              }, 'Continue Editing'),
+              React.createElement('button', {
+                className: 'btn btn-danger',
+                onClick: () => {
+                  setShowUnsavedPrompt(false);
+                  onClose();
+                }
+              }, 'Discard & Close')
             )
           )
         )
@@ -5075,14 +5711,13 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // 7. PRODUCT INTELLIGENCE HUB (Tabs: Catalog, Pricing, Restock Queue)
-  // ═══════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════
-  // 7. PRODUCT INTELLIGENCE HUB (Catalog, Master Maintenance, Pricing, Restock Queue)
+  // 8. PRODUCT INTELLIGENCE HUB (Catalog, Master Maintenance, Pricing, Restock Queue)
   // ═══════════════════════════════════════════════════════════════════
   function ProductIntelligenceHub() {
     const [hubTab, setHubTab] = useState('INTELLIGENCE'); // 'INTELLIGENCE' | 'PRICING' | 'SMART_REORDER'
     const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+    const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+    const [bulkEditInitialProdId, setBulkEditInitialProdId] = useState(null);
 
     const [products, setProducts] = useState([]);
     const [parties, setParties] = useState([]);
@@ -5094,65 +5729,6 @@
     const [inventoryFilter, setInventoryFilter] = useState('ALL'); // 'ALL' | 'IN_INVENTORY' | 'NOT_IN_INVENTORY'
     const [needsSetupOnly, setNeedsSetupOnly] = useState(false);
     const [selectedProductId, setSelectedProductId] = useState(null);
-
-    // Unified Product Master Edit Workspace State
-    const [editMode, setEditMode] = useState(null); // null | 'BULK' | 'INDIVIDUAL'
-    const [individualEditProdId, setIndividualEditProdId] = useState(null);
-    const [draftChanges, setDraftChanges] = useState({}); // { [productId]: { field: val, ... } }
-    const [showReviewModal, setShowReviewModal] = useState(false);
-    const [savingBulk, setSavingBulk] = useState(false);
-    const [bulkError, setBulkError] = useState(null);
-    const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
-    const [pendingTab, setPendingTab] = useState(null);
-
-    const isBulkEditMode = editMode === 'BULK';
-    const isIndividualEditMode = editMode === 'INDIVIDUAL';
-    const isWorkspaceEditing = editMode !== null;
-    const [showAdvancedMasterColumns, setShowAdvancedMasterColumns] = useState(false);
-
-    const masterBulkEditColumns = useMemo(() => [
-      { key: 'name', label: 'Product Name', required: true, minWidth: 200 },
-      { key: 'hsnCode', label: 'HSN/SAC Code', width: 110 },
-      { key: 'category', label: 'Category', datalistId: 'master-categories-datalist', width: 140 },
-      { key: 'price', label: 'Base Price (₹)', type: 'number', width: 110, align: 'right' },
-      { key: 'costPrice', label: 'Cost Price (₹)', type: 'number', width: 110, align: 'right' },
-      { key: 'minStockLevel', label: 'Min Stock', type: 'number', width: 95, align: 'right' },
-      { key: 'unit', label: 'Unit', width: 80 },
-      {
-        key: 'gstPercentage', label: 'GST %', type: 'select', width: 85, align: 'right',
-        options: [
-          { value: '0', label: '0%' },
-          { value: '5', label: '5%' },
-          { value: '12', label: '12%' },
-          { value: '18', label: '18%' },
-          { value: '28', label: '28%' }
-        ]
-      },
-      {
-        key: 'preferredPartyId', label: 'Preferred Vendor', type: 'select', width: 150,
-        options: [
-          { value: '', label: 'None' },
-          ...parties.map(p => ({ value: String(p.id), label: p.name || p.canonicalName }))
-        ]
-      },
-      {
-        key: 'trackInInventory', label: 'Track Stock', type: 'select', width: 130,
-        options: [
-          { value: 'true', label: 'Yes (Tracked)' },
-          { value: 'false', label: 'No (Catalog Only)' }
-        ]
-      },
-      {
-        key: 'stockQuantity', label: 'Stock', width: 75, align: 'right', readOnly: true,
-        format: (val, row) => {
-          if (row.trackInInventory === 'false' || row.trackInInventory === false) return 'Catalog';
-          return Number(val || 0).toLocaleString();
-        }
-      },
-      // Advanced columns (hidden by default unless showAdvanced = true)
-      { key: 'sku', label: 'SKU Code', isAdvanced: true, width: 110 },
-      { key: 'barcode', label: 'Barcode', isAdvanced: true, width: 120 }
-    ], [parties]);
 
     // Product Master Pagination State
     const [masterPage, setMasterPage] = useState(1);
@@ -5260,7 +5836,6 @@
       return map;
     }, [parties]);
 
-    // Check if a product needs setup
     const isNeedsSetup = (p) => {
       const noCat = !p.category || p.category.trim() === '' || p.category.trim().toUpperCase() === 'UNCATEGORIZED';
       const noCost = p.costPrice == null || Number(p.costPrice) <= 0;
@@ -5307,19 +5882,8 @@
       return filteredProducts.slice(start, start + masterPageSize);
     }, [filteredProducts, safeMasterPage, masterPageSize]);
 
-    const selectedIndividualProduct = useMemo(() => {
-      if (!individualEditProdId) return null;
-      return products.find(p => p.id === individualEditProdId) || null;
-    }, [products, individualEditProdId]);
+    const displayedProducts = paginatedMasterProducts;
 
-    const displayedProducts = useMemo(() => {
-      if (isIndividualEditMode) {
-        return selectedIndividualProduct ? [selectedIndividualProduct] : [];
-      }
-      return paginatedMasterProducts;
-    }, [isIndividualEditMode, selectedIndividualProduct, paginatedMasterProducts]);
-
-    // Overall Catalog Summary KPIs
     const catalogSummary = useMemo(() => {
       let totalStock = 0;
       let lowStockCount = 0;
@@ -5346,286 +5910,9 @@
       };
     }, [products]);
 
-    // Track total modified products and fields in draft
-    const changedProductIds = useMemo(() => Object.keys(draftChanges).map(Number), [draftChanges]);
-    const totalChangesCount = useMemo(() => {
-      let count = 0;
-      Object.values(draftChanges).forEach(obj => {
-        count += Object.keys(obj).length;
-      });
-      return count;
-    }, [draftChanges]);
-
-    // Helper to get effective cell value (draft vs original)
-    const getCellVal = (p, field) => {
-      if (draftChanges[p.id] && draftChanges[p.id][field] !== undefined) {
-        return draftChanges[p.id][field];
-      }
-      return p[field] != null ? p[field] : '';
-    };
-
-    const masterGridRows = useMemo(() => {
-      return displayedProducts.map(p => {
-        const rawTrack = getCellVal(p, 'trackInInventory');
-        const trackVal = rawTrack !== '' ? (rawTrack === true || rawTrack === 'true') : Boolean(p.inInventory);
-        return {
-          id: p.id,
-          name: getCellVal(p, 'name'),
-          hsnCode: getCellVal(p, 'hsnCode'),
-          category: getCellVal(p, 'category'),
-          price: getCellVal(p, 'price'),
-          costPrice: getCellVal(p, 'costPrice'),
-          minStockLevel: getCellVal(p, 'minStockLevel'),
-          unit: getCellVal(p, 'unit') || 'pcs',
-          gstPercentage: String(getCellVal(p, 'gstPercentage') ?? '0'),
-          preferredPartyId: String(getCellVal(p, 'preferredPartyId') || ''),
-          trackInInventory: String(trackVal),
-          stockQuantity: p.stockQuantity || 0,
-          sku: getCellVal(p, 'sku'),
-          barcode: getCellVal(p, 'barcode')
-        };
-      });
-    }, [displayedProducts, draftChanges]);
-
-    // Update draft cell
-    const handleBulkCellChange = (prodId, field, newVal, originalVal) => {
-      setDraftChanges(prev => {
-        const prodDraft = { ...(prev[prodId] || {}) };
-        const isSame = (String(newVal ?? '').trim() === String(originalVal ?? '').trim()) || (newVal === originalVal);
-        if (isSame) {
-          delete prodDraft[field];
-        } else {
-          prodDraft[field] = newVal;
-        }
-        const next = { ...prev };
-        if (Object.keys(prodDraft).length === 0) {
-          delete next[prodId];
-        } else {
-          next[prodId] = prodDraft;
-        }
-        return next;
-      });
-    };
-
-    // Keyboard navigation in bulk table
-    const handleBulkKeyDown = (e, rowIdx, colIdx) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (changedProductIds.length > 0) setShowReviewModal(true);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.target.blur();
-        return;
-      }
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const container = bulkTableRef.current;
-        if (!container) return;
-        const rows = container.querySelectorAll('tbody tr');
-        const nextRow = rows[rowIdx + 1];
-        if (nextRow) {
-          const inputs = nextRow.querySelectorAll('input:not([type="hidden"]), select');
-          const target = inputs[colIdx] || inputs[0];
-          if (target) {
-            target.focus();
-            if (target.select) target.select();
-          }
-        }
-      }
-    };
-
-    // Individual and Bulk Editing Workflow Handlers
-    const handleStartIndividualEdit = (p) => {
-      if (isWorkspaceEditing && totalChangesCount > 0) {
-        if (!confirm('You have unsaved changes. Discard them to edit this product?')) {
-          return;
-        }
-      }
-      setDraftChanges({});
-      setBulkError(null);
-      setIndividualEditProdId(p.id);
-      setEditMode('INDIVIDUAL');
-    };
-
-    const handleExitEditing = () => {
-      if (totalChangesCount > 0) {
-        if (!confirm('Exit editing? Any unsaved draft changes will be discarded.')) {
-          return;
-        }
-      }
-      setDraftChanges({});
-      setBulkError(null);
-      setEditMode(null);
-      setIndividualEditProdId(null);
-    };
-
-    const handleToggleBulkEdit = () => {
-      if (isBulkEditMode) {
-        handleExitEditing();
-      } else {
-        if (isIndividualEditMode && totalChangesCount > 0) {
-          if (!confirm('Exit individual edit mode? Any unsaved changes will be discarded.')) {
-            return;
-          }
-        }
-        setDraftChanges({});
-        setBulkError(null);
-        setIndividualEditProdId(null);
-        setEditMode('BULK');
-      }
-    };
-
-    // Unified Save Execution (handles single product and bulk products)
-    const handleConfirmBulkSave = async () => {
-      if (changedProductIds.length === 0) return;
-      setSavingBulk(true);
-      setBulkError(null);
-      try {
-        const updates = changedProductIds.map(id => {
-          const changes = draftChanges[id] || {};
-          const row = { productId: id };
-          if (changes.name !== undefined) row.name = (changes.name || '').trim();
-          if (changes.sku !== undefined) row.sku = (changes.sku || '').trim();
-          if (changes.barcode !== undefined) row.barcode = (changes.barcode || '').trim();
-          if (changes.category !== undefined) row.category = (changes.category || '').trim();
-          if (changes.price !== undefined) row.price = Number(changes.price);
-          if (changes.costPrice !== undefined) row.costPrice = Number(changes.costPrice);
-          if (changes.minStockLevel !== undefined) row.minStockLevel = Number(changes.minStockLevel);
-          if (changes.unit !== undefined) row.unit = (changes.unit || 'pcs').trim();
-          if (changes.hsnCode !== undefined) row.hsnCode = (changes.hsnCode || '').trim();
-          if (changes.gstPercentage !== undefined) row.gstPercentage = Number(changes.gstPercentage);
-          if (changes.preferredPartyId !== undefined) row.preferredPartyId = changes.preferredPartyId ? Number(changes.preferredPartyId) : 0;
-          if (changes.description !== undefined) row.description = changes.description;
-          if (changes.trackInInventory !== undefined) {
-            row.trackInInventory = String(changes.trackInInventory) === 'true';
-          }
-          if (changes.openingStock !== undefined) {
-            row.openingStock = Number(changes.openingStock);
-          }
-          return row;
-        });
-
-        // Client-side validations
-        for (const u of updates) {
-          if (u.name !== undefined && !u.name.trim()) {
-            throw new Error('Product name cannot be empty');
-          }
-          if (u.price !== undefined && (isNaN(u.price) || u.price < 0)) {
-            throw new Error('Selling price cannot be negative');
-          }
-          if (u.costPrice !== undefined && (isNaN(u.costPrice) || u.costPrice < 0)) {
-            throw new Error('Cost price cannot be negative');
-          }
-          if (u.minStockLevel !== undefined && (isNaN(u.minStockLevel) || u.minStockLevel < 0)) {
-            throw new Error('Min stock level cannot be negative');
-          }
-        }
-
-        const resp = await API.products.updateBulk(updates);
-        if (typeof showToast === 'function') {
-          if (isIndividualEditMode) {
-            const prod = products.find(x => x.id === changedProductIds[0]);
-            showToast(`Product '${(updates[0] && updates[0].name) || (prod && prod.name) || 'item'}' updated successfully.`, 'success');
-          } else {
-            showToast(`Successfully updated ${resp.updatedCount || updates.length} products.`, 'success');
-          }
-        }
-        setDraftChanges({});
-        setShowReviewModal(false);
-        setEditMode(null);
-        setIndividualEditProdId(null);
-        await loadProducts();
-      } catch (err) {
-        console.error('Save error:', err);
-        setBulkError(err.message || 'Failed to save changes. Check for duplicate SKUs or invalid values.');
-      } finally {
-        setSavingBulk(false);
-      }
-    };
-
-    // Navigation Tab Guard
     const handleTabChange = (newTab) => {
-      if (isWorkspaceEditing && totalChangesCount > 0 && newTab !== hubTab) {
-        setPendingTab(newTab);
-        setShowUnsavedPrompt(true);
-      } else {
-        setHubTab(newTab);
-      }
+      setHubTab(newTab);
     };
-
-    // Diff details for Review modal
-    const reviewDiffs = useMemo(() => {
-      const diffs = [];
-      let catChanges = 0;
-      let priceChanges = 0;
-      let inventoryChanges = 0;
-
-      const FIELD_LABELS = {
-        name: 'Product Name',
-        sku: 'SKU Code',
-        barcode: 'Barcode',
-        category: 'Category',
-        price: 'Base Price',
-        costPrice: 'Cost Price',
-        minStockLevel: 'Min Stock Level',
-        unit: 'Unit',
-        hsnCode: 'HSN/SAC Code',
-        gstPercentage: 'GST %',
-        preferredPartyId: 'Preferred Vendor',
-        description: 'Description',
-        trackInInventory: 'Track in Inventory',
-        openingStock: 'Opening Stock'
-      };
-
-      changedProductIds.forEach(prodId => {
-        const prod = products.find(x => x.id === prodId);
-        if (!prod) return;
-        const changes = draftChanges[prodId] || {};
-        Object.keys(changes).forEach(field => {
-          const oldVal = prod[field];
-          const newVal = changes[field];
-          if (field === 'category') catChanges++;
-          if (field === 'price' || field === 'costPrice') priceChanges++;
-          if (field === 'trackInInventory' || field === 'openingStock') inventoryChanges++;
-
-          let oldDisplay = oldVal != null ? String(oldVal) : '—';
-          let newDisplay = newVal != null ? String(newVal) : '—';
-
-          if (field === 'price' || field === 'costPrice') {
-            oldDisplay = fmtCurrency(oldVal || 0);
-            newDisplay = fmtCurrency(newVal || 0);
-          } else if (field === 'preferredPartyId') {
-            oldDisplay = oldVal ? (partyMap[oldVal] || `Vendor #${oldVal}`) : 'None';
-            newDisplay = newVal ? (partyMap[newVal] || `Vendor #${newVal}`) : 'None';
-          } else if (field === 'category') {
-            oldDisplay = oldVal || 'UNCATEGORIZED';
-            newDisplay = newVal || 'UNCATEGORIZED';
-          } else if (field === 'trackInInventory') {
-            oldDisplay = prod.inInventory ? 'Yes (Tracked)' : 'No (Catalog Only)';
-            newDisplay = newVal ? 'Yes (Track in Inventory)' : 'No';
-          }
-
-          diffs.push({
-            prodId,
-            prodName: prod.name,
-            sku: prod.hsnCode ? `HSN: ${prod.hsnCode}` : (prod.sku ? `SKU: ${prod.sku}` : 'No HSN/SAC'),
-            field,
-            label: FIELD_LABELS[field] || field,
-            oldDisplay,
-            newDisplay
-          });
-        });
-      });
-
-      return {
-        diffs,
-        totalProducts: changedProductIds.length,
-        catChanges,
-        priceChanges,
-        inventoryChanges
-      };
-    }, [changedProductIds, draftChanges, products, partyMap]);
 
     return React.createElement('div', { className: 'forecast-hub-container', style: { display: 'flex', flexDirection: 'column', gap: 16 } },
       // Category Datalist for autocomplete
@@ -5662,16 +5949,14 @@
           }, '⚡ Order Products'),
 
           hubTab === 'INTELLIGENCE' && React.createElement('button', {
-            className: `btn ${isWorkspaceEditing ? 'btn-secondary' : 'btn-primary'}`,
+            id: 'btn-product-master-bulk-edit',
+            className: 'btn btn-primary',
             onClick: () => {
-              if (isIndividualEditMode) {
-                handleExitEditing();
-              } else {
-                handleToggleBulkEdit();
-              }
+              setBulkEditInitialProdId(null);
+              setShowBulkEditModal(true);
             },
             style: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }
-          }, isIndividualEditMode ? '✖️ Exit Individual Edit' : (isBulkEditMode ? '✖️ Exit Bulk Edit' : '📋 Bulk Edit Mode')),
+          }, '📋 Bulk Edit Mode'),
 
           React.createElement('button', {
             className: 'btn btn-outline',
@@ -5756,74 +6041,6 @@
           )
         ),
 
-        // Workspace Editing Banner (Unified for Bulk Edit & Individual Edit)
-        isWorkspaceEditing && React.createElement('div', {
-          style: {
-            position: 'sticky',
-            top: 0,
-            zIndex: 25,
-            background: isIndividualEditMode
-              ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.14), rgba(99, 102, 241, 0.10))'
-              : 'linear-gradient(90deg, rgba(99, 102, 241, 0.14), rgba(16, 185, 129, 0.08))',
-            border: isIndividualEditMode ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(99, 102, 241, 0.35)',
-            borderRadius: 8,
-            padding: '10px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 10,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
-          }
-        },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            React.createElement('span', { style: { fontSize: '1.25rem' } }, isIndividualEditMode ? '✏️' : '📋'),
-            React.createElement('div', null,
-              React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 } },
-                isIndividualEditMode
-                  ? `Individual Product Master Edit: ${selectedIndividualProduct ? selectedIndividualProduct.name : 'Selected Product'}`
-                  : 'Bulk Product Master Edit Workspace',
-                React.createElement('span', {
-                  className: 'badge',
-                  style: {
-                    background: isIndividualEditMode ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)',
-                    color: isIndividualEditMode ? '#10b981' : '#6366f1',
-                    fontSize: '0.72rem',
-                    fontWeight: 700
-                  }
-                }, isIndividualEditMode ? 'Single Product Focus' : 'Multi-Item Workspace')
-              ),
-              React.createElement('div', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
-                isIndividualEditMode
-                  ? 'Edit cells directly. Press Tab to move across fields. Click "Review Changes & Save" in the top bar to commit.'
-                  : 'Edit cells directly in the table. You can search or filter categories without losing unsaved edits. Press Tab to move across cells, Enter to move down.'
-              )
-            )
-          ),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            React.createElement('span', {
-              className: 'badge',
-              style: {
-                background: totalChangesCount > 0 ? 'rgba(99,102,241,0.2)' : 'rgba(100,116,139,0.2)',
-                color: totalChangesCount > 0 ? '#6366f1' : 'var(--text-secondary)',
-                fontWeight: 700,
-                fontSize: '0.85rem'
-              }
-            }, `${changedProductIds.length} ${changedProductIds.length === 1 ? 'product' : 'products'} modified (${totalChangesCount} ${totalChangesCount === 1 ? 'field' : 'fields'})`),
-            React.createElement('button', {
-              className: 'btn btn-outline btn-sm',
-              onClick: handleExitEditing,
-              style: { fontWeight: 600 }
-            }, isIndividualEditMode ? '✖️ Cancel & Exit' : '✖️ Exit Bulk Edit'),
-            React.createElement('button', {
-              className: 'btn btn-primary btn-sm',
-              disabled: totalChangesCount === 0 || savingBulk,
-              onClick: () => setShowReviewModal(true),
-              style: { fontWeight: 700 }
-            }, '🔍 Review Changes & Save')
-          )
-        ),
-
         // Filter & Action Toolbar
         React.createElement('div', {
           className: 'card',
@@ -5870,17 +6087,7 @@
               className: `btn ${needsSetupOnly ? 'btn-primary' : 'btn-outline'} btn-sm`,
               onClick: () => setNeedsSetupOnly(!needsSetupOnly),
               style: { display: 'flex', alignItems: 'center', gap: 4 }
-            }, `⚠️ Needs Setup (${needsSetupCount})`),
-            isWorkspaceEditing && React.createElement('label', {
-              style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', margin: 0, fontSize: '0.8rem', fontWeight: 500, marginLeft: 6 }
-            },
-              React.createElement('input', {
-                type: 'checkbox',
-                checked: showAdvancedMasterColumns,
-                onChange: () => setShowAdvancedMasterColumns(!showAdvancedMasterColumns)
-              }),
-              'Show Advanced Columns (SKU, Barcode)'
-            )
+            }, `⚠️ Needs Setup (${needsSetupCount})`)
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('span', { style: { fontSize: '0.8rem', color: 'var(--text-secondary)' } },
@@ -5889,192 +6096,171 @@
           )
         ),
 
-        // Product Master Grid or Table
-        isWorkspaceEditing ? (
-          React.createElement(Grid || CompactEditableGrid, {
-            columns: masterBulkEditColumns,
-            rows: masterGridRows,
-            onChangeRow: (rowIdx, colKey, val) => {
-              const p = displayedProducts[rowIdx];
-              if (!p) return;
-              let originalVal = p[colKey];
-              if (colKey === 'trackInInventory') {
-                originalVal = String(Boolean(p.inInventory));
-              } else if (colKey === 'gstPercentage') {
-                originalVal = String(p.gstPercentage ?? '0');
-              } else if (colKey === 'preferredPartyId') {
-                originalVal = String(p.preferredPartyId || '');
-              }
-              handleBulkCellChange(p.id, colKey, val, originalVal);
-            },
-            showAdvanced: showAdvancedMasterColumns,
-            modifiedTracker: (row, colKey) => Boolean(draftChanges[row.id] && draftChanges[row.id][colKey] !== undefined),
-            maxHeight: 'calc(100vh - 290px)',
-            emptyMessage: isIndividualEditMode ? 'Selected product not found.' : 'No products match the selected criteria.'
-          })
-        ) : (
-          React.createElement('div', {
-            ref: bulkTableRef,
-            tabIndex: 0,
-            onKeyDown: (e) => {
-              if (e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
-              const el = e.currentTarget;
-              if (!el) return;
-              const scrollStep = 55;
-              const pageStep = el.clientHeight ? el.clientHeight * 0.8 : 300;
-              if (e.key === 'ArrowDown') { e.preventDefault(); el.scrollBy({ top: scrollStep, behavior: 'smooth' }); }
-              else if (e.key === 'ArrowUp') { e.preventDefault(); el.scrollBy({ top: -scrollStep, behavior: 'smooth' }); }
-              else if (e.key === 'PageDown') { e.preventDefault(); el.scrollBy({ top: pageStep, behavior: 'smooth' }); }
-              else if (e.key === 'PageUp') { e.preventDefault(); el.scrollBy({ top: -pageStep, behavior: 'smooth' }); }
-              else if (e.key === 'Home') { e.preventDefault(); el.scrollTo({ top: 0, behavior: 'smooth' }); }
-              else if (e.key === 'End') { e.preventDefault(); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
-            },
-            className: 'table-container card firm-table-card',
-            style: { padding: 0, overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 270px)', flex: 1, minHeight: 0, outline: 'none', position: 'relative' }
+        // Product Master Table
+        React.createElement('div', {
+          ref: bulkTableRef,
+          tabIndex: 0,
+          onKeyDown: (e) => {
+            if (e.target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable)) return;
+            const el = e.currentTarget;
+            if (!el) return;
+            const scrollStep = 55;
+            const pageStep = el.clientHeight ? el.clientHeight * 0.8 : 300;
+            if (e.key === 'ArrowDown') { e.preventDefault(); el.scrollBy({ top: scrollStep, behavior: 'smooth' }); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); el.scrollBy({ top: -scrollStep, behavior: 'smooth' }); }
+            else if (e.key === 'PageDown') { e.preventDefault(); el.scrollBy({ top: pageStep, behavior: 'smooth' }); }
+            else if (e.key === 'PageUp') { e.preventDefault(); el.scrollBy({ top: -pageStep, behavior: 'smooth' }); }
+            else if (e.key === 'Home') { e.preventDefault(); el.scrollTo({ top: 0, behavior: 'smooth' }); }
+            else if (e.key === 'End') { e.preventDefault(); el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }
           },
-            React.createElement('table', {
-              className: 'data-table',
-              style: { width: '100%', margin: 0, borderCollapse: 'collapse', minWidth: '100%' }
-            },
-              React.createElement('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-card, #1e293b)', zIndex: 12 } },
-                React.createElement('tr', null,
-                  React.createElement('th', {
-                    style: {
-                      width: '24%',
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 20,
-                      background: 'var(--bg-card, #1e293b)',
-                      boxShadow: '2px 0 6px -1px rgba(0,0,0,0.25)'
-                    }
-                  }, 'Product Name'),
-                  React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
-                  React.createElement('th', { style: { width: '12%' } }, 'Category'),
-                  React.createElement('th', { style: { width: '16%', textAlign: 'right' } }, 'Commercials'),
-                  React.createElement('th', { style: { width: '13%' } }, 'Stock Status'),
-                  React.createElement('th', { style: { width: '13%' } }, 'Tax & Vendor'),
-                  React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
-                )
-              ),
-              React.createElement('tbody', null,
-                loading ? React.createElement('tr', null,
-                  React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
-                    'Loading product master records...'
-                  )
-                ) : displayedProducts.length === 0 ? React.createElement('tr', null,
-                  React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
-                    'No products match the selected criteria.'
-                  )
-                ) : displayedProducts.map((p) => {
-                  const isService = (p.itemType || 'GOODS') === 'SERVICE';
-                  const isTracked = Boolean(p.inInventory);
-                  const stock = Number(p.stockQuantity || 0);
-                  const minLvl = Number(p.minStockLevel || 5);
-                  const marginPct = (p.price && p.costPrice && p.price > 0)
-                    ? Math.round(((p.price - p.costPrice) / p.price) * 100)
-                    : null;
-                  return React.createElement('tr', {
-                    key: p.id,
-                    style: { cursor: 'pointer' },
-                    onClick: () => setSelectedProductId(p.id)
-                  },
-                    // 1. Product Name
-                    React.createElement('td', null,
-                      React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 } }, p.name),
-                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' } },
-                        p.barcode && React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-secondary)' } },
-                          `🏷️ ${p.barcode}`
-                        ),
-                        isNeedsSetup(p) && React.createElement('span', {
-                          className: 'badge',
-                          style: { background: 'rgba(234,179,8,0.15)', color: '#ca8a04', fontSize: '0.65rem', padding: '1px 5px' }
-                        }, 'Setup')
-                      )
-                    ),
-                    // 2. HSN/SAC
-                    React.createElement('td', null,
-                      p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
-                    ),
-                    // 3. Category
-                    React.createElement('td', null,
-                      React.createElement('span', {
-                        style: {
-                          fontSize: '0.8rem',
-                          fontWeight: p.category && p.category !== 'UNCATEGORIZED' ? 500 : 400,
-                          color: (!p.category || p.category === 'UNCATEGORIZED') ? '#f59e0b' : 'var(--text-primary)'
-                        }
-                      }, p.category || 'UNCATEGORIZED')
-                    ),
-                    // 4. Commercials (Base Price + Cost Price + Margin)
-                    React.createElement('td', { style: { textAlign: 'right' } },
-                      React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' } },
-                        fmtCurrency(p.price)
-                      ),
-                      React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
-                        p.costPrice ? `${fmtCurrency(p.costPrice)}${marginPct != null ? ` (${marginPct}% mrg)` : ''}` : 'Cost: —'
-                      )
-                    ),
-                    // 5. Stock Status
-                    React.createElement('td', null,
-                      isService ? React.createElement('span', {
-                        className: 'badge',
-                        style: { background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '0.7rem' }
-                      }, 'SERVICE')
-                        : !isTracked ? React.createElement('span', {
-                          className: 'badge',
-                          style: { background: 'rgba(100,116,139,0.15)', color: 'var(--text-secondary)', fontSize: '0.7rem' }
-                        }, 'Catalog Only')
-                          : React.createElement('div', null,
-                            React.createElement('span', {
-                              style: {
-                                fontWeight: 700,
-                                fontSize: '0.85rem',
-                                color: stock <= 0 ? '#ef4444' : (stock <= minLvl ? '#f59e0b' : '#10b981')
-                              }
-                            }, `${fmtNum(stock, 0)} ${p.unit || 'pcs'}`),
-                            React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 1 } },
-                              `Min: ${fmtNum(minLvl, 0)}`
-                            )
-                          )
-                    ),
-                    // 6. Tax & Vendor
-                    React.createElement('td', null,
-                      React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-primary)' } },
-                        `${p.gstPercentage != null ? p.gstPercentage + '%' : '0%'} GST${p.hsnCode ? ` · ${p.hsnCode}` : ''}`
-                      ),
-                      React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130, marginTop: 1 } },
-                        p.preferredPartyId ? (partyMap[p.preferredPartyId] || `Vendor #${p.preferredPartyId}`) : 'No vendor'
-                      )
-                    ),
-                    // 7. Actions
-                    React.createElement('td', { style: { textAlign: 'center' } },
-                      React.createElement('div', {
-                        style: { display: 'inline-flex', gap: 4, alignItems: 'center' },
-                        onClick: (e) => e.stopPropagation()
-                      },
-                        React.createElement('button', {
-                          className: 'btn btn-outline btn-xs',
-                          style: { padding: '2px 6px', fontSize: '0.75rem' },
-                          title: 'Edit product',
-                          onClick: () => handleStartIndividualEdit(p)
-                        }, '✏️ Edit'),
-                        React.createElement('button', {
-                          className: 'btn btn-outline btn-xs',
-                          style: { padding: '2px 6px', fontSize: '0.75rem' },
-                          title: 'View Insights',
-                          onClick: () => setSelectedProductId(p.id)
-                        }, '📊'),
-                        !isService && isTracked && React.createElement('button', {
-                          className: 'btn btn-primary btn-xs',
-                          style: { padding: '2px 6px', fontSize: '0.75rem' },
-                          title: 'Quick Reorder',
-                          onClick: () => handleUseRecommendation(p.id, 10)
-                        }, '⚡')
-                      )
-                    )
-                  );
-                })
+          className: 'table-container card firm-table-card',
+          style: { padding: 0, overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 270px)', flex: 1, minHeight: 0, outline: 'none', position: 'relative' }
+        },
+          React.createElement('table', {
+            className: 'data-table',
+            style: { width: '100%', margin: 0, borderCollapse: 'collapse', minWidth: '100%' }
+          },
+            React.createElement('thead', { style: { position: 'sticky', top: 0, background: 'var(--bg-card, #1e293b)', zIndex: 12 } },
+              React.createElement('tr', null,
+                React.createElement('th', {
+                  style: {
+                    width: '24%',
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 20,
+                    background: 'var(--bg-card, #1e293b)',
+                    boxShadow: '2px 0 6px -1px rgba(0,0,0,0.25)'
+                  }
+                }, 'Product Name'),
+                React.createElement('th', { style: { width: '12%' } }, 'HSN/SAC'),
+                React.createElement('th', { style: { width: '12%' } }, 'Category'),
+                React.createElement('th', { style: { width: '16%', textAlign: 'right' } }, 'Commercials'),
+                React.createElement('th', { style: { width: '13%' } }, 'Stock Status'),
+                React.createElement('th', { style: { width: '13%' } }, 'Tax & Vendor'),
+                React.createElement('th', { style: { width: '10%', textAlign: 'center' } }, 'Actions')
               )
+            ),
+            React.createElement('tbody', null,
+              loading ? React.createElement('tr', null,
+                React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                  'Loading product master records...'
+                )
+              ) : displayedProducts.length === 0 ? React.createElement('tr', null,
+                React.createElement('td', { colSpan: 7, style: { textAlign: 'center', padding: 30, color: 'var(--text-secondary)' } },
+                  'No products match the selected criteria.'
+                )
+              ) : displayedProducts.map((p) => {
+                const isService = (p.itemType || 'GOODS') === 'SERVICE';
+                const isTracked = Boolean(p.inInventory);
+                const stock = Number(p.stockQuantity || 0);
+                const minLvl = Number(p.minStockLevel || 5);
+                const marginPct = (p.price && p.costPrice && p.price > 0)
+                  ? Math.round(((p.price - p.costPrice) / p.price) * 100)
+                  : null;
+                return React.createElement('tr', {
+                  key: p.id,
+                  style: { cursor: 'pointer' },
+                  onClick: () => setSelectedProductId(p.id)
+                },
+                  // 1. Product Name
+                  React.createElement('td', null,
+                    React.createElement('div', { style: { fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 } }, p.name),
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' } },
+                      p.barcode && React.createElement('span', { style: { fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                        `🏷️ ${p.barcode}`
+                      ),
+                      isNeedsSetup(p) && React.createElement('span', {
+                        className: 'badge',
+                        style: { background: 'rgba(234,179,8,0.15)', color: '#ca8a04', fontSize: '0.65rem', padding: '1px 5px' }
+                      }, 'Setup')
+                    )
+                  ),
+                  // 2. HSN/SAC
+                  React.createElement('td', null,
+                    p.hsnCode ? React.createElement('span', { className: 'badge', style: { fontFamily: 'monospace', fontSize: '0.75rem', padding: '2px 6px', background: 'var(--bg-secondary)', fontWeight: 600 } }, p.hsnCode) : React.createElement('span', { style: { color: 'var(--text-muted)' } }, '—')
+                  ),
+                  // 3. Category
+                  React.createElement('td', null,
+                    React.createElement('span', {
+                      style: {
+                        fontSize: '0.8rem',
+                        fontWeight: p.category && p.category !== 'UNCATEGORIZED' ? 500 : 400,
+                        color: (!p.category || p.category === 'UNCATEGORIZED') ? '#f59e0b' : 'var(--text-primary)'
+                      }
+                    }, p.category || 'UNCATEGORIZED')
+                  ),
+                  // 4. Commercials (Base Price + Cost Price + Margin)
+                  React.createElement('td', { style: { textAlign: 'right' } },
+                    React.createElement('div', { style: { fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' } },
+                      fmtCurrency(p.price)
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                      p.costPrice ? `${fmtCurrency(p.costPrice)}${marginPct != null ? ` (${marginPct}% mrg)` : ''}` : 'Cost: —'
+                    )
+                  ),
+                  // 5. Stock Status
+                  React.createElement('td', null,
+                    isService ? React.createElement('span', {
+                      className: 'badge',
+                      style: { background: 'rgba(99,102,241,0.1)', color: '#6366f1', fontSize: '0.7rem' }
+                    }, 'SERVICE')
+                      : !isTracked ? React.createElement('span', {
+                        className: 'badge',
+                        style: { background: 'rgba(100,116,139,0.15)', color: 'var(--text-secondary)', fontSize: '0.7rem' }
+                      }, 'Catalog Only')
+                        : React.createElement('div', null,
+                          React.createElement('span', {
+                            style: {
+                              fontWeight: 700,
+                              fontSize: '0.85rem',
+                              color: stock <= 0 ? '#ef4444' : (stock <= minLvl ? '#f59e0b' : '#10b981')
+                            }
+                          }, `${fmtNum(stock, 0)} ${p.unit || 'pcs'}`),
+                          React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 1 } },
+                            `Min: ${fmtNum(minLvl, 0)}`
+                          )
+                        )
+                  ),
+                  // 6. Tax & Vendor
+                  React.createElement('td', null,
+                    React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-primary)' } },
+                      `${p.gstPercentage != null ? p.gstPercentage + '%' : '0%'} GST${p.hsnCode ? ` · ${p.hsnCode}` : ''}`
+                    ),
+                    React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 130, marginTop: 1 } },
+                      p.preferredPartyId ? (partyMap[p.preferredPartyId] || `Vendor #${p.preferredPartyId}`) : 'No vendor'
+                    )
+                  ),
+                  // 7. Actions
+                  React.createElement('td', { style: { textAlign: 'center' } },
+                    React.createElement('div', {
+                      style: { display: 'inline-flex', gap: 4, alignItems: 'center' },
+                      onClick: (e) => e.stopPropagation()
+                    },
+                      React.createElement('button', {
+                        className: 'btn btn-outline btn-xs',
+                        style: { padding: '2px 6px', fontSize: '0.75rem' },
+                        title: 'Edit product',
+                        onClick: () => {
+                          setBulkEditInitialProdId(p.id);
+                          setShowBulkEditModal(true);
+                        }
+                      }, '✏️ Edit'),
+                      React.createElement('button', {
+                        className: 'btn btn-outline btn-xs',
+                        style: { padding: '2px 6px', fontSize: '0.75rem' },
+                        title: 'View Insights',
+                        onClick: () => setSelectedProductId(p.id)
+                      }, '📊'),
+                      !isService && isTracked && React.createElement('button', {
+                        className: 'btn btn-primary btn-xs',
+                        style: { padding: '2px 6px', fontSize: '0.75rem' },
+                        title: 'Quick Reorder',
+                        onClick: () => handleUseRecommendation(p.id, 10)
+                      }, '⚡')
+                    )
+                  )
+                );
+              })
             )
           )
         ),
@@ -6082,11 +6268,7 @@
         // Docked pagination footer
         React.createElement('div', { className: 'firm-docked-pagination' },
           React.createElement('div', null,
-            isIndividualEditMode ? (
-              `Editing 1 product · Pagination preserved (Page ${safeMasterPage} of ${totalMasterPages})`
-            ) : (
-              `Showing ${filteredProducts.length === 0 ? 0 : (safeMasterPage - 1) * masterPageSize + 1}–${Math.min(safeMasterPage * masterPageSize, filteredProducts.length)} of ${filteredProducts.length} products`
-            )
+            `Showing ${filteredProducts.length === 0 ? 0 : (safeMasterPage - 1) * masterPageSize + 1}–${Math.min(safeMasterPage * masterPageSize, filteredProducts.length)} of ${filteredProducts.length} products`
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('span', { style: { fontSize: '0.78rem', color: 'var(--text-secondary)' } }, 'Rows:'),
@@ -6094,7 +6276,6 @@
               className: 'form-control form-control-sm',
               style: { width: 'auto', padding: '2px 6px', height: 26, fontSize: '0.78rem' },
               value: masterPageSize,
-              disabled: isIndividualEditMode,
               onChange: (e) => {
                 setMasterPageSize(Number(e.target.value));
                 setMasterPage(1);
@@ -6107,161 +6288,15 @@
             ),
             React.createElement('button', {
               className: 'btn btn-outline btn-xs',
-              disabled: isIndividualEditMode || safeMasterPage <= 1,
+              disabled: safeMasterPage <= 1,
               onClick: () => setMasterPage(p => Math.max(1, p - 1))
             }, '◀ Prev'),
             React.createElement('span', { style: { fontSize: '0.8rem', fontWeight: 600 } }, `${safeMasterPage} / ${totalMasterPages}`),
             React.createElement('button', {
               className: 'btn btn-outline btn-xs',
-              disabled: isIndividualEditMode || safeMasterPage >= totalMasterPages,
+              disabled: safeMasterPage >= totalMasterPages,
               onClick: () => setMasterPage(p => Math.min(totalMasterPages, p + 1))
             }, 'Next ▶')
-          )
-        )
-      ),
-
-      // REVIEW CHANGES MODAL
-      showReviewModal && React.createElement('div', {
-        className: 'modal-overlay modal-foreground',
-        style: {
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('bulk_review_modal', 'foreground') : 10100,
-          padding: 20
-        }
-      },
-        React.createElement('div', {
-          className: 'modal-content card',
-          style: {
-            maxWidth: 820, width: '100%', maxHeight: '88vh', display: 'flex',
-            flexDirection: 'column', padding: '24px 28px', gap: 16, overflow: 'hidden'
-          }
-        },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-            React.createElement('div', null,
-              React.createElement('h3', { style: { margin: 0, fontSize: '1.25rem', fontWeight: 700 } },
-                isIndividualEditMode ? '🔍 Review Product Changes' : '🔍 Review Bulk Product Master Changes'
-              ),
-              React.createElement('p', { style: { margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem' } },
-                isIndividualEditMode
-                  ? 'Inspect the modified fields before confirming persistence to the database.'
-                  : 'Inspect the modified fields before confirming atomic persistence to the database.'
-              )
-            ),
-            React.createElement('button', {
-              className: 'btn btn-ghost btn-sm',
-              onClick: () => setShowReviewModal(false)
-            }, '✖️')
-          ),
-
-          // Error banner if save failed
-          bulkError && React.createElement('div', {
-            style: {
-              background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)',
-              color: '#ef4444', padding: '10px 14px', borderRadius: 6, fontSize: '0.85rem'
-            }
-          }, `❌ ${bulkError}`),
-
-          // Summary Metrics Cards
-          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 } },
-            React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Products Changed'),
-              React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700, color: '#6366f1' } }, reviewDiffs.totalProducts)
-            ),
-            React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Category Updates'),
-              React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700 } }, reviewDiffs.catChanges)
-            ),
-            React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Price/Cost Changes'),
-              React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700 } }, reviewDiffs.priceChanges)
-            ),
-            React.createElement('div', { className: 'card', style: { padding: '10px 14px' } },
-              React.createElement('div', { style: { fontSize: '0.75rem', color: 'var(--text-secondary)' } }, 'Inventory Onboardings'),
-              React.createElement('div', { style: { fontSize: '1.3rem', fontWeight: 700, color: '#10b981' } }, reviewDiffs.inventoryChanges)
-            )
-          ),
-
-          // Detailed Diff Table
-          React.createElement('div', { style: { overflowY: 'auto', flex: 1, border: '1px solid var(--border-color, #334155)', borderRadius: 6 } },
-            React.createElement('table', { className: 'data-table', style: { width: '100%', margin: 0 } },
-              React.createElement('thead', null,
-                React.createElement('tr', null,
-                  React.createElement('th', null, 'Product'),
-                  React.createElement('th', null, 'Field'),
-                  React.createElement('th', null, 'Original Value'),
-                  React.createElement('th', null, 'New Value')
-                )
-              ),
-              React.createElement('tbody', null,
-                reviewDiffs.diffs.map((d, i) => React.createElement('tr', { key: i },
-                  React.createElement('td', null,
-                    React.createElement('div', { style: { fontWeight: 600 } }, d.prodName),
-                    React.createElement('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, `SKU: ${d.sku}`)
-                  ),
-                  React.createElement('td', null,
-                    React.createElement('span', { className: 'badge', style: { fontSize: '0.75rem' } }, d.label)
-                  ),
-                  React.createElement('td', { style: { color: 'var(--text-secondary)', textDecoration: 'line-through' } },
-                    d.oldDisplay
-                  ),
-                  React.createElement('td', { style: { fontWeight: 700, color: '#10b981' } },
-                    d.newDisplay
-                  )
-                ))
-              )
-            )
-          ),
-
-          // Footer Actions
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 } },
-            React.createElement('button', {
-              className: 'btn btn-ghost',
-              onClick: () => setShowReviewModal(false)
-            }, '⬅️ Back to Editing'),
-            React.createElement('button', {
-              className: 'btn btn-primary',
-              disabled: savingBulk || reviewDiffs.totalProducts === 0,
-              onClick: handleConfirmBulkSave,
-              style: { fontWeight: 700, padding: '10px 24px' }
-            }, savingBulk ? '⏳ Persisting Changes...' : (isIndividualEditMode ? '💾 Confirm & Save Changes' : '💾 Confirm & Save All Changes'))
-          )
-        )
-      ),
-
-      // UNSAVED CHANGES PROMPT
-      showUnsavedPrompt && React.createElement('div', {
-        className: 'modal-overlay modal-confirm',
-        style: {
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('bulk_unsaved_prompt', 'confirm') : 10300,
-          padding: 20
-        }
-      },
-        React.createElement('div', {
-          className: 'modal-content card',
-          style: { maxWidth: 440, width: '100%', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }
-        },
-          React.createElement('h4', { style: { margin: 0, fontSize: '1.1rem', fontWeight: 700 } }, '⚠️ Unsaved Changes'),
-          React.createElement('p', { style: { margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' } },
-            `You have ${totalChangesCount} unsaved field changes across ${changedProductIds.length} ${changedProductIds.length === 1 ? 'product' : 'products'}. If you leave, these draft changes will be lost.`
-          ),
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 } },
-            React.createElement('button', {
-              className: 'btn btn-ghost',
-              onClick: () => setShowUnsavedPrompt(false)
-            }, 'Continue Editing'),
-            React.createElement('button', {
-              className: 'btn btn-danger',
-              onClick: () => {
-                setDraftChanges({});
-                setEditMode(null);
-                setIndividualEditProdId(null);
-                setShowUnsavedPrompt(false);
-                if (pendingTab) setHubTab(pendingTab);
-              }
-            }, 'Discard & Proceed')
           )
         )
       ),
@@ -6284,6 +6319,23 @@
         onClose: () => setShowBulkAddModal(false),
         onSuccess: () => loadProducts(),
         existingCategories: categories
+      }),
+
+      // Product Master Bulk Edit Modal (Standardized large centered modal)
+      showBulkEditModal && React.createElement(ProductMasterBulkEditModal, {
+        products: products,
+        categories: categories,
+        parties: parties,
+        initialProductId: bulkEditInitialProdId,
+        onClose: () => {
+          setShowBulkEditModal(false);
+          setBulkEditInitialProdId(null);
+        },
+        onSuccess: () => {
+          setShowBulkEditModal(false);
+          setBulkEditInitialProdId(null);
+          loadProducts();
+        }
       })
     );
   }
@@ -6295,6 +6347,7 @@
     SmartReorderView,
     BulkProductAddModal,
     InventoryBulkEditModal,
+    ProductMasterBulkEditModal,
     PricingProfileManager
   };
 }));

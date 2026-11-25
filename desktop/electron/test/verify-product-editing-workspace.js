@@ -491,11 +491,10 @@ console.log('▶ [Scenario 15/16] Testing: No page-level scrolling is introduced
 console.log('▶ [Scenario 16/16] Testing: Toolbar remains visible at different viewport heights...');
 {
   const jsCode = fs.readFileSync(path.resolve(__dirname, '../../../billsoft/src/main/webapp/js/components/ProductIntelligence.js'), 'utf8');
-  // Check sticky workspace banner
-  assert(jsCode.includes("position: 'sticky'"), 'Workspace banner must be sticky');
-  assert(jsCode.includes("zIndex: 25"), 'Workspace banner must be elevated above table headers');
-  assert(jsCode.includes("'🔍 Review Changes & Save'"), 'Top banner must include Review Changes & Save action');
-  assert(jsCode.includes("'✖️ Cancel & Exit'"), 'Top banner must include Cancel & Exit action');
+  // Check sticky positioning in modal and table headers
+  assert(jsCode.includes("position: 'sticky'"), 'Table headers and container must support sticky positioning');
+  assert(jsCode.includes("ProductMasterBulkEditModal"), 'ProductMasterBulkEditModal must be integrated');
+  assert(jsCode.includes("'🔍 Review & Save Changes'"), 'Modal footer must include Review & Save Changes action');
 
   // Viewport checks (1080p, 900p, 768p)
   [1080, 900, 768].forEach(h => {

@@ -191,7 +191,7 @@
       setActiveCell({ rowIdx: rowIdx, colKey: colKey });
       setTimeout(function () {
         if (!containerRef.current) return;
-        var selector = 'input[data-row="' + rowIdx + '"][data-col="' + colKey + '"], select[data-row="' + rowIdx + '"][data-col="' + colKey + '"]';
+        var selector = 'input[data-row="' + rowIdx + '"][data-col="' + colKey + '"], select[data-row="' + rowIdx + '"][data-col="' + colKey + '"], textarea[data-row="' + rowIdx + '"][data-col="' + colKey + '"]';
         var el = containerRef.current.querySelector(selector);
         if (el) {
           el.focus();
@@ -215,7 +215,7 @@
         }
       }
 
-      var isInput = e.target.tagName === 'INPUT';
+      var isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
       var textLen = isInput ? (e.target.value || '').length : 0;
       var selStart = isInput ? e.target.selectionStart : 0;
       var selEnd = isInput ? e.target.selectionEnd : 0;
@@ -518,7 +518,7 @@
 
               return React.createElement('tr', {
                 key: rowId,
-                style: { height: 28, maxHeight: 28 }
+                style: { height: 38, minHeight: 38 }
               },
                 // Row index
                 canDeleteRows && React.createElement('td', {
@@ -540,13 +540,15 @@
                   var isModified = modifiedTracker ? Boolean(modifiedTracker(row, col.key)) : false;
                   var cellError = rowErrors[col.key] || (col.validate ? col.validate(cellVal, row) : null);
                   var isCellActive = activeCell.rowIdx === rowIdx && activeCell.colKey === col.key;
+                  var isWrapCol = Boolean(col.multiline || col.key === 'name');
 
                   var tdStyle = {
                     padding: 0,
-                    height: 28,
-                    maxHeight: 28,
+                    height: 38,
+                    minHeight: 38,
                     border: '1px solid var(--border)',
                     position: 'relative',
+                    verticalAlign: 'middle',
                     background: isModified
                       ? 'rgba(16, 185, 129, 0.08)'
                       : (isReadOnly ? 'var(--bg-secondary, rgba(0,0,0,0.02))' : 'transparent'),
@@ -566,7 +568,22 @@
                       title: cellError || displayVal
                     },
                       React.createElement('div', {
-                        style: {
+                        style: isWrapCol ? {
+                          padding: '3px 6px',
+                          fontSize: '0.78rem',
+                          lineHeight: '1.25',
+                          textAlign: col.align || 'left',
+                          color: isModified ? 'var(--primary, #10b981)' : 'var(--text-secondary)',
+                          fontWeight: isModified ? 600 : 'normal',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          boxSizing: 'border-box'
+                        } : {
                           padding: '4px 8px',
                           fontSize: '0.8rem',
                           textAlign: col.align || (col.type === 'number' ? 'right' : 'left'),
@@ -614,6 +631,55 @@
                           return React.createElement('option', { key: optVal, value: optVal }, optLabel);
                         })
                       )
+                    );
+                  }
+
+                  if (isWrapCol) {
+                    return React.createElement('td', {
+                      key: col.key,
+                      style: tdStyle,
+                      title: cellError || (cellVal != null ? String(cellVal) : '')
+                    },
+                      React.createElement('textarea', {
+                        rows: 2,
+                        'data-row': rowIdx,
+                        'data-col': col.key,
+                        placeholder: col.placeholder || '',
+                        value: cellVal != null ? String(cellVal) : '',
+                        onChange: function (e) {
+                          var val = e.target.value.replace(/[\r\n]+/g, ' ');
+                          if (onChangeRow) onChangeRow(rowIdx, col.key, val);
+                        },
+                        onFocus: function (e) {
+                          setActiveCell({ rowIdx: rowIdx, colKey: col.key });
+                          if (e.target && e.target.select) e.target.select();
+                        },
+                        onKeyDown: function (e) { handleCellKeyDown(e, rowIdx, col.key); },
+                        onPaste: function (e) { handleCellPaste(e, rowIdx, col.key); },
+                        style: {
+                          width: '100%',
+                          height: '100%',
+                          minHeight: '34px',
+                          maxHeight: '38px',
+                          border: 'none',
+                          outline: 'none',
+                          background: 'transparent',
+                          padding: '3px 6px',
+                          fontSize: '0.78rem',
+                          lineHeight: '1.25',
+                          color: 'var(--text-primary)',
+                          boxSizing: 'border-box',
+                          resize: 'none',
+                          overflow: 'hidden',
+                          wordBreak: 'break-word',
+                          whiteSpace: 'normal',
+                          fontFamily: 'inherit',
+                          verticalAlign: 'middle',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical'
+                        }
+                      })
                     );
                   }
 

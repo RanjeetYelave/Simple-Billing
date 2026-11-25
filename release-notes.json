@@ -1,4 +1,10 @@
 {
+  "1.0.390": [
+    "📝 Centralized Version-Based Release Notes: Offline-first release notes service with secure disk caching and bundled classpath fallback.",
+    "🛡️ Software Update UI Hardening: Clean release notes presentation with automatic suppression of internal integrity manifest placeholders.",
+    "🏷️ Standardized Release Descriptions: Automated 6-section release notes generation with SHA-256 package checksum verification.",
+    "🌐 Secure Client & API Endpoints: Public /api/system/release-notes endpoint with input sanitization and strict XSS protection."
+  ],
   "1.0.389": [
     "⚡ Unified Order Products Workspace: Combined manual stock ordering and demand forecast replenishment into one cohesive workspace.",
     "📦 Multi-Vendor Purchasing: Create purchase orders for multiple suppliers in a single session with automatic vendor segregation.",

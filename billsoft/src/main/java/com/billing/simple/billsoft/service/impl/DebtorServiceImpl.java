@@ -9,6 +9,7 @@ import com.billing.simple.billsoft.security.TenantSecurityException;
 import com.billing.simple.billsoft.service.BusinessPartyLinkService;
 import com.billing.simple.billsoft.service.CustomerBalanceService;
 import com.billing.simple.billsoft.service.DebtorService;
+import com.billing.simple.billsoft.service.pdf.core.UniversalPageNumberHelper;
 import com.lowagie.text.Document;
 import com.lowagie.text.Font;
 import com.lowagie.text.FontFactory;
@@ -1115,26 +1116,64 @@ public class DebtorServiceImpl implements DebtorService {
         StringBuilder sb = new StringBuilder();
         // UTF-8 BOM for Excel compatibility
         sb.append('\ufeff');
-        sb.append("Customer Name,Phone,Email,Outstanding Balance,Overdue Balance,0-30 Days,31-60 Days,61-90 Days,90+ Days,Oldest Overdue Days,Risk Level,Risk Reason,Last Payment Date,Last Payment Amount,Active Promise\n");
+        sb.append("Customer Name,Customer ID,Phone,Total Outstanding,Overdue Amount,Current Amount,0-30 Days,31-60 Days,61-90 Days,90+ Days,Last Payment Date,Last Payment Amount,Next Follow-up,Risk Status\n");
+
+        BigDecimal sumOut = BigDecimal.ZERO;
+        BigDecimal sumOverdue = BigDecimal.ZERO;
+        BigDecimal sumCurrent = BigDecimal.ZERO;
+        BigDecimal sum0To30 = BigDecimal.ZERO;
+        BigDecimal sum31To60 = BigDecimal.ZERO;
+        BigDecimal sum61To90 = BigDecimal.ZERO;
+        BigDecimal sum90Plus = BigDecimal.ZERO;
 
         for (DebtorListItemDto d : list) {
+            BigDecimal outAmt = d.getOutstandingAmount() != null ? d.getOutstandingAmount() : BigDecimal.ZERO;
+            BigDecimal ovdAmt = d.getOverdueAmount() != null ? d.getOverdueAmount() : BigDecimal.ZERO;
+            BigDecimal curAmt = outAmt.subtract(ovdAmt).max(BigDecimal.ZERO);
+            BigDecimal a0 = d.getAging0To30() != null ? d.getAging0To30() : BigDecimal.ZERO;
+            BigDecimal a30 = d.getAging31To60() != null ? d.getAging31To60() : BigDecimal.ZERO;
+            BigDecimal a60 = d.getAging61To90() != null ? d.getAging61To90() : BigDecimal.ZERO;
+            BigDecimal a90 = d.getAging90Plus() != null ? d.getAging90Plus() : BigDecimal.ZERO;
+
+            sumOut = sumOut.add(outAmt);
+            sumOverdue = sumOverdue.add(ovdAmt);
+            sumCurrent = sumCurrent.add(curAmt);
+            sum0To30 = sum0To30.add(a0);
+            sum31To60 = sum31To60.add(a30);
+            sum61To90 = sum61To90.add(a60);
+            sum90Plus = sum90Plus.add(a90);
+
+            String nextFollowUp = d.getNextFollowUpDate() != null ? d.getNextFollowUpDate().toString() :
+                    (d.getActivePromiseDate() != null ? ("Promise: " + d.getActivePromiseDate()) : "");
+
             sb.append(escapeCsv(d.getCustomerName())).append(",")
+                    .append(d.getCustomerId() != null ? d.getCustomerId().toString() : "").append(",")
                     .append(escapeCsv(d.getCustomerPhone())).append(",")
-                    .append(escapeCsv(d.getCustomerEmail())).append(",")
-                    .append(d.getOutstandingAmount()).append(",")
-                    .append(d.getOverdueAmount()).append(",")
-                    .append(d.getAging0To30()).append(",")
-                    .append(d.getAging31To60()).append(",")
-                    .append(d.getAging61To90()).append(",")
-                    .append(d.getAging90Plus()).append(",")
-                    .append(d.getOldestOverdueDays()).append(",")
-                    .append(escapeCsv(d.getRiskLevel())).append(",")
-                    .append(escapeCsv(d.getRiskReason())).append(",")
+                    .append(outAmt.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(ovdAmt.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(curAmt.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(a0.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(a30.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(a60.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                    .append(a90.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
                     .append(d.getLastPaymentDate() != null ? d.getLastPaymentDate().toString() : "").append(",")
-                    .append(d.getLastPaymentAmount() != null ? d.getLastPaymentAmount().toString() : "").append(",")
-                    .append(d.getActivePromiseAmount() != null ? ("₹" + d.getActivePromiseAmount() + " by " + d.getActivePromiseDate()) : "")
+                    .append(d.getLastPaymentAmount() != null ? d.getLastPaymentAmount().setScale(SCALE, RoundingMode.HALF_UP).toString() : "").append(",")
+                    .append(escapeCsv(nextFollowUp)).append(",")
+                    .append(escapeCsv(d.getRiskLevel() != null ? d.getRiskLevel() : "LOW"))
                     .append("\n");
         }
+
+        // Summary Totals Row
+        sb.append("TOTAL,,,")
+                .append(sumOut.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sumOverdue.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sumCurrent.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sum0To30.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sum31To60.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sum61To90.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(sum90Plus.setScale(SCALE, RoundingMode.HALF_UP)).append(",")
+                .append(",,,")
+                .append("\n");
 
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -1149,59 +1188,155 @@ public class DebtorServiceImpl implements DebtorService {
     @Override
     @Transactional(readOnly = true)
     public byte[] exportDebtorsPdf(Long firmId) throws Exception {
-        FirmDetails firm = firmRepo.findById(firmId).orElse(null);
-        String firmName = firm != null && firm.getFirmName() != null ? firm.getFirmName() : "RupeeCRM Business";
+        FirmDetails firm = firmId != null ? firmRepo.findById(firmId).orElse(null) : null;
+        String firmName = firm != null && firm.getFirmName() != null && !firm.getFirmName().isBlank() ? firm.getFirmName() : "RupeeCRM Business";
+        String firmAddress = firm != null && firm.getAddressLine1() != null ? firm.getAddressLine1() : "";
+        String firmGstin = firm != null && firm.getGstin() != null && !firm.getGstin().isBlank() ? ("GSTIN: " + firm.getGstin()) : "";
 
         List<DebtorListItemDto> list = getDebtors(firmId, null, "all", "outstanding", "desc");
         DebtorsOverviewDto overview = getOverview(firmId);
 
-        Document doc = new Document(PageSize.A4.rotate(), 20, 20, 20, 20);
+        Document doc = new Document(PageSize.A4.rotate(), 18, 18, 20, 24);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PdfWriter.getInstance(doc, baos);
+        PdfWriter writer = PdfWriter.getInstance(doc, baos);
+        writer.setPageEvent(new UniversalPageNumberHelper(8f));
         doc.open();
 
-        // Title & Header
-        Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16, Color.DARK_GRAY);
-        Font subtitleFont = FontFactory.getFont(FontFactory.HELVETICA, 10, Color.GRAY);
-        Font thFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Color.WHITE);
-        Font tdFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.BLACK);
+        // Fonts
+        Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 15, new Color(15, 23, 42));
+        Font subtitleFont = FontFactory.getFont(FontFactory.HELVETICA, 8.5f, new Color(71, 85, 105));
+        Font thFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Color.WHITE);
+        Font tdFont = FontFactory.getFont(FontFactory.HELVETICA, 7.5f, new Color(30, 41, 59));
+        Font tdBoldFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, new Color(15, 23, 42));
 
+        // Header Section
         Paragraph title = new Paragraph(firmName + " — Debtors & Receivables Aging Register", titleFont);
-        Paragraph subtitle = new Paragraph("Generated on: " + LocalDate.now() + " | Total Debtors: " + overview.getTotalDebtorsCount() + " | Total Outstanding: ₹" + overview.getTotalOutstanding(), subtitleFont);
+        StringBuilder subSb = new StringBuilder();
+        if (!firmAddress.isBlank()) subSb.append(firmAddress).append(" | ");
+        if (!firmGstin.isBlank()) subSb.append(firmGstin).append(" | ");
+        subSb.append("Generated on: ").append(LocalDate.now());
+        Paragraph subtitle = new Paragraph(subSb.toString(), subtitleFont);
         doc.add(title);
         doc.add(subtitle);
         doc.add(new Paragraph(" "));
 
-        // Table
-        PdfPTable table = new PdfPTable(9);
-        table.setWidthPercentage(100);
-        table.setWidths(new float[]{2.5f, 1.5f, 1.5f, 1.2f, 1.2f, 1.2f, 1.2f, 1.2f, 2.0f});
+        // Executive Aging Summary Bar
+        PdfPTable summaryTable = new PdfPTable(7);
+        summaryTable.setWidthPercentage(100);
+        summaryTable.setWidths(new float[]{1.4f, 1.4f, 1.4f, 1.2f, 1.2f, 1.2f, 1.2f});
 
-        String[] headers = {"Customer", "Phone", "Outstanding", "0-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Risk", "Last Payment"};
+        String[] sumHeaders = {"Total Debtors", "Total Outstanding", "Overdue Amount", "0-30 Days", "31-60 Days", "61-90 Days", "90+ Days"};
+        for (String sh : sumHeaders) {
+            PdfPCell cell = new PdfPCell(new Phrase(sh, FontFactory.getFont(FontFactory.HELVETICA_BOLD, 7.5f, new Color(51, 65, 85))));
+            cell.setBackgroundColor(new Color(241, 245, 249));
+            cell.setPadding(4);
+            cell.setHorizontalAlignment(PdfPCell.ALIGN_CENTER);
+            summaryTable.addCell(cell);
+        }
+
+        PdfPCell c1 = new PdfPCell(new Phrase(String.valueOf(overview != null ? overview.getTotalDebtorsCount() : 0), tdBoldFont));
+        c1.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c1.setPadding(4); summaryTable.addCell(c1);
+
+        PdfPCell c2 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getTotalOutstanding() != null ? overview.getTotalOutstanding().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdBoldFont));
+        c2.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c2.setPadding(4); summaryTable.addCell(c2);
+
+        PdfPCell c3 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getOverdueAmount() != null ? overview.getOverdueAmount().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdBoldFont));
+        c3.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c3.setPadding(4); summaryTable.addCell(c3);
+
+        PdfPCell c4 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getAging0To30() != null ? overview.getAging0To30().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdFont));
+        c4.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c4.setPadding(4); summaryTable.addCell(c4);
+
+        PdfPCell c5 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getAging31To60() != null ? overview.getAging31To60().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdFont));
+        c5.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c5.setPadding(4); summaryTable.addCell(c5);
+
+        PdfPCell c6 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getAging61To90() != null ? overview.getAging61To90().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdFont));
+        c6.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c6.setPadding(4); summaryTable.addCell(c6);
+
+        PdfPCell c7 = new PdfPCell(new Phrase("Rs. " + (overview != null && overview.getAging90Plus() != null ? overview.getAging90Plus().setScale(2, RoundingMode.HALF_UP) : "0.00"), tdFont));
+        c7.setHorizontalAlignment(PdfPCell.ALIGN_CENTER); c7.setPadding(4); summaryTable.addCell(c7);
+
+        doc.add(summaryTable);
+        doc.add(new Paragraph(" "));
+
+        // Detail Table (11 Columns)
+        PdfPTable table = new PdfPTable(11);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{2.2f, 0.9f, 1.3f, 1.2f, 1.2f, 1.1f, 1.1f, 1.1f, 1.1f, 0.9f, 1.8f});
+
+        String[] headers = {"Customer", "ID", "Phone", "Outstanding", "Overdue", "0-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Risk", "Last Payment"};
         for (String h : headers) {
             PdfPCell cell = new PdfPCell(new Phrase(h, thFont));
-            cell.setBackgroundColor(new Color(24, 43, 73));
-            cell.setPadding(5);
+            cell.setBackgroundColor(new Color(15, 23, 42));
+            cell.setPadding(4);
+            cell.setHorizontalAlignment(h.contains("Outstanding") || h.contains("Overdue") || h.contains("Days") ? PdfPCell.ALIGN_RIGHT : PdfPCell.ALIGN_LEFT);
             table.addCell(cell);
         }
 
-        for (DebtorListItemDto d : list) {
-            table.addCell(new Phrase(d.getCustomerName() != null ? d.getCustomerName() : "", tdFont));
-            table.addCell(new Phrase(d.getCustomerPhone() != null ? d.getCustomerPhone() : "", tdFont));
-            table.addCell(new Phrase("₹" + d.getOutstandingAmount(), tdFont));
-            table.addCell(new Phrase("₹" + d.getAging0To30(), tdFont));
-            table.addCell(new Phrase("₹" + d.getAging31To60(), tdFont));
-            table.addCell(new Phrase("₹" + d.getAging61To90(), tdFont));
-            table.addCell(new Phrase("₹" + d.getAging90Plus(), tdFont));
-            table.addCell(new Phrase(d.getRiskLevel(), tdFont));
-            String lastPmt = d.getLastPaymentDate() != null ? ("₹" + d.getLastPaymentAmount() + " (" + d.getLastPaymentDate() + ")") : "-";
-            table.addCell(new Phrase(lastPmt, tdFont));
+        BigDecimal sumOut = BigDecimal.ZERO;
+        BigDecimal sumOverdue = BigDecimal.ZERO;
+        BigDecimal sum0To30 = BigDecimal.ZERO;
+        BigDecimal sum31To60 = BigDecimal.ZERO;
+        BigDecimal sum61To90 = BigDecimal.ZERO;
+        BigDecimal sum90Plus = BigDecimal.ZERO;
+
+        for (int i = 0; i < list.size(); i++) {
+            DebtorListItemDto d = list.get(i);
+            Color rowBg = (i % 2 == 1) ? new Color(248, 250, 252) : Color.WHITE;
+
+            BigDecimal outAmt = d.getOutstandingAmount() != null ? d.getOutstandingAmount() : BigDecimal.ZERO;
+            BigDecimal ovdAmt = d.getOverdueAmount() != null ? d.getOverdueAmount() : BigDecimal.ZERO;
+            BigDecimal a0 = d.getAging0To30() != null ? d.getAging0To30() : BigDecimal.ZERO;
+            BigDecimal a30 = d.getAging31To60() != null ? d.getAging31To60() : BigDecimal.ZERO;
+            BigDecimal a60 = d.getAging61To90() != null ? d.getAging61To90() : BigDecimal.ZERO;
+            BigDecimal a90 = d.getAging90Plus() != null ? d.getAging90Plus() : BigDecimal.ZERO;
+
+            sumOut = sumOut.add(outAmt);
+            sumOverdue = sumOverdue.add(ovdAmt);
+            sum0To30 = sum0To30.add(a0);
+            sum31To60 = sum31To60.add(a30);
+            sum61To90 = sum61To90.add(a60);
+            sum90Plus = sum90Plus.add(a90);
+
+            addCell(table, d.getCustomerName() != null ? d.getCustomerName() : "", tdFont, rowBg, PdfPCell.ALIGN_LEFT);
+            addCell(table, d.getCustomerId() != null ? String.valueOf(d.getCustomerId()) : "", tdFont, rowBg, PdfPCell.ALIGN_LEFT);
+            addCell(table, d.getCustomerPhone() != null ? d.getCustomerPhone() : "", tdFont, rowBg, PdfPCell.ALIGN_LEFT);
+            addCell(table, "Rs. " + outAmt.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, ovdAmt.compareTo(BigDecimal.ZERO) > 0 ? ("Rs. " + ovdAmt.setScale(SCALE, RoundingMode.HALF_UP)) : "-", tdFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, a0.compareTo(BigDecimal.ZERO) > 0 ? ("Rs. " + a0.setScale(SCALE, RoundingMode.HALF_UP)) : "-", tdFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, a30.compareTo(BigDecimal.ZERO) > 0 ? ("Rs. " + a30.setScale(SCALE, RoundingMode.HALF_UP)) : "-", tdFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, a60.compareTo(BigDecimal.ZERO) > 0 ? ("Rs. " + a60.setScale(SCALE, RoundingMode.HALF_UP)) : "-", tdFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, a90.compareTo(BigDecimal.ZERO) > 0 ? ("Rs. " + a90.setScale(SCALE, RoundingMode.HALF_UP)) : "-", tdFont, rowBg, PdfPCell.ALIGN_RIGHT);
+            addCell(table, d.getRiskLevel() != null ? d.getRiskLevel() : "LOW", tdFont, rowBg, PdfPCell.ALIGN_LEFT);
+            String lastPmt = d.getLastPaymentDate() != null ? ("Rs. " + (d.getLastPaymentAmount() != null ? d.getLastPaymentAmount().setScale(SCALE, RoundingMode.HALF_UP) : "0.00") + " (" + d.getLastPaymentDate() + ")") : "-";
+            addCell(table, lastPmt, tdFont, rowBg, PdfPCell.ALIGN_LEFT);
         }
+
+        // Totals Footer Row
+        Color footBg = new Color(226, 232, 240);
+        addCell(table, "TOTAL", tdBoldFont, footBg, PdfPCell.ALIGN_LEFT);
+        addCell(table, "", tdBoldFont, footBg, PdfPCell.ALIGN_LEFT);
+        addCell(table, "", tdBoldFont, footBg, PdfPCell.ALIGN_LEFT);
+        addCell(table, "Rs. " + sumOut.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "Rs. " + sumOverdue.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "Rs. " + sum0To30.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "Rs. " + sum31To60.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "Rs. " + sum61To90.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "Rs. " + sum90Plus.setScale(SCALE, RoundingMode.HALF_UP), tdBoldFont, footBg, PdfPCell.ALIGN_RIGHT);
+        addCell(table, "", tdBoldFont, footBg, PdfPCell.ALIGN_LEFT);
+        addCell(table, "", tdBoldFont, footBg, PdfPCell.ALIGN_LEFT);
 
         doc.add(table);
         doc.close();
 
         return baos.toByteArray();
+    }
+
+    private void addCell(PdfPTable table, String text, Font font, Color bgColor, int alignment) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBackgroundColor(bgColor);
+        cell.setPadding(4);
+        cell.setHorizontalAlignment(alignment);
+        table.addCell(cell);
     }
 
     private String escapeCsv(String str) {

@@ -1,4 +1,13 @@
 {
+  "1.0.405": [
+    "Settlement Allocation Rebalancing: Entering or modifying payment amount dynamically rebalances invoice allocations so allocations never exceed payment.",
+    "Input Focus & Cursor Stability: Preserved text cursor and focus across character typing in WhatsApp reminder modal and Settle Invoices forms.",
+    "Debtors Refresh & Visible Feedback: Added explicit 'Refreshing...' state, spinner, click lock, and success toast to Debtors & Collections workspace.",
+    "Modal Contrast & Styling Tokens: Hardened Promise to Pay, Log Activity, and Reschedule modals with high-contrast card backgrounds and standard theme tokens.",
+    "Debtor Register & Aging Reports: Export clean business CSV with full aging buckets and summary totals row; generate true formatted PDF Aging Reports.",
+    "Individual Customer Statement Download: One-click statement generation and PDF download directly from the Debtor Register table.",
+    "Party Details PO Preview Action: Standardized 'Preview / PDF' action button in Purchase Orders and Documents tabs opening the universal preview modal."
+  ],
   "1.0.404": [
     "Debtors & Collections Operating Center: Dedicated 5-sub-view receivables workspace (Overview, All Debtors, Overdue Invoices, Follow-ups, Statements & Reports) built directly into the Customers module.",
     "Comprehensive Receivables Intelligence: Real-time 0–30, 31–60, 61–90, 90+ days aging buckets, customer risk classification, counterparty supplier link badge, and average payment delay tracking.",

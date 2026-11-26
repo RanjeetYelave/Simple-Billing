@@ -392,6 +392,7 @@ const API = {
       const blob = await res.blob();
       return new Blob([blob], { type: 'application/pdf' });
     },
+    pdf: (id, options = {}) => API.purchaseOrders.downloadPdf(id, options),
     createBatch: (data) => API._ensureFirmReady().then(() => API._json('/api/purchase-orders/batch', {
       method: 'POST',
       body: { ...data, firmId: API.firmId || data.firmId }

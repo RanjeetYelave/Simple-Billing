@@ -1943,18 +1943,22 @@
       const [isPdfLoading, setIsPdfLoading] = useState(false);
       const [cachedPdfBlob, setCachedPdfBlob] = useState(pdfBlob || null);
 
+      const prevIsOpenRef = useRef(false);
       useEffect(() => {
-        const firstWithPhone = validRecipients.find(r => r.phone);
-        const initialRecId = firstWithPhone ? firstWithPhone.id : (validRecipients.length > 0 ? validRecipients[0].id : 'other');
-        const initialPhone = firstWithPhone ? firstWithPhone.phone : ((validRecipients[0] && validRecipients[0].phone) || recipientPhone || '');
+        if (isOpen && !prevIsOpenRef.current) {
+          const firstWithPhone = validRecipients.find(r => r && r.phone);
+          const initialRecId = firstWithPhone ? firstWithPhone.id : (validRecipients.length > 0 ? validRecipients[0].id : 'other');
+          const initialPhone = firstWithPhone ? firstWithPhone.phone : ((validRecipients[0] && validRecipients[0].phone) || recipientPhone || '');
 
-        setSelectedRecipientId(initialRecId);
-        setPhone(initialPhone);
-        setMessage(initialMessage || '');
-        setIsEditing(false);
-        setCopied(false);
-        setCachedPdfBlob(pdfBlob || null);
-        setAttachPdf(hasPdf);
+          setSelectedRecipientId(initialRecId);
+          setPhone(initialPhone);
+          setMessage(initialMessage || '');
+          setIsEditing(false);
+          setCopied(false);
+          setCachedPdfBlob(pdfBlob || null);
+          setAttachPdf(hasPdf);
+        }
+        prevIsOpenRef.current = isOpen;
       }, [isOpen, validRecipients, recipientPhone, initialMessage, pdfBlob, hasPdf]);
 
       useEffect(() => {
@@ -28049,6 +28053,7 @@ if (typeof window !== 'undefined') {
       const [paymentDate, setPaymentDate] = useState(BillsoftUtils.todayStr());
       const [referenceNumber, setReferenceNumber] = useState('');
       const [notes, setNotes] = useState('');
+      const loadedCustomerIdRef = useRef(null);
 
       useEffect(() => {
         const modalId = 'customer_settlement_modal_' + (customer?.id || 'default');
@@ -28062,8 +28067,11 @@ if (typeof window !== 'undefined') {
         }
       }, [customer?.id, onClose]);
 
+      const selectedIdsKey = Array.isArray(initialSelectedInvoiceIds) ? initialSelectedInvoiceIds.join(',') : '';
       useEffect(() => {
         if (!customer || !customer.id) return;
+        if (loadedCustomerIdRef.current === customer.id) return;
+        loadedCustomerIdRef.current = customer.id;
         setLoading(true);
         Promise.all([
           API.customers.outstandingInvoices(customer.id).catch(() => []),
@@ -28072,10 +28080,11 @@ if (typeof window !== 'undefined') {
           setOutstandingInvoices(invs || []);
           setC360Data(c360);
 
+          const preselectedList = selectedIdsKey ? selectedIdsKey.split(',').map(Number) : [];
           const initMap = {};
           let initialSum = 0;
           (invs || []).forEach(inv => {
-            const isPreselected = initialSelectedInvoiceIds.length === 0 || initialSelectedInvoiceIds.includes(inv.invoiceId);
+            const isPreselected = preselectedList.length === 0 || preselectedList.includes(inv.invoiceId);
             const outAmt = parseFloat(inv.outstandingAmount) || 0;
             initMap[inv.invoiceId] = {
               selected: isPreselected,
@@ -28087,7 +28096,7 @@ if (typeof window !== 'undefined') {
           setPaymentAmount(initialSum > 0 ? initialSum.toFixed(2) : '');
           setLoading(false);
         }).catch(() => setLoading(false));
-      }, [customer, initialSelectedInvoiceIds]);
+      }, [customer?.id, selectedIdsKey]);
 
       const handleToggleSelect = (invId) => {
         setAllocState(prev => {
@@ -28111,13 +28120,56 @@ if (typeof window !== 'undefined') {
       };
 
       const handleAllocationAmountChange = (invId, val) => {
-        setAllocState(prev => ({
-          ...prev,
-          [invId]: {
-            selected: true,
-            amount: val
+        setAllocState(prev => {
+          const next = {
+            ...prev,
+            [invId]: {
+              selected: val !== '' && parseFloat(val) > 0,
+              amount: val
+            }
+          };
+          const newTotalAlloc = Object.entries(next)
+            .filter(([_, v]) => v.selected)
+            .reduce((sum, [_, v]) => sum + (parseFloat(v.amount) || 0), 0);
+          const curPmt = parseFloat(paymentAmount) || 0;
+          if (newTotalAlloc > curPmt) {
+            setPaymentAmount(newTotalAlloc > 0 ? newTotalAlloc.toFixed(2) : '');
           }
-        }));
+          return next;
+        });
+      };
+
+      const handlePaymentAmountChange = (val) => {
+        setPaymentAmount(val);
+        const pmt = parseFloat(val);
+        if (!isNaN(pmt) && pmt >= 0) {
+          setAllocState(prev => {
+            let curTotal = 0;
+            outstandingInvoices.forEach(inv => {
+              const s = prev[inv.invoiceId];
+              if (s && s.selected) curTotal += (parseFloat(s.amount) || 0);
+            });
+            if (curTotal <= pmt) return prev;
+
+            let remaining = pmt;
+            const next = { ...prev };
+            outstandingInvoices.forEach(inv => {
+              const s = prev[inv.invoiceId];
+              if (s && s.selected) {
+                const outAmt = parseFloat(inv.outstandingAmount) || 0;
+                const prevAlloc = parseFloat(s.amount) || 0;
+                const allowed = Math.min(remaining, Math.min(outAmt, prevAlloc));
+                if (allowed > 0) {
+                  next[inv.invoiceId] = { selected: true, amount: allowed.toFixed(2) };
+                  remaining -= allowed;
+                } else {
+                  next[inv.invoiceId] = { selected: false, amount: '' };
+                }
+              }
+            });
+            return next;
+          });
+        }
       };
 
       const handleAutoAllocate = () => {
@@ -28230,7 +28282,17 @@ if (typeof window !== 'undefined') {
       },
         React.createElement('div', {
           className: 'card modal-content',
-          style: { maxWidth: 680, width: '95%', margin: '40px auto', padding: 24, borderRadius: 14, maxHeight: '90vh', overflowY: 'auto' },
+          style: {
+            maxWidth: 700,
+            width: '95%',
+            margin: '30px auto',
+            padding: 24,
+            borderRadius: 14,
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          },
           onClick: e => e.stopPropagation()
         },
           // Header
@@ -28245,7 +28307,7 @@ if (typeof window !== 'undefined') {
           ),
 
           loading ? React.createElement(RupeeCRMLoader, { message: 'Loading unsettled invoices...', size: 52, style: { minHeight: 180, padding: 30 } }) :
-            React.createElement('form', { onSubmit: handleSubmit },
+            React.createElement('form', { onSubmit: handleSubmit, style: { display: 'flex', flexDirection: 'column', overflowY: 'auto', flex: 1, paddingRight: 4 } },
               // Invoices Checklist
               React.createElement('div', { style: { marginBottom: 18 } },
                 React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
@@ -28329,7 +28391,7 @@ if (typeof window !== 'undefined') {
                     step: '0.01',
                     placeholder: '0.00',
                     value: paymentAmount,
-                    onChange: e => setPaymentAmount(e.target.value),
+                    onChange: e => handlePaymentAmountChange(e.target.value),
                     required: true,
                     style: { fontWeight: 700, fontSize: '1rem' }
                   })
@@ -29666,6 +29728,13 @@ function PartyDetailModal({
   const [targetAdjustAmt, setTargetAdjustAmt] = useState('');
   const [isAdjusting, setIsAdjusting] = useState(false);
 
+  // Purchase Order Preview / PDF state
+  const [previewPo, setPreviewPo] = useState(null);
+
+  // Delete payment confirmation modal state
+  const [deletePaymentConfirm, setDeletePaymentConfirm] = useState(null);
+  const [isDeletingPayment, setIsDeletingPayment] = useState(false);
+
   // Load all core data for party
   const loadData = useCallback(async () => {
     if (!party || !party.id) return;
@@ -29726,7 +29795,11 @@ function PartyDetailModal({
       RupeeModalStack.register(partyModalId, {
         priority: 'base',
         onClose: () => {
-          if (showUnlinkModal) {
+          if (previewPo) {
+            setPreviewPo(null);
+          } else if (deletePaymentConfirm) {
+            setDeletePaymentConfirm(null);
+          } else if (showUnlinkModal) {
             setShowUnlinkModal(false);
           } else if (adjustPayment) {
             setAdjustPayment(null);
@@ -29737,13 +29810,17 @@ function PartyDetailModal({
       });
       return () => RupeeModalStack.unregister(partyModalId);
     }
-  }, [partyModalId, onClose, showUnlinkModal, adjustPayment]);
+  }, [partyModalId, onClose, showUnlinkModal, adjustPayment, previewPo, deletePaymentConfirm]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' || e.keyCode === 27) {
         e.stopPropagation();
-        if (showUnlinkModal) {
+        if (previewPo) {
+          setPreviewPo(null);
+        } else if (deletePaymentConfirm) {
+          setDeletePaymentConfirm(null);
+        } else if (showUnlinkModal) {
           setShowUnlinkModal(false);
         } else if (adjustPayment) {
           setAdjustPayment(null);
@@ -29754,7 +29831,7 @@ function PartyDetailModal({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showUnlinkModal, adjustPayment]);
+  }, [onClose, showUnlinkModal, adjustPayment, previewPo, deletePaymentConfirm]);
 
   // Current balance & metrics
   const netBalance = ledgerData ? (ledgerData.closingBalance || 0) : (partyData.openingBalance || 0);
@@ -29891,17 +29968,38 @@ function PartyDetailModal({
     }
   };
 
-  // Delete payment
-  const handleDeletePayment = async (pmtId) => {
-    if (!confirm('Are you sure you want to delete this payment transaction? The supplier ledger balance will be restored.')) return;
+  // Delete payment confirmation initiator
+  const handleDeletePayment = (pmtOrId) => {
+    if (typeof pmtOrId === 'object' && pmtOrId !== null) {
+      setDeletePaymentConfirm(pmtOrId);
+    } else {
+      const pId = typeof pmtOrId === 'number' ? pmtOrId : parseInt(pmtOrId, 10);
+      const matched = (payments || []).find(p => p.id === pId);
+      setDeletePaymentConfirm(matched || { id: pId, amount: 0 });
+    }
+  };
+
+  // Cancel payment deletion
+  const handleCancelDeletePayment = () => {
+    if (isDeletingPayment) return;
+    setDeletePaymentConfirm(null);
+  };
+
+  // Confirmed payment deletion
+  const handleConfirmDeletePayment = async () => {
+    if (isDeletingPayment || !deletePaymentConfirm?.id) return;
+    setIsDeletingPayment(true);
     try {
-      await API.parties.deletePayment(pmtId);
+      await API.parties.deletePayment(deletePaymentConfirm.id);
       showToast('Payment deleted successfully', 'success');
-      loadData();
+      setDeletePaymentConfirm(null);
+      await loadData();
       if (onPartyUpdated) onPartyUpdated();
       window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
     } catch (err) {
-      showToast('Failed to delete payment', 'error');
+      showToast('Failed to delete payment: ' + (err.message || 'Error'), 'error');
+    } finally {
+      setIsDeletingPayment(false);
     }
   };
 
@@ -30306,7 +30404,11 @@ function PartyDetailModal({
                       React.createElement('button', {
                         className: 'btn btn-ghost btn-xs',
                         style: { color: 'var(--danger)', padding: '2px 6px', fontSize: '0.72rem' },
-                        onClick: () => handleDeletePayment(parseInt(e.ref.replace('PAY-', ''), 10))
+                        onClick: () => {
+                          const pId = parseInt(e.ref.replace('PAY-', ''), 10);
+                          const matched = (payments || []).find(p => p.id === pId);
+                          handleDeletePayment(matched || { id: pId, amount: e.credit, paymentDate: e.date, referenceNumber: e.ref });
+                        }
                       }, 'Delete')
                     )
                   )
@@ -30369,12 +30471,8 @@ function PartyDetailModal({
                     React.createElement('td', { style: { textAlign: 'center' } },
                       React.createElement('button', {
                         className: 'btn btn-outline btn-xs',
-                        onClick: () => {
-                          if (API.purchaseOrders && API.purchaseOrders.pdf) {
-                            API.purchaseOrders.pdf(po.id);
-                          }
-                        }
-                      }, 'View PDF')
+                        onClick: () => setPreviewPo(po)
+                      }, 'Preview / PDF')
                     )
                   );
                 })
@@ -30421,7 +30519,7 @@ function PartyDetailModal({
                     React.createElement('button', {
                       className: 'btn btn-ghost btn-xs',
                       style: { color: 'var(--danger)' },
-                      onClick: () => handleDeletePayment(p.id)
+                      onClick: () => handleDeletePayment(p)
                     }, 'Delete')
                   )
                 ))
@@ -30601,13 +30699,9 @@ function PartyDetailModal({
               )
             ),
             React.createElement('button', {
-              className: 'btn btn-ghost btn-xs',
-              onClick: () => {
-                if (API.purchaseOrders && API.purchaseOrders.pdf) {
-                  API.purchaseOrders.pdf(po.id);
-                }
-              }
-            }, 'Download PO')
+              className: 'btn btn-outline btn-xs',
+              onClick: () => setPreviewPo(po)
+            }, 'Preview / PDF')
           ))
         )
       ),
@@ -30732,7 +30826,141 @@ function PartyDetailModal({
           if (onPartyUpdated) onPartyUpdated();
           window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
         }
-      })
+      }),
+
+      // ── SUB-MODAL: PURCHASE ORDER PREVIEW / PDF (REUSING UNIVERSAL MODAL) ──
+      previewPo && React.createElement(DocumentExportModal, {
+        isOpen: !!previewPo,
+        onClose: () => setPreviewPo(null),
+        title: `Purchase Order #${previewPo.poNumber || previewPo.id}`,
+        docNumber: previewPo.poNumber || previewPo.id,
+        badgeText: 'Purchase Order',
+        badgeVariant: 'primary',
+        documentFamily: 'PURCHASE_ORDER',
+        supportedFormats: ['A4', 'A5'],
+        firmId: previewPo.firmId || API.firmId,
+        defaultFilename: `PO-${previewPo.poNumber || previewPo.id}.pdf`,
+        fetchPdfBlob: async ({ theme, color, format }) => {
+          return await API.purchaseOrders.downloadPdf(previewPo.id, { theme, color, format });
+        },
+        onSaveFirmDefault: async ({ theme, color, format, firmId: fId }) => {
+          const effFid = fId || previewPo.firmId || API.firmId;
+          if (effFid && API.firm && API.firm.savePrintPreferences) {
+            await API.firm.savePrintPreferences(effFid, { theme, color, format });
+          }
+        }
+      }),
+
+      // ── SUB-MODAL: DELETE PAYMENT CONFIRMATION (REUSABLE IN-APP MODAL) ──
+      deletePaymentConfirm && React.createElement('div', {
+        className: 'modal-overlay modal-confirm',
+        style: {
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('party_payment_delete_modal', 'confirm') : 10300,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'rgba(15, 23, 42, 0.65)'
+        },
+        onClick: handleCancelDeletePayment
+      },
+        React.createElement('div', {
+          className: 'modal-box card',
+          style: {
+            maxWidth: 480,
+            width: '92%',
+            padding: 24,
+            borderRadius: 14,
+            background: 'var(--bg-card, #ffffff)',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+            border: '1px solid var(--border)'
+          },
+          onClick: e => e.stopPropagation()
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
+            React.createElement('span', { style: { fontSize: '1.75rem', lineHeight: 1 } }, '🗑️'),
+            React.createElement('h3', {
+              style: {
+                margin: 0,
+                fontSize: '1.18rem',
+                color: 'var(--danger, #ef4444)',
+                fontWeight: 700,
+                letterSpacing: '-0.01em'
+              }
+            }, 'Delete Payment Transaction')
+          ),
+          React.createElement('p', {
+            style: {
+              margin: '0 0 14px 0',
+              fontSize: '0.9rem',
+              color: 'var(--text-secondary)'
+            }
+          }, 'Are you sure you want to delete this payment record? This action will reverse the transaction.'),
+          React.createElement('div', {
+            style: {
+              background: 'var(--bg-secondary, #f8fafc)',
+              border: '1px solid var(--border, #e2e8f0)',
+              borderRadius: 10,
+              padding: '12px 16px',
+              marginBottom: 16,
+              fontSize: '0.85rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6
+            }
+          },
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Vendor / Supplier:'),
+              React.createElement('strong', { style: { color: 'var(--text-primary)' } }, effectiveParty.name || 'Vendor')
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Payment Reference:'),
+              React.createElement('span', { style: { fontFamily: 'monospace', fontWeight: 600 } },
+                deletePaymentConfirm.referenceNumber ? `#${deletePaymentConfirm.referenceNumber}` : `PAY-${deletePaymentConfirm.id}`
+              )
+            ),
+            (deletePaymentConfirm.paymentDate || deletePaymentConfirm.createdAt) && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Payment Date:'),
+              React.createElement('span', null, BillsoftUtils.formatDate(deletePaymentConfirm.paymentDate || deletePaymentConfirm.createdAt))
+            ),
+            deletePaymentConfirm.paymentMode && React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between' } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)' } }, 'Payment Mode:'),
+              React.createElement('span', null, deletePaymentConfirm.paymentMode)
+            ),
+            React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 2 } },
+              React.createElement('span', { style: { color: 'var(--text-secondary)', fontWeight: 600 } }, 'Amount to Reverse:'),
+              React.createElement('strong', { style: { color: '#dc2626', fontSize: '1rem' } },
+                BillsoftUtils.formatCurrency(deletePaymentConfirm.amount || 0)
+              )
+            )
+          ),
+          React.createElement('div', {
+            style: {
+              fontSize: '0.78rem',
+              lineHeight: 1.45,
+              color: 'var(--text-muted, #64748b)',
+              backgroundColor: 'rgba(239, 68, 68, 0.06)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: 8,
+              padding: '8px 12px',
+              marginBottom: 20
+            }
+          }, '⚠️ Deleting this payment may affect the supplier\'s outstanding balance and related ledger figures.'),
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+            React.createElement('button', {
+              className: 'btn btn-outline btn-sm',
+              style: { minWidth: 80 },
+              disabled: isDeletingPayment,
+              onClick: handleCancelDeletePayment
+            }, 'Cancel'),
+            React.createElement('button', {
+              className: 'btn btn-sm btn-danger',
+              style: { minWidth: 110, fontWeight: 600 },
+              disabled: isDeletingPayment,
+              onClick: handleConfirmDeletePayment
+            }, isDeletingPayment ? 'Deleting...' : '🗑️ Delete Payment')
+          )
+        )
+      )
     )
   );
 }

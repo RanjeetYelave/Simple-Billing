@@ -5,13 +5,16 @@ import com.billing.simple.billsoft.entities.Party;
 import com.billing.simple.billsoft.entities.PartyPayment;
 import com.billing.simple.billsoft.service.PartyService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,23 +23,27 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
-@org.springframework.test.context.ActiveProfiles("test")
-@AutoConfigureMockMvc
+@ExtendWith(MockitoExtension.class)
 class PartyControllerTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockitoBean
+    @Mock
     private PartyService service;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @InjectMocks
+    private PartyController controller;
+
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
 
     @Test
     void testCreate() throws Exception {
@@ -118,5 +125,25 @@ class PartyControllerTest {
                 .content(objectMapper.writeValueAsString(payment)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(5000));
+    }
+
+    @Test
+    void testDeletePayment() throws Exception {
+        doNothing().when(service).deletePayment(10L, 1L);
+
+        mockMvc.perform(delete("/api/parties/payments/10")
+                .header("X-Firm-Id", 1L))
+                .andExpect(status().isNoContent());
+
+        verify(service).deletePayment(10L, 1L);
+    }
+
+    @Test
+    void testDeletePaymentNotFound() throws Exception {
+        doThrow(new IllegalArgumentException("Payment not found")).when(service).deletePayment(999L, 1L);
+
+        mockMvc.perform(delete("/api/parties/payments/999")
+                .header("X-Firm-Id", 1L))
+                .andExpect(status().isNotFound());
     }
 }

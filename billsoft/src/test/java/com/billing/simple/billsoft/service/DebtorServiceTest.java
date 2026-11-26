@@ -263,8 +263,38 @@ public class DebtorServiceTest {
         byte[] csvBytes = debtorService.exportDebtorsCsv(firmId);
         assertNotNull(csvBytes);
         String csv = new String(csvBytes);
-        assertTrue(csv.contains("Customer Name,Phone,Email,Outstanding Balance"));
+        assertTrue(csv.contains("Customer Name,Customer ID,Phone,Total Outstanding,Overdue Amount,Current Amount"));
         assertTrue(csv.contains("Export Corp"));
         assertTrue(csv.contains("10000.00"));
+        assertTrue(csv.contains("TOTAL,,,10000.00"));
+    }
+
+    @Test
+    void testDebtorsAgingPdfExport() throws Exception {
+        Customer c1 = Customer.builder().id(10L).firmId(firmId).name("Export Corp").phone("9988776655").build();
+        when(customerRepo.findByFirmId(firmId)).thenReturn(List.of(c1));
+        FirmDetails fd = new FirmDetails();
+        fd.setId(firmId);
+        fd.setFirmName("Test Firm");
+        when(firmRepo.findById(firmId)).thenReturn(Optional.of(fd));
+
+        when(balanceService.getCustomerBalance(firmId, 10L)).thenReturn(CustomerBalanceSummary.builder()
+                .customerId(10L).firmId(firmId)
+                .totalBilled(new BigDecimal("12000.00"))
+                .totalPaid(new BigDecimal("2000.00"))
+                .totalReturns(BigDecimal.ZERO)
+                .closingBalance(new BigDecimal("10000.00"))
+                .build());
+
+        when(invoiceRepo.findByFirmId(firmId)).thenReturn(Collections.emptyList());
+        when(invoicePaymentRepo.findByFirmId(firmId)).thenReturn(Collections.emptyList());
+        when(salesReturnRepo.findByFirmId(firmId)).thenReturn(Collections.emptyList());
+        when(promiseRepo.findByFirmId(firmId)).thenReturn(Collections.emptyList());
+
+        byte[] pdfBytes = debtorService.exportDebtorsPdf(firmId);
+        assertNotNull(pdfBytes);
+        assertTrue(pdfBytes.length > 500);
+        // Valid PDF magic header %PDF
+        assertEquals("%PDF", new String(pdfBytes, 0, 4));
     }
 }

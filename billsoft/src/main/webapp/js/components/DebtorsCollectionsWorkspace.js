@@ -30,6 +30,7 @@
     const [bulkFrom, setBulkFrom] = useState('');
     const [bulkTo, setBulkTo] = useState('');
     const [isDownloadingZip, setIsDownloadingZip] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Modals
     const [promiseModalCustomer, setPromiseModalCustomer] = useState(null);
@@ -109,6 +110,109 @@
         setLoading(false);
       }
     }, [loadOverview, loadDebtors, loadOverdueInvoices, loadFollowUps]);
+
+    const handleUserRefresh = async () => {
+      if (isRefreshing) return;
+      setIsRefreshing(true);
+      try {
+        await Promise.all([
+          loadOverview(),
+          loadDebtors(),
+          loadOverdueInvoices(),
+          loadFollowUps()
+        ]);
+        if (typeof showToast === 'function') {
+          showToast('Debtors & Collections refreshed successfully', 'success');
+        }
+      } catch (err) {
+        console.error('Refresh failed:', err);
+        if (typeof showToast === 'function') {
+          showToast('Failed to refresh debtors data', 'error');
+        }
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    const handleExportCsv = async () => {
+      try {
+        await API._ensureFirmReady();
+        const url = API._qs('/api/debtors/export/csv');
+        const res = await API._request(url);
+        if (!res.ok) {
+          let msg = 'Failed to export CSV';
+          try {
+            const j = await res.json();
+            msg = j.message || j.error || msg;
+          } catch (_) {}
+          if (typeof showToast === 'function') showToast(msg, 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `Debtors_Register_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+        if (typeof showToast === 'function') showToast('Debtors Register CSV downloaded', 'success');
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'CSV export failed', 'error');
+      }
+    };
+
+    const handleExportPdf = async () => {
+      try {
+        if (typeof showToast === 'function') showToast('Generating Debtors Aging Report PDF...', 'info');
+        await API._ensureFirmReady();
+        const url = API._qs('/api/debtors/export/pdf');
+        const res = await API._request(url);
+        if (!res.ok) {
+          let msg = 'Failed to export PDF';
+          try {
+            const j = await res.json();
+            msg = j.message || j.error || msg;
+          } catch (_) {}
+          if (typeof showToast === 'function') showToast(msg, 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `Debtors_Aging_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+        if (typeof showToast === 'function') showToast('Aging Report PDF downloaded successfully', 'success');
+      } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'PDF export failed', 'error');
+      }
+    };
+
+    const handleDownloadCustomerStatement = async (d) => {
+      try {
+        if (typeof showToast === 'function') showToast(`Generating statement for ${d.customerName}...`, 'info');
+        const blob = await API.statements.customerPdf(d.customerId);
+        const blobUrl = window.URL.createObjectURL(blob);
+        const sanitizedName = (d.customerName || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const today = new Date().toISOString().slice(0, 10);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `Statement-${sanitizedName}-${today}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+        if (typeof showToast === 'function') showToast(`Statement for ${d.customerName} downloaded successfully!`, 'success');
+      } catch (err) {
+        console.error(err);
+        if (typeof showToast === 'function') showToast(err.message || 'Failed to download statement', 'error');
+      }
+    };
 
     useEffect(() => {
       refreshAll();
@@ -258,8 +362,9 @@
           h('button', {
             className: 'btn btn-outline btn-sm',
             title: 'Refresh Data',
-            onClick: refreshAll
-          }, '🔄 Refresh')
+            disabled: isRefreshing || loading,
+            onClick: handleUserRefresh
+          }, isRefreshing ? '⏳ Refreshing...' : '🔄 Refresh')
         )
       ),
 
@@ -486,15 +591,15 @@
             )
           ),
           h('div', { style: { display: 'flex', gap: 6 } },
-            h('a', {
-              href: API.debtors.exportCsvUrl(),
+            h('button', {
               className: 'btn btn-outline btn-xs',
-              download: true
+              onClick: handleExportCsv,
+              title: 'Export Debtor Register CSV'
             }, '📥 CSV'),
-            h('a', {
-              href: API.debtors.exportPdfUrl(),
+            h('button', {
               className: 'btn btn-outline btn-xs',
-              download: true
+              onClick: handleExportPdf,
+              title: 'Export Aging Report PDF'
             }, '📄 PDF Aging')
           )
         ),
@@ -623,7 +728,13 @@
                         onClick: () => {
                           if (onCustomer360) onCustomer360({ id: d.customerId, name: d.customerName });
                         }
-                      }, '360')
+                      }, '360'),
+                      h('button', {
+                        className: 'btn btn-outline btn-xs',
+                        style: { color: 'var(--primary)' },
+                        title: 'Download Statement (PDF)',
+                        onClick: () => handleDownloadCustomerStatement(d)
+                      }, 'Stmt')
                     )
                   )
                 ))
@@ -832,17 +943,15 @@
               )
             ),
             h('div', { style: { display: 'flex', gap: 8, marginTop: 14 } },
-              h('a', {
-                href: API.debtors.exportCsvUrl(),
+              h('button', {
                 className: 'btn btn-primary btn-sm',
                 style: { flex: 1, textAlign: 'center' },
-                download: true
+                onClick: handleExportCsv
               }, 'Download CSV'),
-              h('a', {
-                href: API.debtors.exportPdfUrl(),
+              h('button', {
                 className: 'btn btn-outline btn-sm',
                 style: { flex: 1, textAlign: 'center' },
-                download: true
+                onClick: handleExportPdf
               }, 'Download PDF Report')
             )
           ),
@@ -896,37 +1005,68 @@
       ),
 
       // ── MODAL 1: PROMISE TO PAY MODAL ──
-      promiseModalCustomer && h('div', { className: 'modal-backdrop', style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 } },
-        h('div', { className: 'modal-dialog', style: { background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, width: '100%', maxWidth: 440, padding: 20, boxShadow: '0 8px 30px rgba(0,0,0,0.2)' } },
-          h('h4', { style: { margin: '0 0 12px 0', fontWeight: 700 } }, `Record Promise to Pay`),
-          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14 } },
-            `Customer: `, h('strong', { style: { color: 'var(--text-primary)' } }, promiseModalCustomer.customerName),
+      promiseModalCustomer && h('div', {
+        className: 'modal-overlay modal-foreground',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('debtor_promise_modal', 'foreground') : 10500
+        },
+        onClick: () => setPromiseModalCustomer(null)
+      },
+        h('div', {
+          className: 'card modal-content',
+          style: {
+            background: 'var(--bg-card, #ffffff)',
+            color: 'var(--text, #1e293b)',
+            border: '1px solid var(--border, #cbd5e1)',
+            borderRadius: 12,
+            width: '92%',
+            maxWidth: 440,
+            padding: 22,
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.25), 0 10px 10px -5px rgba(0,0,0,0.1)'
+          },
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            h('h4', { style: { margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--text)' } }, `Record Promise to Pay`),
+            h('button', { className: 'btn btn-ghost btn-sm', onClick: () => setPromiseModalCustomer(null) }, '✕')
+          ),
+          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14, padding: '8px 10px', background: 'var(--bg-hover)', borderRadius: 8 } },
+            `Customer: `, h('strong', { style: { color: 'var(--text)' } }, promiseModalCustomer.customerName),
             ` (Outstanding: ${formatInr(promiseModalCustomer.outstandingAmount)})`
           ),
           h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Promised Amount (₹) *'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Promised Amount (₹) *'),
               h('input', {
                 type: 'number',
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 placeholder: 'e.g. 5000',
                 value: promiseAmount,
                 onChange: (e) => setPromiseAmount(e.target.value)
               })
             ),
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Promised Date *'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Promised Date *'),
               h('input', {
                 type: 'date',
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 value: promiseDate,
                 onChange: (e) => setPromiseDate(e.target.value)
               })
             ),
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Notes / Terms'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Notes / Terms'),
               h('textarea', {
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 rows: 2,
                 placeholder: 'e.g. Promised via phone to clear by NEFT...',
                 value: promiseNotes,
@@ -949,17 +1089,46 @@
       ),
 
       // ── MODAL 2: LOG ACTIVITY MODAL ──
-      activityModalCustomer && h('div', { className: 'modal-backdrop', style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 } },
-        h('div', { className: 'modal-dialog', style: { background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, width: '100%', maxWidth: 440, padding: 20, boxShadow: '0 8px 30px rgba(0,0,0,0.2)' } },
-          h('h4', { style: { margin: '0 0 12px 0', fontWeight: 700 } }, `Log Collection Activity`),
-          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14 } },
-            `Customer: `, h('strong', { style: { color: 'var(--text-primary)' } }, activityModalCustomer.customerName)
+      activityModalCustomer && h('div', {
+        className: 'modal-overlay modal-foreground',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('debtor_activity_modal', 'foreground') : 10500
+        },
+        onClick: () => setActivityModalCustomer(null)
+      },
+        h('div', {
+          className: 'card modal-content',
+          style: {
+            background: 'var(--bg-card, #ffffff)',
+            color: 'var(--text, #1e293b)',
+            border: '1px solid var(--border, #cbd5e1)',
+            borderRadius: 12,
+            width: '92%',
+            maxWidth: 440,
+            padding: 22,
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.25), 0 10px 10px -5px rgba(0,0,0,0.1)'
+          },
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            h('h4', { style: { margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--text)' } }, `Log Collection Activity`),
+            h('button', { className: 'btn btn-ghost btn-sm', onClick: () => setActivityModalCustomer(null) }, '✕')
+          ),
+          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14, padding: '8px 10px', background: 'var(--bg-hover)', borderRadius: 8 } },
+            `Customer: `, h('strong', { style: { color: 'var(--text)' } }, activityModalCustomer.customerName)
           ),
           h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Activity Type *'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Activity Type *'),
               h('select', {
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 value: activityType,
                 onChange: (e) => setActivityType(e.target.value)
               },
@@ -970,9 +1139,10 @@
               )
             ),
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Details / Notes *'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Details / Notes *'),
               h('textarea', {
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 rows: 3,
                 placeholder: 'Record conversation details, feedback, or follow-up plan...',
                 value: activityDesc,
@@ -995,27 +1165,57 @@
       ),
 
       // ── MODAL 3: RESCHEDULE PROMISE MODAL ──
-      rescheduleModalPromise && h('div', { className: 'modal-backdrop', style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 } },
-        h('div', { className: 'modal-dialog', style: { background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 10, width: '100%', maxWidth: 440, padding: 20, boxShadow: '0 8px 30px rgba(0,0,0,0.2)' } },
-          h('h4', { style: { margin: '0 0 12px 0', fontWeight: 700 } }, `Reschedule Promise to Pay`),
-          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14 } },
-            `Customer: `, h('strong', { style: { color: 'var(--text-primary)' } }, rescheduleModalPromise.customerName),
+      rescheduleModalPromise && h('div', {
+        className: 'modal-overlay modal-foreground',
+        style: {
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: (typeof window !== 'undefined' && window.RupeeModalStack) ? window.RupeeModalStack.getZIndex('debtor_reschedule_modal', 'foreground') : 10500
+        },
+        onClick: () => setRescheduleModalPromise(null)
+      },
+        h('div', {
+          className: 'card modal-content',
+          style: {
+            background: 'var(--bg-card, #ffffff)',
+            color: 'var(--text, #1e293b)',
+            border: '1px solid var(--border, #cbd5e1)',
+            borderRadius: 12,
+            width: '92%',
+            maxWidth: 440,
+            padding: 22,
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.25), 0 10px 10px -5px rgba(0,0,0,0.1)'
+          },
+          onClick: e => e.stopPropagation()
+        },
+          h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            h('h4', { style: { margin: 0, fontWeight: 700, fontSize: '1.05rem', color: 'var(--text)' } }, `Reschedule Promise to Pay`),
+            h('button', { className: 'btn btn-ghost btn-sm', onClick: () => setRescheduleModalPromise(null) }, '✕')
+          ),
+          h('div', { style: { fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: 14, padding: '8px 10px', background: 'var(--bg-hover)', borderRadius: 8 } },
+            `Customer: `, h('strong', { style: { color: 'var(--text)' } }, rescheduleModalPromise.customerName),
             ` • Remaining: ${formatInr(rescheduleModalPromise.outstandingAmount)}`
           ),
           h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'New Promised Date *'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'New Promised Date *'),
               h('input', {
                 type: 'date',
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 value: rescheduleDate,
                 onChange: (e) => setRescheduleDate(e.target.value)
               })
             ),
             h('div', null,
-              h('label', { style: { fontSize: '0.76rem', fontWeight: 600 } }, 'Reason / Notes'),
+              h('label', { style: { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)', marginBottom: 4, display: 'block' } }, 'Reason / Notes'),
               h('textarea', {
-                className: 'form-control',
+                className: 'input',
+                style: { width: '100%' },
                 rows: 2,
                 placeholder: 'Reason for rescheduling...',
                 value: rescheduleNotes,

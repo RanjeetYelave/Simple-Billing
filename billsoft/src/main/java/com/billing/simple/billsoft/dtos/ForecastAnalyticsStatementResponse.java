@@ -64,6 +64,7 @@ public class ForecastAnalyticsStatementResponse {
         private Long productId;
         private String productName;
         private String sku;
+        private String barcode;
         private String hsnCode;
         private String category;
         private String unit;

@@ -40,6 +40,8 @@ public interface BusinessPartyLinkService {
 
     List<UnifiedCounterpartySearchResult> searchUnified(String targetRole, String query, Integer limit);
 
+    List<UnifiedCounterpartySearchResult> searchUnified(String targetRole, String query, Integer limit, Long explicitFirmId);
+
     AliasDto addAlias(Long linkId, CreateAliasRequest request);
 
     void removeAlias(Long linkId, Long aliasId, String reason, String actor);

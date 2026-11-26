@@ -94,7 +94,8 @@ public class InvoiceService {
     @Lazy
     private com.billing.simple.billsoft.forecast.service.ForecastIngestionService forecastIngestionService;
 
-    public void setForecastIngestionService(com.billing.simple.billsoft.forecast.service.ForecastIngestionService forecastIngestionService) {
+    public void setForecastIngestionService(
+            com.billing.simple.billsoft.forecast.service.ForecastIngestionService forecastIngestionService) {
         this.forecastIngestionService = forecastIngestionService;
     }
 
@@ -640,16 +641,24 @@ public class InvoiceService {
             return;
         }
 
-        boolean hasUnlinked = items.stream().anyMatch(it -> it != null && it.getProductId() == null
-                && it.getProductName() != null && !it.getProductName().trim().isEmpty());
-        if (!hasUnlinked) {
-            return;
-        }
-
         List<Product> firmProducts = new ArrayList<>(productRepo.findByFirmId(firmId));
+        Set<Long> validFirmProductIds = firmProducts.stream()
+                .map(Product::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
 
         for (InvoiceRequestItem item : items) {
-            if (item == null || item.getProductId() != null) {
+            if (item == null) {
+                continue;
+            }
+
+            // Cross-firm reconciliation: If productId belongs to another firm, invalidate it
+            if (item.getProductId() != null && !validFirmProductIds.contains(item.getProductId())) {
+                item.setProductId(null);
+            }
+
+            // If product is already validly linked to this firm, nothing to do
+            if (item.getProductId() != null) {
                 continue;
             }
 
@@ -661,6 +670,7 @@ public class InvoiceService {
             String cleanName = rawName.trim();
             String normalized = SavedItem.normalizeText(cleanName);
 
+            // Reconcile against Firm's catalog: match by normalized name
             Optional<Product> existingMatch = firmProducts.stream()
                     .filter(p -> !Boolean.TRUE.equals(p.getIsArchived()))
                     .filter(p -> p.getName() != null && SavedItem.normalizeText(p.getName()).equals(normalized))
@@ -695,6 +705,7 @@ public class InvoiceService {
 
                 effectiveProduct = productRepo.save(newProd);
                 firmProducts.add(effectiveProduct);
+                validFirmProductIds.add(effectiveProduct.getId());
             }
 
             item.setProductId(effectiveProduct.getId());
@@ -1619,7 +1630,7 @@ public class InvoiceService {
             calculated.setPaid(isPaid);
 
             Invoice saved = invoiceRepo.save(calculated);
-        syncForecastForInvoice(saved);
+            syncForecastForInvoice(saved);
             estimate.setConvertedInvoiceId(saved.getId());
             estimate.setConversionStatus("CONVERTED");
             invoiceRepo.save(estimate);

@@ -30,6 +30,14 @@ public interface ForecastSalesTransactionRepository extends JpaRepository<Foreca
     List<ForecastSalesTransaction> findAllByFirmIdAndTransactionDateBetween(
             Long firmId, LocalDate startDate, LocalDate endDate);
 
+    @Query("SELECT COUNT(DISTINCT t.customerId) FROM ForecastSalesTransaction t " +
+           "WHERE t.firmId = :firmId AND t.productId = :productId AND t.customerId IS NOT NULL AND t.transactionDate BETWEEN :startDate AND :endDate")
+    Integer countDistinctCustomersForProductBetween(
+            @Param("firmId") Long firmId,
+            @Param("productId") Long productId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     @Query("SELECT DISTINCT t.transactionDate FROM ForecastSalesTransaction t " +
            "WHERE t.firmId = :firmId AND t.sourceUpdatedAt >= :since")
     List<LocalDate> findDistinctTransactionDatesModifiedSince(

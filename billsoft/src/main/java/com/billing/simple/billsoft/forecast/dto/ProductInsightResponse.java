@@ -46,6 +46,12 @@ public class ProductInsightResponse {
     private Integer uniqueCustomerCount;
     private LocalDate lastSoldDate;
 
+    // Period Context
+    private Integer selectedPeriodDays;
+    private BigDecimal lifetimeGrossUnitsSold;
+    private BigDecimal lifetimeNetSales;
+    private Integer lifetimeUniqueCustomerCount;
+
     // Horizon Forecast Summaries (Derived from daily trajectory)
     private BigDecimal forecast30Days;
     private BigDecimal forecast90Days;

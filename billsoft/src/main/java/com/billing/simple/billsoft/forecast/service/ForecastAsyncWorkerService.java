@@ -139,7 +139,12 @@ public class ForecastAsyncWorkerService {
         }
 
         boolean activelyRunning = activeFirmSyncs.containsKey(firmId);
-        Optional<ForecastSyncJobRecord> lastJobOpt = jobRecordRepository.findTopByFirmIdOrderByStartedAtDesc(firmId);
+        Optional<ForecastSyncJobRecord> lastJobOpt = Optional.empty();
+        try {
+            lastJobOpt = jobRecordRepository.findTopByFirmIdOrderByStartedAtDesc(firmId);
+        } catch (Exception e) {
+            log.warn("Could not query last forecast sync job for firm {}: {}", firmId, e.getMessage());
+        }
 
         if (lastJobOpt.isPresent()) {
             ForecastSyncJobRecord j = lastJobOpt.get();
@@ -266,7 +271,7 @@ public class ForecastAsyncWorkerService {
         }
 
         // Record initial PENDING / RUNNING job
-        ForecastSyncJobRecord jobRecord = ForecastSyncJobRecord.builder()
+        ForecastSyncJobRecord initialRecord = ForecastSyncJobRecord.builder()
                 .firmId(firmId)
                 .status("PENDING")
                 .stage("INITIALIZING")
@@ -276,16 +281,26 @@ public class ForecastAsyncWorkerService {
                 .heartbeatAt(LocalDateTime.now())
                 .message("Pipeline execution queued")
                 .build();
-        jobRecordRepository.save(jobRecord);
-        if (jobRecord.getId() != null) {
-            activeJobIdsByFirm.put(firmId, jobRecord.getId());
+        ForecastSyncJobRecord savedRecord = null;
+        try {
+            savedRecord = jobRecordRepository.save(initialRecord);
+            if (savedRecord != null && savedRecord.getId() != null) {
+                activeJobIdsByFirm.put(firmId, savedRecord.getId());
+            }
+        } catch (Exception e) {
+            log.warn("Could not persist initial sync job record for firm {}: {}", firmId, e.getMessage());
         }
+        if (savedRecord == null) {
+            savedRecord = initialRecord;
+        }
+
+        final ForecastSyncJobRecord effectiveRecord = savedRecord;
 
         if (isAsync) {
             backgroundPool.submit(() -> {
                 try {
                     TenantContext.setCurrentFirmId(firmId);
-                    runPipelineCore(firmId, jobRecord);
+                    runPipelineCore(firmId, effectiveRecord);
                 } finally {
                     TenantContext.clear();
                     activeFirmSyncs.remove(firmId);
@@ -305,7 +320,7 @@ public class ForecastAsyncWorkerService {
                     .build();
         } else {
             try {
-                return runPipelineCore(firmId, jobRecord);
+                return runPipelineCore(firmId, effectiveRecord);
             } finally {
                 activeFirmSyncs.remove(firmId);
                 activeJobIdsByFirm.remove(firmId);
@@ -345,21 +360,27 @@ public class ForecastAsyncWorkerService {
 
             long duration = System.currentTimeMillis() - start;
 
-            jobRecord.setStatus("COMPLETED");
-            jobRecord.setStage("COMPLETED");
-            jobRecord.setStageText("Forecasts updated ✓");
-            jobRecord.setProgressPercent(100);
-            jobRecord.setInvoicesProcessed(inv);
-            jobRecord.setReturnsProcessed(ret);
-            jobRecord.setProductsAggregated(agg);
-            jobRecord.setForecastsGenerated(fc);
-            jobRecord.setRecommendationsGenerated(rec);
-            jobRecord.setDurationMs(duration);
-            jobRecord.setCompletedAt(LocalDateTime.now());
-            jobRecord.setHeartbeatAt(LocalDateTime.now());
-            jobRecord.setMessage("Pipeline executed successfully.");
-            jobRecord.setErrorMessage(null);
-            jobRecordRepository.save(jobRecord);
+            if (jobRecord != null) {
+                jobRecord.setStatus("COMPLETED");
+                jobRecord.setStage("COMPLETED");
+                jobRecord.setStageText("Forecasts updated ✓");
+                jobRecord.setProgressPercent(100);
+                jobRecord.setInvoicesProcessed(inv);
+                jobRecord.setReturnsProcessed(ret);
+                jobRecord.setProductsAggregated(agg);
+                jobRecord.setForecastsGenerated(fc);
+                jobRecord.setRecommendationsGenerated(rec);
+                jobRecord.setDurationMs(duration);
+                jobRecord.setCompletedAt(LocalDateTime.now());
+                jobRecord.setHeartbeatAt(LocalDateTime.now());
+                jobRecord.setMessage("Pipeline executed successfully.");
+                jobRecord.setErrorMessage(null);
+                try {
+                    jobRecordRepository.save(jobRecord);
+                } catch (Exception ex) {
+                    log.warn("Failed to persist completed job record for firm {}: {}", firmId, ex.getMessage());
+                }
+            }
 
             log.info("Forecast sync completed for firm {} in {}ms (Invoices: {}, Returns: {}, Agg: {}, Models: {}, Recs: {})",
                     firmId, duration, inv, ret, agg, fc, rec);
@@ -379,15 +400,21 @@ public class ForecastAsyncWorkerService {
             long duration = System.currentTimeMillis() - start;
             log.error("Failed to execute forecast sync pipeline for firm {}", firmId, e);
 
-            jobRecord.setStatus("FAILED");
-            jobRecord.setStage("FAILED");
-            jobRecord.setStageText("Forecast sync failed");
-            jobRecord.setDurationMs(duration);
-            jobRecord.setCompletedAt(LocalDateTime.now());
-            jobRecord.setHeartbeatAt(LocalDateTime.now());
-            jobRecord.setMessage("Pipeline execution failed");
-            jobRecord.setErrorMessage(e.getMessage());
-            jobRecordRepository.save(jobRecord);
+            if (jobRecord != null) {
+                jobRecord.setStatus("FAILED");
+                jobRecord.setStage("FAILED");
+                jobRecord.setStageText("Forecast sync failed");
+                jobRecord.setDurationMs(duration);
+                jobRecord.setCompletedAt(LocalDateTime.now());
+                jobRecord.setHeartbeatAt(LocalDateTime.now());
+                jobRecord.setMessage("Pipeline execution failed");
+                jobRecord.setErrorMessage(e.getMessage());
+                try {
+                    jobRecordRepository.save(jobRecord);
+                } catch (Exception ex) {
+                    log.warn("Failed to persist failed job record for firm {}: {}", firmId, ex.getMessage());
+                }
+            }
 
             return ForecastAdminSyncResponse.builder()
                     .success(false)

@@ -16,6 +16,15 @@ public interface ProductDemandForecastRepository extends JpaRepository<ProductDe
     List<ProductDemandForecast> findAllByFirmIdAndProductIdAndModelRunIdAndForecastDateBetweenOrderByForecastDateAsc(
             Long firmId, Long productId, Long modelRunId, LocalDate startDate, LocalDate endDate);
 
+    @org.springframework.data.jpa.repository.Query("SELECT f.productId, SUM(f.predictedDemand), MAX(f.confidenceScore), MAX(f.confidenceLevel) " +
+           "FROM ProductDemandForecast f " +
+           "WHERE f.firmId = :firmId AND f.forecastDate BETWEEN :startDate AND :endDate " +
+           "GROUP BY f.productId")
+    List<Object[]> sumForecastByProductBetween(
+            @org.springframework.data.repository.query.Param("firmId") Long firmId,
+            @org.springframework.data.repository.query.Param("startDate") LocalDate startDate,
+            @org.springframework.data.repository.query.Param("endDate") LocalDate endDate);
+
     void deleteAllByFirmIdAndProductId(Long firmId, Long productId);
 
     void deleteAllByModelRunId(Long modelRunId);

@@ -28,10 +28,10 @@ public class InvoiceController {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(InvoiceController.class);
 
     private final InvoiceService service;
-    private final InvoicePdfService pdfService;
+    private final com.billing.simple.billsoft.service.InvoicePdfService pdfService;
     private final com.billing.simple.billsoft.service.FirmDetailsService firmService;
 
-    public InvoiceController(InvoiceService service, InvoicePdfService pdfService,
+    public InvoiceController(InvoiceService service, com.billing.simple.billsoft.service.InvoicePdfService pdfService,
             com.billing.simple.billsoft.service.FirmDetailsService firmService) {
         this.service = service;
         this.pdfService = pdfService;
@@ -55,13 +55,41 @@ public class InvoiceController {
         if (request.getStatus() == null || request.getStatus() == InvoiceStatus.FINAL) {
             request.setStatus(Boolean.TRUE.equals(request.getPaid()) ? InvoiceStatus.PAID : InvoiceStatus.UNPAID);
         }
-        return ResponseEntity.ok(service.createInvoice(request));
+        Long originalContext = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (request.getFirmId() != null) {
+            com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(request.getFirmId());
+        }
+        try {
+            return ResponseEntity.ok(service.createInvoice(request));
+        } finally {
+            if (request.getFirmId() != null) {
+                if (originalContext == null) {
+                    com.billing.simple.billsoft.security.TenantContext.clear();
+                } else {
+                    com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(originalContext);
+                }
+            }
+        }
     }
 
     @PostMapping("/estimate")
     public ResponseEntity<Invoice> createEstimate(@RequestBody InvoiceRequest request) {
         request.setStatus(InvoiceStatus.ESTIMATE);
-        return ResponseEntity.ok(service.createEstimate(request));
+        Long originalContext = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
+        if (request.getFirmId() != null) {
+            com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(request.getFirmId());
+        }
+        try {
+            return ResponseEntity.ok(service.createEstimate(request));
+        } finally {
+            if (request.getFirmId() != null) {
+                if (originalContext == null) {
+                    com.billing.simple.billsoft.security.TenantContext.clear();
+                } else {
+                    com.billing.simple.billsoft.security.TenantContext.setCurrentFirmId(originalContext);
+                }
+            }
+        }
     }
 
     // ---------------- CONVERT ESTIMATE → INVOICE ----------------
@@ -215,7 +243,8 @@ public class InvoiceController {
             }
 
             if (inv == null) {
-                // If not found with firm context, check if invoice exists in repo (unscoped, e.g. for legacy records with null firmId)
+                // If not found with firm context, check if invoice exists in repo (unscoped,
+                // e.g. for legacy records with null firmId)
                 Invoice candidate = service.getByIdUnscoped(id);
                 if (candidate == null) {
                     return ResponseEntity.notFound().build();

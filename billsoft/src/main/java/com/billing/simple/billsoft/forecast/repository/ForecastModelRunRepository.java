@@ -14,5 +14,11 @@ public interface ForecastModelRunRepository extends JpaRepository<ForecastModelR
 
     List<ForecastModelRun> findAllByFirmIdAndProductIdOrderByRunTimestampDesc(Long firmId, Long productId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT r.productId, r.modelName FROM ForecastModelRun r " +
+           "WHERE r.firmId = :firmId AND r.id IN (" +
+           "  SELECT MAX(m.id) FROM ForecastModelRun m WHERE m.firmId = :firmId GROUP BY m.productId" +
+           ")")
+    List<Object[]> findLatestModelNamesByFirm(@org.springframework.data.repository.query.Param("firmId") Long firmId);
+
     void deleteAllByFirmIdAndProductId(Long firmId, Long productId);
 }

@@ -51,9 +51,9 @@ class ForecastControllerTest {
                 .weightedAverageSellingPrice(BigDecimal.valueOf(100.0))
                 .build();
 
-        when(restockAdvisoryService.getInsights(firmId, productId)).thenReturn(mockResponse);
+        when(restockAdvisoryService.getInsights(eq(firmId), eq(productId), anyInt())).thenReturn(mockResponse);
 
-        ResponseEntity<?> res = controller.getProductInsights(productId, firmId, null);
+        ResponseEntity<?> res = controller.getProductInsights(productId, "30d", 30, "30d", firmId, null);
         assertNotNull(res);
         assertEquals(200, res.getStatusCode().value());
         ProductInsightResponse body = (ProductInsightResponse) res.getBody();
@@ -193,9 +193,8 @@ class ForecastControllerTest {
             return 10;
         });
 
-        java.util.concurrent.CompletableFuture<ResponseEntity<?>> firstCall = java.util.concurrent.CompletableFuture.supplyAsync(() ->
-            controller.triggerFirmSync(firmId, null)
-        );
+        java.util.concurrent.CompletableFuture<ResponseEntity<?>> firstCall = java.util.concurrent.CompletableFuture
+                .supplyAsync(() -> controller.triggerFirmSync(firmId, null));
 
         assertTrue(startedLatch.await(3, java.util.concurrent.TimeUnit.SECONDS));
 
@@ -216,7 +215,7 @@ class ForecastControllerTest {
     @Test
     @DisplayName("Tenant Isolation: Missing Firm ID returns 400 Bad Request")
     void testMissingFirmIdReturnsBadRequest() {
-        ResponseEntity<?> res = controller.getProductInsights(productId, null, null);
+        ResponseEntity<?> res = controller.getProductInsights(productId, null, null, null, null, null);
         assertEquals(400, res.getStatusCode().value());
     }
 

@@ -51,14 +51,35 @@ public class ForecastController {
     @GetMapping("/products/{id}/insights")
     public ResponseEntity<?> getProductInsights(
             @PathVariable("id") Long productId,
+            @RequestParam(value = "range", required = false) String range,
+            @RequestParam(value = "days", required = false) Integer daysParam,
+            @RequestParam(value = "period", required = false) String period,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
         Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
         if (firmId == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
         }
+        int resolvedDays = 30;
+        if (daysParam != null && (daysParam == 30 || daysParam == 90 || daysParam == 180 || daysParam == 365)) {
+            resolvedDays = daysParam;
+        } else if (range != null && !range.isBlank()) {
+            resolvedDays = switch (range.toLowerCase().trim()) {
+                case "90d", "90" -> 90;
+                case "180d", "180" -> 180;
+                case "365d", "365", "1y" -> 365;
+                default -> 30;
+            };
+        } else if (period != null && !period.isBlank()) {
+            resolvedDays = switch (period.toUpperCase().trim()) {
+                case "90D", "90" -> 90;
+                case "180D", "180" -> 180;
+                case "365D", "365", "1Y" -> 365;
+                default -> 30;
+            };
+        }
         try {
-            ProductInsightResponse response = restockAdvisoryService.getInsights(firmId, productId);
+            ProductInsightResponse response = restockAdvisoryService.getInsights(firmId, productId, resolvedDays);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
@@ -227,66 +248,75 @@ public class ForecastController {
             @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestParam(value = "force", required = false, defaultValue = "false") Boolean force,
             @RequestParam(value = "async", required = false, defaultValue = "false") Boolean isAsync) {
-        Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
-        if (firmId == null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
-        }
-
-        if (asyncWorkerService != null) {
-            return ResponseEntity.ok(asyncWorkerService.executeSync(firmId, Boolean.TRUE.equals(force), Boolean.TRUE.equals(isAsync)));
-        }
-
-        java.util.concurrent.locks.ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new java.util.concurrent.locks.ReentrantLock());
-        if (!lock.tryLock()) {
-            log.info("Forecast synchronization already in progress for firm {}. Returning concurrent-safe status.", firmId);
-            ForecastAdminSyncResponse inProgressResponse = ForecastAdminSyncResponse.builder()
-                    .success(true)
-                    .firmId(firmId)
-                    .invoicesProcessed(0)
-                    .returnsProcessed(0)
-                    .productsAggregated(0)
-                    .forecastsGenerated(0)
-                    .recommendationsGenerated(0)
-                    .executionDurationMs(0L)
-                    .message("Forecast synchronization is currently in progress for firm " + firmId + ".")
-                    .build();
-            return ResponseEntity.ok(inProgressResponse);
-        }
-
-        long start = System.currentTimeMillis();
         try {
-            int inv = ingestionService.syncAllInvoicesForFirm(firmId);
-            int ret = ingestionService.syncAllSalesReturnsForFirm(firmId);
-            int agg = aggregationService.aggregateAllProductsForFirm(firmId);
-            int fc = engineService.generateForecastsForCatalog(firmId);
-            int rec = restockAdvisoryService.generateCatalogRecommendations(firmId);
+            Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
+            if (firmId == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+            }
 
-            long duration = System.currentTimeMillis() - start;
-            ForecastAdminSyncResponse response = ForecastAdminSyncResponse.builder()
-                    .success(true)
-                    .firmId(firmId)
-                    .invoicesProcessed(inv)
-                    .returnsProcessed(ret)
-                    .productsAggregated(agg)
-                    .forecastsGenerated(fc)
-                    .recommendationsGenerated(rec)
-                    .executionDurationMs(duration)
-                    .message("Forecasting pipeline executed successfully.")
-                    .build();
+            if (asyncWorkerService != null) {
+                return ResponseEntity.ok(asyncWorkerService.executeSync(firmId, Boolean.TRUE.equals(force), Boolean.TRUE.equals(isAsync)));
+            }
 
-            return ResponseEntity.ok(response);
+            java.util.concurrent.locks.ReentrantLock lock = firmSyncLocks.computeIfAbsent(firmId, k -> new java.util.concurrent.locks.ReentrantLock());
+            if (!lock.tryLock()) {
+                log.info("Forecast synchronization already in progress for firm {}. Returning concurrent-safe status.", firmId);
+                ForecastAdminSyncResponse inProgressResponse = ForecastAdminSyncResponse.builder()
+                        .success(true)
+                        .firmId(firmId)
+                        .invoicesProcessed(0)
+                        .returnsProcessed(0)
+                        .productsAggregated(0)
+                        .forecastsGenerated(0)
+                        .recommendationsGenerated(0)
+                        .executionDurationMs(0L)
+                        .message("Forecast synchronization is currently in progress for firm " + firmId + ".")
+                        .build();
+                return ResponseEntity.ok(inProgressResponse);
+            }
+
+            long start = System.currentTimeMillis();
+            try {
+                int inv = ingestionService.syncAllInvoicesForFirm(firmId);
+                int ret = ingestionService.syncAllSalesReturnsForFirm(firmId);
+                int agg = aggregationService.aggregateAllProductsForFirm(firmId);
+                int fc = engineService.generateForecastsForCatalog(firmId);
+                int rec = restockAdvisoryService.generateCatalogRecommendations(firmId);
+
+                long duration = System.currentTimeMillis() - start;
+                ForecastAdminSyncResponse response = ForecastAdminSyncResponse.builder()
+                        .success(true)
+                        .firmId(firmId)
+                        .invoicesProcessed(inv)
+                        .returnsProcessed(ret)
+                        .productsAggregated(agg)
+                        .forecastsGenerated(fc)
+                        .recommendationsGenerated(rec)
+                        .executionDurationMs(duration)
+                        .message("Forecasting pipeline executed successfully.")
+                        .build();
+
+                return ResponseEntity.ok(response);
+            } catch (Exception e) {
+                log.error("Failed to execute forecast sync for firm {}", firmId, e);
+                long duration = System.currentTimeMillis() - start;
+                ForecastAdminSyncResponse response = ForecastAdminSyncResponse.builder()
+                        .success(false)
+                        .firmId(firmId)
+                        .executionDurationMs(duration)
+                        .message("Sync failed: " + e.getMessage())
+                        .build();
+                return ResponseEntity.ok(response);
+            } finally {
+                lock.unlock();
+            }
         } catch (Exception e) {
-            log.error("Failed to execute forecast sync for firm {}", firmId, e);
-            long duration = System.currentTimeMillis() - start;
-            ForecastAdminSyncResponse response = ForecastAdminSyncResponse.builder()
+            log.error("Failed to initiate forecast sync for firm header={}, param={}", firmIdHeader, firmIdParam, e);
+            return ResponseEntity.ok(ForecastAdminSyncResponse.builder()
                     .success(false)
-                    .firmId(firmId)
-                    .executionDurationMs(duration)
-                    .message("Sync failed: " + e.getMessage())
-                    .build();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        } finally {
-            lock.unlock();
+                    .firmId(firmIdParam != null ? firmIdParam : firmIdHeader)
+                    .message("Forecast sync failed: " + e.getMessage())
+                    .build());
         }
     }
 
@@ -301,13 +331,18 @@ public class ForecastController {
     public ResponseEntity<?> getSyncStatus(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
             @RequestParam(value = "firmId", required = false) Long firmIdParam) {
-        Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
-        if (firmId == null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+        try {
+            Long firmId = resolveFirmId(firmIdHeader, firmIdParam);
+            if (firmId == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "Tenant firm ID is required."));
+            }
+            if (asyncWorkerService != null) {
+                return ResponseEntity.ok(asyncWorkerService.getFirmSyncStatus(firmId));
+            }
+            return ResponseEntity.ok(Map.of("firmId", firmId, "inProgress", false, "isFresh", true));
+        } catch (Exception e) {
+            log.warn("Failed to get forecast sync status: {}", e.getMessage());
+            return ResponseEntity.ok(Map.of("inProgress", false, "isFresh", true, "stageText", "Status check unavailable"));
         }
-        if (asyncWorkerService != null) {
-            return ResponseEntity.ok(asyncWorkerService.getFirmSyncStatus(firmId));
-        }
-        return ResponseEntity.ok(Map.of("firmId", firmId, "inProgress", false, "isFresh", true));
     }
 }

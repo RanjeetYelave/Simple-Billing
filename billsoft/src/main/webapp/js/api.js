@@ -174,7 +174,7 @@ const API = {
         try {
           if (a.parentNode) a.parentNode.removeChild(a);
           window.URL.revokeObjectURL(url);
-        } catch (_) {}
+        } catch (_) { }
       }, 120000);
     } catch (e) {
       console.error('Failed to trigger blob download:', e);
@@ -263,11 +263,16 @@ const API = {
         body: body
       });
     }),
-    search: (targetRole, q, limit) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/search', {
-      targetRole,
-      ...(q ? { q } : {}),
-      ...(limit ? { limit } : {})
-    }))),
+    search: (targetRole, q, limit, firmId) => API._ensureFirmReady().then(() => {
+      const fid = firmId || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      return API._json(API._qs('/api/party-links/search', {
+        targetRole,
+        ...(q ? { q } : {}),
+        ...(limit ? { limit } : {}),
+        ...(fid ? { firmId: fid } : {})
+      }), { headers });
+    }),
     updateCanonicalName: (linkId, data) => API._ensureFirmReady().then(() => API._json(`/api/party-links/${linkId}/canonical-name`, {
       method: 'PUT',
       body: typeof data === 'string' ? { canonicalName: data } : data
@@ -1055,14 +1060,14 @@ const API = {
           const f = await API.firm.get(fid);
           if (f && (f.id || f.firmName)) return f;
         }
-      } catch (e) {}
+      } catch (e) { }
       try {
         const list = await API.firm.list();
         if (Array.isArray(list) && list.length > 0) {
           if (!API.firmId) API.firmId = list[0].id;
           return list[0];
         }
-      } catch (e) {}
+      } catch (e) { }
       return { firmName: 'Our Business', phone: '' };
     },
     create: (data) => API._json('/api/firm', { method: 'POST', body: data || {} }),
@@ -1110,7 +1115,7 @@ const API = {
               errMsg = errText;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(errMsg);
       }
       const blob = await res.blob();
@@ -1137,7 +1142,7 @@ const API = {
               errMsg = errText;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(errMsg);
       }
       const blob = await res.blob();
@@ -1192,7 +1197,7 @@ const API = {
               errMsg = errText;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(errMsg);
       }
       const blob = await res.blob();
@@ -1223,7 +1228,7 @@ const API = {
               errMsg = errText;
             }
           }
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(errMsg);
       }
       const blob = await res.blob();
@@ -1319,7 +1324,7 @@ const API = {
           const err = await res.json();
           if (err && err.error) msg = err.error;
           else if (err && err.message) msg = err.message;
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(msg);
       }
       const blob = await res.blob();
@@ -1361,7 +1366,7 @@ const API = {
           const err = await res.json();
           if (err && err.error) msg = err.error;
           else if (err && err.message) msg = err.message;
-        } catch (_) {}
+        } catch (_) { }
         throw new Error(msg);
       }
       const blob = await res.blob();

@@ -177,9 +177,15 @@ public class BusinessPartyLinkController {
             @RequestParam(defaultValue = "CUSTOMER") String targetRole,
             @RequestParam(required = false, defaultValue = "") String q,
             @RequestParam(required = false, defaultValue = "25") Integer limit,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam,
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
-        assertFirmAuthorization(firmIdHeader);
-        return ResponseEntity.ok(linkService.searchUnified(targetRole, q, limit));
+        Long effectiveFirmId = (firmIdParam != null && firmIdParam > 0) ? firmIdParam : firmIdHeader;
+        if (effectiveFirmId != null) {
+            assertFirmAuthorization(effectiveFirmId);
+        } else {
+            assertFirmAuthorization(firmIdHeader);
+        }
+        return ResponseEntity.ok(linkService.searchUnified(targetRole, q, limit, effectiveFirmId));
     }
 
     @GetMapping("/{id}/aliases")

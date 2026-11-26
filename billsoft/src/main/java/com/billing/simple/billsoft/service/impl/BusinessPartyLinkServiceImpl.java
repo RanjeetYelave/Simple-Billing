@@ -1140,7 +1140,13 @@ public class BusinessPartyLinkServiceImpl implements BusinessPartyLinkService {
     @Override
     @Transactional(readOnly = true)
     public List<UnifiedCounterpartySearchResult> searchUnified(String targetRoleParam, String query, Integer limitParam) {
-        Long firmId = resolveFirmId();
+        return searchUnified(targetRoleParam, query, limitParam, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UnifiedCounterpartySearchResult> searchUnified(String targetRoleParam, String query, Integer limitParam, Long explicitFirmId) {
+        Long firmId = (explicitFirmId != null && explicitFirmId > 0) ? explicitFirmId : resolveFirmId();
         String targetRole = hasText(targetRoleParam) ? targetRoleParam.trim().toUpperCase() : "CUSTOMER";
         String q = (query != null) ? query.trim() : "";
         int maxResults = (limitParam != null && limitParam > 0) ? Math.min(limitParam, 50) : 25;

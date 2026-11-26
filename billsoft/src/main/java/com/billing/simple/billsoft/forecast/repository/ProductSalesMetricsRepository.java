@@ -38,6 +38,26 @@ public interface ProductSalesMetricsRepository extends JpaRepository<ProductSale
             @Param("firmId") Long firmId,
             @Param("productId") Long productId);
 
+    @Query("SELECT " +
+           "SUM(m.grossRequestedQty), " +
+           "SUM(m.grossFulfilledQty), " +
+           "SUM(m.shortageQty), " +
+           "SUM(m.returnedQty), " +
+           "SUM(m.netRequestedQty), " +
+           "SUM(m.grossSales), " +
+           "SUM(m.refundAmount), " +
+           "SUM(m.netSales), " +
+           "MIN(m.minRealizedPrice), " +
+           "MAX(m.maxRealizedPrice), " +
+           "MAX(m.metricDate) " +
+           "FROM ProductSalesMetrics m " +
+           "WHERE m.firmId = :firmId AND m.productId = :productId AND m.metricDate BETWEEN :startDate AND :endDate")
+    List<Object[]> getHistoricalInsightSummaryForProductBetween(
+            @Param("firmId") Long firmId,
+            @Param("productId") Long productId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     @Query("SELECT COUNT(DISTINCT t.customerId) FROM ForecastSalesTransaction t " +
            "WHERE t.firmId = :firmId AND t.productId = :productId AND t.customerId IS NOT NULL")
     Integer countDistinctLifetimeCustomersForProduct(

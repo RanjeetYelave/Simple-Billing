@@ -76,6 +76,12 @@ public class StatementServiceImpl implements StatementService {
     private final ProductRestockRecommendationRepository restockRepo;
     private final ForecastSalesTransactionRepository transactionRepo;
 
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.forecast.repository.ProductDemandForecastRepository demandForecastRepo;
+
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.forecast.repository.ForecastModelRunRepository modelRunRepo;
+
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
     private static final DecimalFormat CURRENCY_FMT = new DecimalFormat("#,##,##0.00");
 
@@ -1198,7 +1204,7 @@ public class StatementServiceImpl implements StatementService {
         // Purchases before fromDate
         List<PurchaseOrder> posBefore = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBefore(targetFirmId, partyId, fromDate);
         BigDecimal purchasesBefore = posBefore.stream()
-                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
+                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.PARTIALLY_RECEIVED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .map(po -> nz(po.getTotalAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -1213,7 +1219,7 @@ public class StatementServiceImpl implements StatementService {
         // In range items
         List<PurchaseOrder> posInRange = purchaseOrderRepo.findByFirmIdAndPartyIdAndPoDateBetweenOrderByPoDateAscIdAsc(
                 targetFirmId, partyId, fromDate, toDate).stream()
-                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
+                .filter(po -> po.getStatus() == PurchaseOrderStatus.ISSUED || po.getStatus() == PurchaseOrderStatus.PARTIALLY_RECEIVED || po.getStatus() == PurchaseOrderStatus.RECEIVED)
                 .collect(Collectors.toList());
 
         List<PartyPayment> paymentsInRange = partyPaymentRepo.findByFirmIdAndPartyIdAndPaymentDateBetweenOrderByPaymentDateAscIdAsc(
@@ -1504,12 +1510,39 @@ public class StatementServiceImpl implements StatementService {
             recMap.put(r.getProductId(), r);
         }
 
-        LocalDate since = LocalDate.now().minusDays(30);
+        LocalDate today = LocalDate.now();
+        LocalDate horizonEnd = today.plusDays(horizon);
+        LocalDate since = today.minusDays(horizon);
+
         List<Object[]> salesAgg = transactionRepo != null ? transactionRepo.sumSalesByProductSince(targetFirmId, since) : Collections.emptyList();
-        Map<Long, BigDecimal> sales30Map = new HashMap<>();
+        Map<Long, BigDecimal> salesMap = new HashMap<>();
         for (Object[] row : salesAgg) {
             if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
-                sales30Map.put((Long) row[0], (BigDecimal) row[1]);
+                salesMap.put((Long) row[0], (BigDecimal) row[1]);
+            }
+        }
+
+        Map<Long, BigDecimal> forecastDemandMap = new HashMap<>();
+        Map<Long, BigDecimal> forecastConfScoreMap = new HashMap<>();
+        if (demandForecastRepo != null) {
+            List<Object[]> forecastList = demandForecastRepo.sumForecastByProductBetween(targetFirmId, today.plusDays(1), horizonEnd);
+            for (Object[] row : forecastList) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                    forecastDemandMap.put((Long) row[0], (BigDecimal) row[1]);
+                    if (row.length >= 3 && row[2] != null) {
+                        forecastConfScoreMap.put((Long) row[0], (BigDecimal) row[2]);
+                    }
+                }
+            }
+        }
+
+        Map<Long, String> modelNameMap = new HashMap<>();
+        if (modelRunRepo != null) {
+            List<Object[]> modelList = modelRunRepo.findLatestModelNamesByFirm(targetFirmId);
+            for (Object[] row : modelList) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                    modelNameMap.put((Long) row[0], (String) row[1]);
+                }
             }
         }
 
@@ -1533,39 +1566,23 @@ public class StatementServiceImpl implements StatementService {
             BigDecimal stock = p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO;
             BigDecimal minStock = p.getMinStockLevel() != null ? p.getMinStockLevel() : BigDecimal.ZERO;
             BigDecimal costPrice = p.getCostPrice() != null ? p.getCostPrice() : BigDecimal.ZERO;
-            BigDecimal sales30 = sales30Map.getOrDefault(p.getId(), BigDecimal.ZERO);
-            BigDecimal dailyVelocity = sales30.divide(BigDecimal.valueOf(30), 2, RoundingMode.HALF_UP);
-
-            Integer daysCoverage = null;
-            if (dailyVelocity.compareTo(BigDecimal.ZERO) > 0) {
-                daysCoverage = stock.divide(dailyVelocity, 0, RoundingMode.DOWN).intValue();
-                if (daysCoverage < 0) daysCoverage = 0;
-            } else if (stock.compareTo(BigDecimal.ZERO) > 0) {
-                daysCoverage = 999;
-            } else {
-                daysCoverage = 0;
-            }
+            BigDecimal salesInHorizon = salesMap.getOrDefault(p.getId(), BigDecimal.ZERO);
 
             ProductRestockRecommendation rec = recMap.get(p.getId());
             String itemUrgency;
             BigDecimal recQty = BigDecimal.ZERO;
             BigDecimal incoming = BigDecimal.ZERO;
-            String model = "Holt-Winters";
-            BigDecimal confScore = BigDecimal.valueOf(80.0);
-            String driver = "Forecast";
 
             if (rec != null) {
                 itemUrgency = rec.getUrgencyStatus();
                 recQty = rec.getRecommendedOrderQty() != null ? rec.getRecommendedOrderQty() : BigDecimal.ZERO;
                 incoming = rec.getIncomingStock() != null ? rec.getIncomingStock() : BigDecimal.ZERO;
-                driver = (rec.getRawRecommendation() != null && rec.getRawRecommendation().compareTo(BigDecimal.ZERO) > 0) ? "Forecast" : "Minimum Stock";
             } else {
                 if (stock.compareTo(BigDecimal.ZERO) <= 0) {
                     itemUrgency = "OUT_OF_STOCK";
                 } else if (minStock.compareTo(BigDecimal.ZERO) > 0 && stock.compareTo(minStock) <= 0) {
                     itemUrgency = "REORDER_NEEDED";
                     recQty = minStock.subtract(stock);
-                    driver = "Minimum Stock";
                 } else {
                     itemUrgency = "HEALTHY";
                 }
@@ -1577,7 +1594,38 @@ public class StatementServiceImpl implements StatementService {
                 }
             }
 
-            BigDecimal projectedDemand = dailyVelocity.multiply(BigDecimal.valueOf(horizon)).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal projectedDemand;
+            BigDecimal dailyVelocity;
+            String model;
+            BigDecimal confScore;
+            String driver;
+
+            if (forecastDemandMap.containsKey(p.getId()) && forecastDemandMap.get(p.getId()).compareTo(BigDecimal.ZERO) > 0) {
+                projectedDemand = forecastDemandMap.get(p.getId()).setScale(2, RoundingMode.HALF_UP);
+                dailyVelocity = projectedDemand.divide(BigDecimal.valueOf(horizon), 2, RoundingMode.HALF_UP);
+                model = modelNameMap.getOrDefault(p.getId(), "Holt-Winters");
+                confScore = forecastConfScoreMap.getOrDefault(p.getId(), BigDecimal.valueOf(80.0));
+                driver = "Forecast";
+            } else {
+                dailyVelocity = salesInHorizon.divide(BigDecimal.valueOf(horizon), 2, RoundingMode.HALF_UP);
+                projectedDemand = dailyVelocity.multiply(BigDecimal.valueOf(horizon)).setScale(2, RoundingMode.HALF_UP);
+                model = (rec != null && rec.getUrgencyStatus() != null) ? "Historical Run-Rate" : "Historical Mean";
+                confScore = (rec != null && rec.getConfidenceLevel() != null)
+                        ? ("HIGH".equalsIgnoreCase(rec.getConfidenceLevel()) ? BigDecimal.valueOf(85.0) : ("MEDIUM".equalsIgnoreCase(rec.getConfidenceLevel()) ? BigDecimal.valueOf(65.0) : BigDecimal.valueOf(45.0)))
+                        : BigDecimal.valueOf(50.0);
+                driver = (rec != null && rec.getRawRecommendation() != null && rec.getRawRecommendation().compareTo(BigDecimal.ZERO) > 0) ? "Forecast" : "Minimum Stock";
+            }
+
+            Integer daysCoverage = null;
+            if (dailyVelocity.compareTo(BigDecimal.ZERO) > 0) {
+                daysCoverage = stock.divide(dailyVelocity, 0, RoundingMode.DOWN).intValue();
+                if (daysCoverage < 0) daysCoverage = 0;
+            } else if (stock.compareTo(BigDecimal.ZERO) > 0) {
+                daysCoverage = 999;
+            } else {
+                daysCoverage = 0;
+            }
+
             BigDecimal estReplenishCost = recQty.multiply(costPrice).setScale(2, RoundingMode.HALF_UP);
 
             totalDemand = totalDemand.add(projectedDemand);
@@ -1593,12 +1641,13 @@ public class StatementServiceImpl implements StatementService {
                     .productId(p.getId())
                     .productName(p.getName())
                     .sku(p.getSku())
+                    .barcode(p.getBarcode())
                     .hsnCode(p.getHsnCode())
                     .category(pCat)
                     .unit(p.getUnit() != null ? p.getUnit() : "pcs")
                     .currentStock(stock)
                     .incomingStock(incoming)
-                    .sales30d(sales30)
+                    .sales30d(salesInHorizon)
                     .dailyVelocity(dailyVelocity)
                     .daysOfCoverage(daysCoverage)
                     .projectedHorizonDemand(projectedDemand)

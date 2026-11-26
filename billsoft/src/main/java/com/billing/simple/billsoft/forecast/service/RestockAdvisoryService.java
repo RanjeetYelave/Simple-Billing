@@ -417,10 +417,20 @@ public class RestockAdvisoryService {
 
     @Transactional(readOnly = true)
     public ProductInsightResponse getInsights(Long firmId, Long productId) {
+        return getInsights(firmId, productId, 30);
+    }
+
+    @Transactional(readOnly = true)
+    public ProductInsightResponse getInsights(Long firmId, Long productId, Integer days) {
         Product p = productRepo.findByIdAndFirmId(productId, firmId)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found: " + productId));
 
-        List<Object[]> aggs = metricsRepo.getHistoricalInsightSummaryForProduct(firmId, productId);
+        int periodDays = (days != null && (days == 30 || days == 90 || days == 180 || days == 365)) ? days : 30;
+        LocalDate endDate = LocalDate.now();
+        LocalDate startDate = endDate.minusDays(periodDays);
+
+        // 1. Period-specific aggregates
+        List<Object[]> periodAggs = metricsRepo.getHistoricalInsightSummaryForProductBetween(firmId, productId, startDate, endDate);
         BigDecimal grossUnits = BigDecimal.ZERO;
         BigDecimal fulfilledUnits = BigDecimal.ZERO;
         BigDecimal shortageUnits = BigDecimal.ZERO;
@@ -433,8 +443,8 @@ public class RestockAdvisoryService {
         BigDecimal maxPrice = null;
         LocalDate lastSold = null;
 
-        if (aggs != null && !aggs.isEmpty() && aggs.get(0) != null) {
-            Object[] r = aggs.get(0);
+        if (periodAggs != null && !periodAggs.isEmpty() && periodAggs.get(0) != null) {
+            Object[] r = periodAggs.get(0);
             if (r[0] != null) grossUnits = (BigDecimal) r[0];
             if (r[1] != null) fulfilledUnits = (BigDecimal) r[1];
             if (r[2] != null) shortageUnits = (BigDecimal) r[2];
@@ -453,7 +463,24 @@ public class RestockAdvisoryService {
             wasp = grossSales.divide(grossUnits, 2, RoundingMode.HALF_UP);
         }
 
-        Integer uniqueCustomers = metricsRepo.countDistinctLifetimeCustomersForProduct(firmId, productId);
+        Integer uniqueCustomers = transactionRepo.countDistinctCustomersForProductBetween(firmId, productId, startDate, endDate);
+
+        // 2. Lifetime aggregates for audit and fallback context
+        List<Object[]> lifetimeAggs = metricsRepo.getHistoricalInsightSummaryForProduct(firmId, productId);
+        BigDecimal lifetimeGross = BigDecimal.ZERO;
+        BigDecimal lifetimeNet = BigDecimal.ZERO;
+        if (lifetimeAggs != null && !lifetimeAggs.isEmpty() && lifetimeAggs.get(0) != null) {
+            Object[] lr = lifetimeAggs.get(0);
+            if (lr[0] != null) lifetimeGross = (BigDecimal) lr[0];
+            if (lr[7] != null) lifetimeNet = (BigDecimal) lr[7];
+            if (lastSold == null && lr[10] != null) lastSold = (LocalDate) lr[10];
+            if (wasp == null && lr[5] != null && lifetimeGross.compareTo(BigDecimal.ZERO) > 0) {
+                wasp = ((BigDecimal) lr[5]).divide(lifetimeGross, 2, RoundingMode.HALF_UP);
+            }
+            if (minPrice == null && lr[8] != null) minPrice = (BigDecimal) lr[8];
+            if (maxPrice == null && lr[9] != null) maxPrice = (BigDecimal) lr[9];
+        }
+        Integer lifetimeCustomers = metricsRepo.countDistinctLifetimeCustomersForProduct(firmId, productId);
 
         // Forecast horizons
         Optional<ForecastModelRun> latestRun = modelRunRepo.findTopByFirmIdAndProductIdOrderByRunTimestampDesc(firmId, productId);
@@ -500,6 +527,7 @@ public class RestockAdvisoryService {
                 .currentPrice(p.getPrice())
                 .currentStock(p.getStockQuantity() != null ? p.getStockQuantity() : BigDecimal.ZERO)
                 .incomingStock(calculateIncomingIssuedPoStock(firmId, productId))
+                .selectedPeriodDays(periodDays)
                 .grossUnitsSold(grossUnits)
                 .fulfilledUnitsSold(fulfilledUnits)
                 .shortageUnits(shortageUnits)
@@ -513,6 +541,9 @@ public class RestockAdvisoryService {
                 .maxRealizedPrice(maxPrice)
                 .uniqueCustomerCount(uniqueCustomers != null ? uniqueCustomers : 0)
                 .lastSoldDate(lastSold)
+                .lifetimeGrossUnitsSold(lifetimeGross)
+                .lifetimeNetSales(lifetimeNet)
+                .lifetimeUniqueCustomerCount(lifetimeCustomers != null ? lifetimeCustomers : 0)
                 .forecast30Days(f30.setScale(2, RoundingMode.HALF_UP))
                 .forecast90Days(f90.setScale(2, RoundingMode.HALF_UP))
                 .forecast180Days(f180.setScale(2, RoundingMode.HALF_UP))

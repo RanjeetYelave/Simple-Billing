@@ -925,12 +925,12 @@ public class InvoiceService {
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 String estNo = request.getEstimateNumber().trim();
                 if (invoiceRepo.existsByEstimateNumberAndFirmId(estNo, effectiveFirmId)) {
-                    if (Boolean.TRUE.equals(request.getManualEstimateNumber())) {
-                        throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
-                    } else {
+                    if (Boolean.FALSE.equals(request.getManualEstimateNumber())) {
                         // Provisional number collided: safely allocate next sequence
                         estNo = generateEstimateNumber(effectiveFirmId);
                         request.setEstimateNumber(estNo);
+                    } else {
+                        throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
                     }
                 }
                 invoice.setEstimateNumber(estNo);
@@ -948,12 +948,12 @@ public class InvoiceService {
             } else {
                 invNo = invNo.trim();
                 if (invoiceRepo.existsByInvoiceNumberAndFirmId(invNo, effectiveFirmId)) {
-                    if (Boolean.TRUE.equals(request.getManualInvoiceNumber())) {
-                        throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
-                    } else {
+                    if (Boolean.FALSE.equals(request.getManualInvoiceNumber())) {
                         // Provisional number collided: safely allocate next sequence
                         invNo = generateInvoiceNumber(effectiveFirmId);
                         request.setInvoiceNumber(invNo);
+                    } else {
+                        throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
                     }
                 }
             }

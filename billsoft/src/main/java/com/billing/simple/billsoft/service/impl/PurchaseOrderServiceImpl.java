@@ -441,6 +441,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                             po.getPoNumber(),
                             "PO " + po.getPoNumber() + " changed from RECEIVED to " + newStatus + " - stock reversed");
                 }
+                item.setReceivedQuantity(BigDecimal.ZERO);
+                if (item.getId() != null) {
+                    poItemRepository.save(item);
+                }
             }
         }
     }

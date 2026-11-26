@@ -641,36 +641,68 @@ public class InvoiceService {
             return;
         }
 
+        // Check if any item needs resolution (either productId is null or productId does not belong to firmId)
+        boolean anyNeedsResolution = false;
+        for (InvoiceRequestItem item : items) {
+            if (item == null) {
+                continue;
+            }
+            if (item.getProductId() == null) {
+                anyNeedsResolution = true;
+                break;
+            }
+            if (!productRepo.existsByIdAndFirmId(item.getProductId(), firmId)) {
+                anyNeedsResolution = true;
+                break;
+            }
+        }
+
+        if (!anyNeedsResolution) {
+            return;
+        }
+
         List<Product> firmProducts = new ArrayList<>(productRepo.findByFirmId(firmId));
-        Set<Long> validFirmProductIds = firmProducts.stream()
-                .map(Product::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
 
         for (InvoiceRequestItem item : items) {
             if (item == null) {
                 continue;
             }
 
-            // Cross-firm reconciliation: If productId belongs to another firm, invalidate it
-            if (item.getProductId() != null && !validFirmProductIds.contains(item.getProductId())) {
-                item.setProductId(null);
-            }
-
-            // If product is already validly linked to this firm, nothing to do
-            if (item.getProductId() != null) {
+            // If product already validly belongs to this firm, skip
+            if (item.getProductId() != null && productRepo.existsByIdAndFirmId(item.getProductId(), firmId)) {
                 continue;
             }
 
             String rawName = item.getProductName();
-            if (rawName == null || rawName.trim().isEmpty()) {
+            String cleanName = rawName != null ? rawName.trim() : "";
+            String normalized = SavedItem.normalizeText(cleanName);
+
+            // If item has a foreign productId
+            if (item.getProductId() != null) {
+                // If there is no name to reconcile against, leave the foreign productId intact
+                // so TenantSecurityException will be thrown by fetchProductsReferencedBy
+                if (cleanName.isEmpty() || normalized.isEmpty()) {
+                    continue;
+                }
+
+                Optional<Product> existingMatch = firmProducts.stream()
+                        .filter(p -> !Boolean.TRUE.equals(p.getIsArchived()))
+                        .filter(p -> p.getName() != null && SavedItem.normalizeText(p.getName()).equals(normalized))
+                        .findFirst();
+
+                if (existingMatch.isPresent()) {
+                    item.setProductId(existingMatch.get().getId());
+                }
+                // If no match found by name in this firm, leave foreign productId intact
+                // to trigger TenantSecurityException fail-closed
                 continue;
             }
 
-            String cleanName = rawName.trim();
-            String normalized = SavedItem.normalizeText(cleanName);
+            // item.getProductId() == null: resolve or create by normalized name
+            if (cleanName.isEmpty()) {
+                continue;
+            }
 
-            // Reconcile against Firm's catalog: match by normalized name
             Optional<Product> existingMatch = firmProducts.stream()
                     .filter(p -> !Boolean.TRUE.equals(p.getIsArchived()))
                     .filter(p -> p.getName() != null && SavedItem.normalizeText(p.getName()).equals(normalized))
@@ -705,7 +737,6 @@ public class InvoiceService {
 
                 effectiveProduct = productRepo.save(newProd);
                 firmProducts.add(effectiveProduct);
-                validFirmProductIds.add(effectiveProduct.getId());
             }
 
             item.setProductId(effectiveProduct.getId());

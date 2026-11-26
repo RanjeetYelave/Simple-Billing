@@ -109,10 +109,21 @@ public class MultiTabDocumentStatePreservationTest {
     @AfterEach
     void tearDown() {
         TenantContext.clear();
-        invoiceRepo.deleteAll();
-        productRepo.deleteAll();
-        customerRepo.deleteAll();
-        firmRepo.deleteAll();
+        try {
+            if (firmA != null && firmA.getId() != null) {
+                invoiceRepo.deleteAll(invoiceRepo.findByFirmId(firmA.getId()));
+                customerRepo.deleteAll(customerRepo.findByFirmId(firmA.getId()));
+                productRepo.deleteAll(productRepo.findByFirmId(firmA.getId()));
+                firmRepo.deleteById(firmA.getId());
+            }
+            if (firmB != null && firmB.getId() != null) {
+                invoiceRepo.deleteAll(invoiceRepo.findByFirmId(firmB.getId()));
+                customerRepo.deleteAll(customerRepo.findByFirmId(firmB.getId()));
+                productRepo.deleteAll(productRepo.findByFirmId(firmB.getId()));
+                firmRepo.deleteById(firmB.getId());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @Test

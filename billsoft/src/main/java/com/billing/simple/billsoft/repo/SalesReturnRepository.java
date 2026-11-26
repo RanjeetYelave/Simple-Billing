@@ -13,6 +13,8 @@ import java.util.Optional;
 @Repository
 public interface SalesReturnRepository extends JpaRepository<SalesReturn, Long> {
 
+    List<SalesReturn> findByFirmId(Long firmId);
+
     List<SalesReturn> findByFirmIdOrderByReturnDateDescCreatedAtDesc(Long firmId);
 
     List<SalesReturn> findByFirmIdOrderByReturnDateDescIdDesc(Long firmId);

@@ -31,6 +31,8 @@ public interface InvoicePaymentRepository extends JpaRepository<InvoicePayment, 
 
     List<InvoicePayment> findByCustomerIdOrderByPaymentDateAscIdAsc(Long customerId);
 
+    List<InvoicePayment> findByFirmId(Long firmId);
+
     List<InvoicePayment> findByFirmIdOrderByPaymentDateDescIdDesc(Long firmId);
 
     long countByFirmId(Long firmId);

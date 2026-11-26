@@ -1110,6 +1110,13 @@ const API = {
     customerPdfUrl: (id, from, to, options = {}) => {
       return API._qs(`/api/statements/customer/${id}/pdf`, { from, to, ...options });
     },
+    customerBulkZipUrl: (from, to, customerIds = []) => {
+      const q = {};
+      if (from) q.from = from;
+      if (to) q.to = to;
+      if (customerIds && customerIds.length) q.customerIds = customerIds.join(',');
+      return API._qs('/api/statements/customer/bulk-zip', q);
+    },
     customerPdf: async (id, from, to, options = {}) => {
       await API._ensureFirmReady();
       const res = await API._request(API._qs(`/api/statements/customer/${id}/pdf`, { from, to, ...options }));
@@ -1751,6 +1758,24 @@ const API = {
       });
     },
     syncService: typeof window !== 'undefined' ? window.ForecastSyncService : null
+  },
+
+  // ── Debtors & Collections Management ──
+  debtors: {
+    overview: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors/overview'))),
+    list: (params = {}) => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors', params))),
+    detail: (customerId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/debtors/${customerId}`))),
+    overdueInvoices: (customerId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/debtors/${customerId}/overdue-invoices`))),
+    firmOverdueInvoices: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors/overdue-invoices'))),
+    timeline: (customerId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/debtors/${customerId}/timeline`))),
+    paymentHistory: (customerId) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/debtors/${customerId}/payment-history`))),
+    followUps: (status = 'ALL') => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors/follow-ups', { status }))),
+    createPromise: (data) => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors/promises'), { method: 'POST', body: data })),
+    updatePromiseStatus: (promiseId, data) => API._ensureFirmReady().then(() => API._json(API._qs(`/api/debtors/promises/${promiseId}/status`), { method: 'PUT', body: data })),
+    logActivity: (data) => API._ensureFirmReady().then(() => API._json(API._qs('/api/debtors/activity'), { method: 'POST', body: data })),
+    exportCsvUrl: () => API._qs('/api/debtors/export/csv'),
+    exportExcelUrl: () => API._qs('/api/debtors/export/excel'),
+    exportPdfUrl: () => API._qs('/api/debtors/export/pdf')
   },
 
   // ─── Demo Mode ───

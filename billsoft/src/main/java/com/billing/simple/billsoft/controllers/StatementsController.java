@@ -1,7 +1,10 @@
 package com.billing.simple.billsoft.controllers;
 
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -124,6 +127,61 @@ public class StatementsController {
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(pdf);
+    }
+
+    @GetMapping(value = "/customer/bulk-zip")
+    public ResponseEntity<byte[]> customerBulkStatementsZip(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) String firmIdParam,
+            @RequestParam(name = "from", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(name = "customerIds", required = false) List<Long> customerIds
+    ) throws Exception {
+        Long clientFirmId = parseFirmId(firmIdParam);
+        Long effFirmId = resolveAuthoritativeFirmId(firmIdHeader != null ? firmIdHeader : clientFirmId);
+
+        List<Customer> customers;
+        if (customerIds != null && !customerIds.isEmpty()) {
+            customers = customerRepo.findByFirmId(effFirmId).stream()
+                    .filter(c -> customerIds.contains(c.getId()))
+                    .collect(java.util.stream.Collectors.toList());
+        } else {
+            customers = customerRepo.findByFirmId(effFirmId);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+            for (Customer cust : customers) {
+                try {
+                    byte[] pdf = statementService.generateCustomerStatementPdf(effFirmId, cust.getId(), from, to);
+                    if (pdf != null && pdf.length > 0) {
+                        String custName = (cust.getName() != null && !cust.getName().trim().isEmpty())
+                                ? cust.getName().trim().replaceAll("[^a-zA-Z0-9_-]", "_")
+                                : "Customer_" + cust.getId();
+                        String entryName = "Statement_" + custName + "_" + cust.getId() + ".pdf";
+                        zos.putNextEntry(new ZipEntry(entryName));
+                        zos.write(pdf);
+                        zos.closeEntry();
+                    }
+                } catch (Exception e) {
+                    System.err.println("Could not generate statement for customer #" + cust.getId() + ": " + e.getMessage());
+                }
+            }
+            zos.finish();
+        }
+
+        byte[] zipBytes = baos.toByteArray();
+        String zipFilename = "Customer_Statements_" + LocalDate.now() + ".zip";
+
+        HttpHeaders zipHeaders = new HttpHeaders();
+        zipHeaders.setContentType(MediaType.parseMediaType("application/zip"));
+        zipHeaders.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + zipFilename + "\"");
+
+        return ResponseEntity.ok()
+                .headers(zipHeaders)
+                .body(zipBytes);
     }
 
     @GetMapping("/firm")

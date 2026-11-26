@@ -64,6 +64,7 @@
   <script src="js/calculator.js?v=20260919_v1"></script>
   <script src="js/components/CompactEditableGrid.js?v=20261124_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
+  <script src="js/components/DebtorsCollectionsWorkspace.js?v=20261126_v1"></script>
   <script src="js/featureLock.js"></script>
   <script src="js/modalLayerManager.js?v=20261112_v1"></script>
 
@@ -28483,6 +28484,7 @@ if (typeof window !== 'undefined') {
       const [partyLinksMap, setPartyLinksMap] = useState({ customerToParty: {}, partyToCustomer: {} });
       const [crossRoleSuggestion, setCrossRoleSuggestion] = useState(null);
       const [pendingLinkParty, setPendingLinkParty] = useState(null);
+      const [customerSubTab, setCustomerSubTab] = useState('directory'); // 'directory' | 'debtors'
 
       useEffect(() => {
         if (!showModal || editItem) {
@@ -28542,7 +28544,10 @@ if (typeof window !== 'undefined') {
         const closeMenuOnOutsideClick = () => setActiveMenuCustomerId(null);
         const handleCustNav = async (e) => {
           if (!e || !e.detail) return;
-          if (e.detail.page && e.detail.page !== 'firm' && e.detail.page !== 'customers') return;
+          if (e.detail.subTab === 'debtors' || e.detail.view === 'debtors') {
+            setCustomerSubTab('debtors');
+          }
+          if (e.detail.page && e.detail.page !== 'firm' && e.detail.page !== 'customers' && e.detail.page !== 'debtors') return;
           const targetCustId = e.detail.customerId;
           if (targetCustId) {
             try {
@@ -28557,7 +28562,10 @@ if (typeof window !== 'undefined') {
         };
 
         const pending = window.__billsoftPendingNav;
-        if (pending && (pending.page === 'firm' || pending.page === 'customers') && (Date.now() - (pending.ts || 0) < 15000)) {
+        if (pending && (pending.page === 'firm' || pending.page === 'customers' || pending.page === 'debtors') && (Date.now() - (pending.ts || 0) < 15000)) {
+          if (pending.subTab === 'debtors' || pending.page === 'debtors') {
+            setCustomerSubTab('debtors');
+          }
           if (pending.customerId) {
             API.customers.get(pending.customerId).then(cust => {
               if (cust) openCustomer360(cust);
@@ -28898,8 +28906,35 @@ if (typeof window !== 'undefined') {
       }, [selectedCustomerId, customers, paginatedCustomers]);
 
       return React.createElement('div', { className: 'customer-cockpit-container', style: { display: 'flex', flexDirection: 'column' } },
-        // ── 1. UNIFIED COMPACT TOOLBAR STRIP ──
-        React.createElement('div', { className: 'firm-toolbar-strip' },
+        // ── 0. MODULE SUB-NAVIGATION (Directory vs Debtors & Collections) ──
+        React.createElement('div', {
+          className: 'rcrm-module-nav sub-tabs-bar',
+          style: { marginBottom: 10, display: 'flex', gap: 6, borderBottom: '1px solid var(--border)', paddingBottom: 6 }
+        },
+          React.createElement('button', {
+            className: `sub-tab-btn ${customerSubTab === 'directory' ? 'active' : ''}`,
+            style: { fontWeight: 600, fontSize: '0.84rem', padding: '6px 16px', borderRadius: 20 },
+            onClick: () => setCustomerSubTab('directory')
+          }, '👥 Customer Directory'),
+          React.createElement('button', {
+            className: `sub-tab-btn ${customerSubTab === 'debtors' ? 'active' : ''}`,
+            style: { fontWeight: 600, fontSize: '0.84rem', padding: '6px 16px', borderRadius: 20 },
+            onClick: () => setCustomerSubTab('debtors')
+          }, '💰 Debtors & Collections')
+        ),
+
+        customerSubTab === 'debtors' ?
+          (typeof DebtorsCollectionsWorkspace !== 'undefined' ?
+            React.createElement(DebtorsCollectionsWorkspace, {
+              onSettle: openSettle,
+              onCustomer360: openCustomer360,
+              onWhatsApp: handleWhatsAppReminder,
+              onStatement: openStatementModal,
+              onCreateBill: handleCreateBill
+            }) : React.createElement('div', { style: { padding: 20 } }, 'Loading Debtors & Collections...')) :
+          React.createElement(Fragment, null,
+            // ── 1. UNIFIED COMPACT TOOLBAR STRIP ──
+            React.createElement('div', { className: 'firm-toolbar-strip' },
           // Left Cluster: Title & Cohesive Metrics
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
@@ -29268,7 +29303,8 @@ if (typeof window !== 'undefined') {
                 );
               })()
             )
-          ),
+          ) // end firm-workbench
+        ), // end Fragment
 
         // ── 4. CUSTOMER 360 MODAL / DRAWER ──
         c360Customer && React.createElement(Customer360Modal, {

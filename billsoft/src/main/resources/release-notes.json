@@ -1,4 +1,11 @@
 {
+  "1.0.404": [
+    "Debtors & Collections Operating Center: Dedicated 5-sub-view receivables workspace (Overview, All Debtors, Overdue Invoices, Follow-ups, Statements & Reports) built directly into the Customers module.",
+    "Comprehensive Receivables Intelligence: Real-time 0–30, 31–60, 61–90, 90+ days aging buckets, customer risk classification, counterparty supplier link badge, and average payment delay tracking.",
+    "Promise-to-Pay System: Schedule, track, and manage customer payment commitments with automatic settlement reconciliation and collection timeline logging.",
+    "Overdue Invoices & Collection Queue: Unified firm-wide overdue tracking with aging badges and one-click settle, note, and WhatsApp collection reminders.",
+    "Statements & Bulk ZIP Export: Export debtor registers to CSV, Excel, and PDF aging reports, plus firm-scoped bulk customer statements ZIP streaming."
+  ],
   "1.0.401": [
     "Billing Workspace Multi-Document Reliability: Atomic numbering collision auto-recovery prevents HTTP 400 errors during concurrent invoice and quotation creation across multi-tab sessions.",
     "Quotation Number Uniqueness Constraint: Added database-level unique constraint (firm_id, estimate_number) ensuring strict quotation integrity and zero duplicate estimates.",

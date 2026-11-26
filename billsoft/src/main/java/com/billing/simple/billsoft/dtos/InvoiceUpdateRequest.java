@@ -25,6 +25,38 @@ public class InvoiceUpdateRequest {
     private Boolean roundOff;
     private String tags;
     private Boolean allowOutOfStock;
+    private String customerName;
+    private String customerPhone;
+    private String customerAddress;
+    private String customerEmail;
+    private String customerGstin;
+    private Boolean updateCanonicalCustomer;
+    private Boolean clearCustomer;
+    private String idempotencyKey;
+
+    public String getCustomerName() { return customerName; }
+    public void setCustomerName(String customerName) { this.customerName = customerName; }
+
+    public String getCustomerPhone() { return customerPhone; }
+    public void setCustomerPhone(String customerPhone) { this.customerPhone = customerPhone; }
+
+    public String getCustomerAddress() { return customerAddress; }
+    public void setCustomerAddress(String customerAddress) { this.customerAddress = customerAddress; }
+
+    public String getCustomerEmail() { return customerEmail; }
+    public void setCustomerEmail(String customerEmail) { this.customerEmail = customerEmail; }
+
+    public String getCustomerGstin() { return customerGstin; }
+    public void setCustomerGstin(String customerGstin) { this.customerGstin = customerGstin; }
+
+    public Boolean getUpdateCanonicalCustomer() { return updateCanonicalCustomer; }
+    public void setUpdateCanonicalCustomer(Boolean updateCanonicalCustomer) { this.updateCanonicalCustomer = updateCanonicalCustomer; }
+
+    public Boolean getClearCustomer() { return clearCustomer; }
+    public void setClearCustomer(Boolean clearCustomer) { this.clearCustomer = clearCustomer; }
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 
     public Boolean getAllowOutOfStock() { return allowOutOfStock; }
     public void setAllowOutOfStock(Boolean allowOutOfStock) { this.allowOutOfStock = allowOutOfStock; }

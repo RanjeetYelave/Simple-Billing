@@ -2,6 +2,7 @@ package com.billing.simple.billsoft.regression.billing;
 
 import com.billing.simple.billsoft.dtos.InvoiceRequest;
 import com.billing.simple.billsoft.dtos.InvoiceRequestItem;
+import com.billing.simple.billsoft.dtos.InvoiceUpdateRequest;
 import com.billing.simple.billsoft.entities.*;
 import com.billing.simple.billsoft.repo.*;
 import com.billing.simple.billsoft.security.TenantContext;
@@ -23,7 +24,9 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -336,5 +339,229 @@ public class MultiTabDocumentStatePreservationTest {
         // Verify Firm A has only 1 document, Firm B has only 1 document
         assertEquals(1, invoiceRepo.findByFirmId(firmA.getId()).size());
         assertEquals(1, invoiceRepo.findByFirmId(firmB.getId()).size());
+    }
+
+    @Test
+    @DisplayName("Scenario 6: Provisional Invoice Number Collision Auto-Recovery - both concurrent tabs succeed")
+    void testProvisionalInvoiceNumberCollisionAutoRecovery() throws Exception {
+        TenantContext.setCurrentFirmId(firmA.getId());
+
+        // Tab 1 sends provisional number INV-9999
+        InvoiceRequest tab1 = new InvoiceRequest();
+        tab1.setFirmId(firmA.getId());
+        tab1.setCustomerId(customerA.getId());
+        tab1.setCustomerName(customerA.getName());
+        tab1.setInvoiceNumber("INV-9999");
+        tab1.setManualInvoiceNumber(false);
+        tab1.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(1);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        String res1 = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(tab1)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice inv1 = objectMapper.readValue(res1, Invoice.class);
+        assertEquals("INV-9999", inv1.getInvoiceNumber());
+
+        // Tab 2 was also provisionally assigned INV-9999 concurrently
+        InvoiceRequest tab2 = new InvoiceRequest();
+        tab2.setFirmId(firmA.getId());
+        tab2.setCustomerId(customerA.getId());
+        tab2.setCustomerName(customerA.getName());
+        tab2.setInvoiceNumber("INV-9999");
+        tab2.setManualInvoiceNumber(false); // provisional, not manual override
+        tab2.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(2);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        // Tab 2 saves: instead of 400 collision, it auto-allocates next number and succeeds with 200
+        String res2 = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(tab2)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice inv2 = objectMapper.readValue(res2, Invoice.class);
+        assertNotNull(inv2.getInvoiceNumber());
+        assertNotEquals("INV-9999", inv2.getInvoiceNumber());
+        assertNotEquals(inv1.getId(), inv2.getId());
+    }
+
+    @Test
+    @DisplayName("Scenario 7: Explicit Manual Invoice Number Collision returns 400 Bad Request")
+    void testExplicitManualInvoiceNumberCollisionFails() throws Exception {
+        TenantContext.setCurrentFirmId(firmA.getId());
+
+        InvoiceRequest inv1 = new InvoiceRequest();
+        inv1.setFirmId(firmA.getId());
+        inv1.setCustomerId(customerA.getId());
+        inv1.setInvoiceNumber("CUSTOM-INV-001");
+        inv1.setManualInvoiceNumber(true);
+        inv1.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(1);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inv1)))
+                .andExpect(status().isOk());
+
+        // Second invoice attempting the exact same manual number fails
+        InvoiceRequest inv2 = new InvoiceRequest();
+        inv2.setFirmId(firmA.getId());
+        inv2.setCustomerId(customerA.getId());
+        inv2.setInvoiceNumber("CUSTOM-INV-001");
+        inv2.setManualInvoiceNumber(true);
+        inv2.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(2);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inv2)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Scenario 8: Customer Edits Persist to Document Snapshots and Optional Canonical Record")
+    void testCustomerEditsPersistSnapshots() throws Exception {
+        TenantContext.setCurrentFirmId(firmA.getId());
+
+        // Create initial invoice
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(firmA.getId());
+        req.setCustomerId(customerA.getId());
+        req.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(1);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        String res = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice created = objectMapper.readValue(res, Invoice.class);
+
+        // Update customer details on invoice with updateCanonicalCustomer = true
+        InvoiceUpdateRequest updateReq = new InvoiceUpdateRequest();
+        updateReq.setCustomerId(customerA.getId());
+        updateReq.setCustomerName("Alpha Renovations Ltd");
+        updateReq.setCustomerPhone("9199988877");
+        updateReq.setCustomerAddress("100 Industrial Area");
+        updateReq.setCustomerGstin("24ABCDE1234F1Z5");
+        updateReq.setUpdateCanonicalCustomer(true);
+        updateReq.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(1);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        String updateRes = mockMvc.perform(put("/api/invoices/" + created.getId())
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateReq)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice updated = objectMapper.readValue(updateRes, Invoice.class);
+
+        assertEquals("Alpha Renovations Ltd", updated.getCustomerNameSnapshot());
+        assertEquals("9199988877", updated.getCustomerPhoneSnapshot());
+        assertEquals("100 Industrial Area", updated.getCustomerAddressSnapshot());
+        assertEquals("24ABCDE1234F1Z5", updated.getCustomerGstinSnapshot());
+
+        // Verify canonical customer was also updated
+        Customer canonical = customerRepo.findById(customerA.getId()).orElseThrow();
+        assertEquals("Alpha Renovations Ltd", canonical.getName());
+        assertEquals("9199988877", canonical.getPhone());
+    }
+
+    @Test
+    @DisplayName("Scenario 9: Save Idempotency Key returns identical cached result on rapid double save")
+    void testIdempotencyKeyDeduplication() throws Exception {
+        TenantContext.setCurrentFirmId(firmA.getId());
+
+        String key = "test-idemp-" + System.currentTimeMillis();
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(firmA.getId());
+        req.setCustomerId(customerA.getId());
+        req.setIdempotencyKey(key);
+        req.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(2);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        String res1 = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice inv1 = objectMapper.readValue(res1, Invoice.class);
+
+        // Immediate duplicate request with same key
+        String res2 = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice inv2 = objectMapper.readValue(res2, Invoice.class);
+
+        assertEquals(inv1.getId(), inv2.getId());
+        assertEquals(inv1.getInvoiceNumber(), inv2.getInvoiceNumber());
+    }
+
+    @Test
+    @DisplayName("Scenario 10: Safe Phone Matching - Different customer name with same phone creates distinct customer")
+    void testSafePhoneMatchingCreatesNewCustomerOnNameMismatch() throws Exception {
+        TenantContext.setCurrentFirmId(firmA.getId());
+
+        // Existing customerA has phone "9100000001" and name "Customer AlphaOne"
+        InvoiceRequest req = new InvoiceRequest();
+        req.setFirmId(firmA.getId());
+        req.setCustomerName("Totally Different Person");
+        req.setCustomerPhone("9100000001"); // same phone
+        req.setItems(Collections.singletonList(new InvoiceRequestItem() {{
+            setProductId(productA.getId());
+            setProductName(productA.getName());
+            setQty(1);
+            setPricePerUnit(new BigDecimal("250.00"));
+        }}));
+
+        String res = mockMvc.perform(post("/api/invoices")
+                        .header("X-Firm-Id", String.valueOf(firmA.getId()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Invoice inv = objectMapper.readValue(res, Invoice.class);
+
+        assertNotNull(inv.getCustomer());
+        assertNotEquals(customerA.getId(), inv.getCustomer().getId());
+        assertEquals("Totally Different Person", inv.getCustomer().getName());
     }
 }

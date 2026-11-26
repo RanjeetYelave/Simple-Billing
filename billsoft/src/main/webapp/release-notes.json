@@ -1,4 +1,12 @@
 {
+  "1.0.401": [
+    "Billing Workspace Multi-Document Reliability: Atomic numbering collision auto-recovery prevents HTTP 400 errors during concurrent invoice and quotation creation across multi-tab sessions.",
+    "Quotation Number Uniqueness Constraint: Added database-level unique constraint (firm_id, estimate_number) ensuring strict quotation integrity and zero duplicate estimates.",
+    "Customer Snapshot Persistence & Canonical Updates: Enhanced invoice update flow to reliably persist customer snapshot fields (name, phone, address, GSTIN) and support canonical customer record updates.",
+    "Sub-Resource Multi-Tenant Isolation: Enforced explicit firm scoping on counterparty party link lookups, eliminating cross-firm 400 errors when working across documents in different firms.",
+    "Save Idempotency & Rapid Save Protection: Implemented frontend synchronous guard and backend idempotency caching, preventing duplicate documents from rapid double-clicks.",
+    "Streamlined Post-Save Navigation: Automatically navigates to document overview upon saving while preserving all open document tabs in progress with instant one-click return."
+  ],
   "1.0.397": [
     "\ud83d\udee0\ufe0f Product Page Runtime Restoration: Resolved statusFilter undefined reference in ProductIntelligenceHub, ensuring seamless catalog browsing, status filtering, and setup alerts.",
     "\ud83d\udcc8 Forecast & Movement Statement Number Formatting: Implemented canonical BillsoftUtils.formatNumber utility with localized en-IN grouping, resolving runtime exceptions during forecast and movement statement generation."

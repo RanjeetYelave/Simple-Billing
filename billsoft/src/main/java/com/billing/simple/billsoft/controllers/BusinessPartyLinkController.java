@@ -142,25 +142,57 @@ public class BusinessPartyLinkController {
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<BusinessPartyLinkResponse> getByCustomer(
             @PathVariable Long customerId,
-            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
-        assertFirmAuthorization(firmIdHeader);
-        BusinessPartyLinkResponse res = linkService.getLinkedPartyForCustomer(customerId);
-        if (res == null) {
-            return ResponseEntity.notFound().build();
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = firmIdParam != null ? firmIdParam : firmIdHeader;
+        Long originalContext = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            TenantContext.setCurrentFirmId(authoritativeFirmId);
         }
-        return ResponseEntity.ok(res);
+        try {
+            assertFirmAuthorization(authoritativeFirmId);
+            BusinessPartyLinkResponse res = linkService.getLinkedPartyForCustomer(customerId);
+            if (res == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(res);
+        } finally {
+            if (authoritativeFirmId != null) {
+                if (originalContext == null) {
+                    TenantContext.clear();
+                } else {
+                    TenantContext.setCurrentFirmId(originalContext);
+                }
+            }
+        }
     }
 
     @GetMapping("/party/{partyId}")
     public ResponseEntity<BusinessPartyLinkResponse> getByParty(
             @PathVariable Long partyId,
-            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader) {
-        assertFirmAuthorization(firmIdHeader);
-        BusinessPartyLinkResponse res = linkService.getLinkedCustomerForParty(partyId);
-        if (res == null) {
-            return ResponseEntity.notFound().build();
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(value = "firmId", required = false) Long firmIdParam) {
+        Long authoritativeFirmId = firmIdParam != null ? firmIdParam : firmIdHeader;
+        Long originalContext = TenantContext.getCurrentFirmId();
+        if (authoritativeFirmId != null) {
+            TenantContext.setCurrentFirmId(authoritativeFirmId);
         }
-        return ResponseEntity.ok(res);
+        try {
+            assertFirmAuthorization(authoritativeFirmId);
+            BusinessPartyLinkResponse res = linkService.getLinkedCustomerForParty(partyId);
+            if (res == null) {
+                return ResponseEntity.notFound().build();
+            }
+            return ResponseEntity.ok(res);
+        } finally {
+            if (authoritativeFirmId != null) {
+                if (originalContext == null) {
+                    TenantContext.clear();
+                } else {
+                    TenantContext.setCurrentFirmId(originalContext);
+                }
+            }
+        }
     }
 
     @GetMapping("/candidates")

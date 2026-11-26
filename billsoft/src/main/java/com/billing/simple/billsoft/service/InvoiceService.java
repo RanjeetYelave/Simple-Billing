@@ -72,6 +72,7 @@ public class InvoiceService {
     private final SalesReturnItemRepository salesReturnItemRepo;
     private final StockMovementRepository stockMovementRepo;
     private final InvoiceCalculationEngine engine;
+    private final Map<String, Invoice> idempotencyCache = new java.util.concurrent.ConcurrentHashMap<>();
     private SavedItemService savedItemService;
 
     @Autowired(required = false)
@@ -641,7 +642,8 @@ public class InvoiceService {
             return;
         }
 
-        // Check if any item needs resolution (either productId is null or productId does not belong to firmId)
+        // Check if any item needs resolution (either productId is null or productId
+        // does not belong to firmId)
         boolean anyNeedsResolution = false;
         for (InvoiceRequestItem item : items) {
             if (item == null) {
@@ -813,7 +815,10 @@ public class InvoiceService {
             if (phone != null) {
                 Optional<Customer> byPhone = customerRepo.findFirstByFirmIdAndPhone(effectiveFirmId, phone);
                 if (byPhone.isPresent()) {
-                    return byPhone.get();
+                    Customer matched = byPhone.get();
+                    if (matched.getName() != null && matched.getName().trim().equalsIgnoreCase(name)) {
+                        return matched;
+                    }
                 }
             }
             Optional<Customer> byName = customerRepo.findFirstByFirmIdAndNameIgnoreCase(effectiveFirmId, name);
@@ -855,6 +860,14 @@ public class InvoiceService {
         }
         request.setFirmId(effectiveFirmId);
 
+        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+            String ikey = effectiveFirmId + ":" + request.getIdempotencyKey().trim();
+            Invoice cached = idempotencyCache.get(ikey);
+            if (cached != null) {
+                return cached;
+            }
+        }
+
         if (request.getItems() == null) {
             request.setItems(Collections.emptyList());
         }
@@ -888,13 +901,33 @@ public class InvoiceService {
         invoice.setFirmId(effectiveFirmId);
         invoice.setPaid(status == InvoiceStatus.PAID);
 
+        // Populate customer snapshot fields
+        if (customer != null) {
+            invoice.setCustomer(customer);
+            invoice.setCustomerNameSnapshot(customer.getName());
+            invoice.setCustomerPhoneSnapshot(customer.getPhone());
+            invoice.setCustomerAddressSnapshot(customer.getAddress());
+            invoice.setCustomerGstinSnapshot(customer.getGstin());
+        } else if (request.getCustomerName() != null && !request.getCustomerName().isBlank()) {
+            invoice.setCustomerNameSnapshot(request.getCustomerName().trim());
+            invoice.setCustomerPhoneSnapshot(request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank() ? request.getCustomerPhone().trim() : null);
+            invoice.setCustomerAddressSnapshot(request.getCustomerAddress() != null && !request.getCustomerAddress().isBlank() ? request.getCustomerAddress().trim() : null);
+            invoice.setCustomerGstinSnapshot(request.getCustomerGstin() != null && !request.getCustomerGstin().isBlank() ? request.getCustomerGstin().trim().toUpperCase() : null);
+        }
+
         // identifiers (Option B behaviour)
         if (status == InvoiceStatus.ESTIMATE) {
             // Estimate: ONLY estimateNumber, NO invoiceNumber
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 String estNo = request.getEstimateNumber().trim();
                 if (invoiceRepo.existsByEstimateNumberAndFirmId(estNo, effectiveFirmId)) {
-                    throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
+                    if (Boolean.TRUE.equals(request.getManualEstimateNumber())) {
+                        throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
+                    } else {
+                        // Provisional number collided: safely allocate next sequence
+                        estNo = generateEstimateNumber(effectiveFirmId);
+                        request.setEstimateNumber(estNo);
+                    }
                 }
                 invoice.setEstimateNumber(estNo);
             } else {
@@ -911,15 +944,22 @@ public class InvoiceService {
             } else {
                 invNo = invNo.trim();
                 if (invoiceRepo.existsByInvoiceNumberAndFirmId(invNo, effectiveFirmId)) {
-                    throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
+                    if (Boolean.TRUE.equals(request.getManualInvoiceNumber())) {
+                        throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
+                    } else {
+                        // Provisional number collided: safely allocate next sequence
+                        invNo = generateInvoiceNumber(effectiveFirmId);
+                        request.setInvoiceNumber(invNo);
+                    }
                 }
             }
             invoice.setInvoiceNumber(invNo);
 
-            // if caller accidentally sent estimateNumber also, keep it but it's not
-            // required
+            // if caller accidentally sent estimateNumber also, keep it but it's not required
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 invoice.setEstimateNumber(request.getEstimateNumber().trim());
+            } else {
+                invoice.setEstimateNumber(null);
             }
         }
 
@@ -982,6 +1022,10 @@ public class InvoiceService {
         // ESTIMATE, CANCELLED)
         if (isStockAffecting(saved.getStatus())) {
             deductInventoryStockForInvoice(saved, Boolean.TRUE.equals(request.getAllowOutOfStock()));
+        }
+
+        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+            idempotencyCache.put(effectiveFirmId + ":" + request.getIdempotencyKey().trim(), saved);
         }
 
         return saved;
@@ -1255,7 +1299,15 @@ public class InvoiceService {
                 ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
                 : invoiceRepo.findById(id))
                 .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
-                        "Invoice not found in firm: " + id));
+                    "Invoice not found in firm: " + id));
+
+        if (req != null && req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
+            String ikey = existing.getFirmId() + ":" + req.getIdempotencyKey().trim();
+            Invoice cached = idempotencyCache.get(ikey);
+            if (cached != null) {
+                return cached;
+            }
+        }
 
         InvoiceStatus oldStatus = existing.getStatus();
         InvoiceStatus targetStatus = req.getStatus() != null ? req.getStatus() : oldStatus;
@@ -1327,9 +1379,62 @@ public class InvoiceService {
         engineReq.setInvoiceDiscount(req.getInvoiceDiscount());
         engineReq.setItems(req.getItems());
 
-        Customer cust = (req.getCustomerId() != null)
-                ? resolveCustomerForFirm(req.getCustomerId(), existing.getFirmId())
-                : existing.getCustomer();
+        Customer cust = null;
+        if (Boolean.TRUE.equals(req.getClearCustomer())) {
+            existing.setCustomer(null);
+            existing.setCustomerNameSnapshot(null);
+            existing.setCustomerPhoneSnapshot(null);
+            existing.setCustomerAddressSnapshot(null);
+            existing.setCustomerGstinSnapshot(null);
+        } else {
+            cust = (req.getCustomerId() != null)
+                    ? resolveCustomerForFirm(req.getCustomerId(), existing.getFirmId())
+                    : existing.getCustomer();
+            if (cust != null) {
+                if (Boolean.TRUE.equals(req.getUpdateCanonicalCustomer())) {
+                    if (req.getCustomerName() != null && !req.getCustomerName().isBlank()) {
+                        cust.setName(req.getCustomerName().trim());
+                    }
+                    if (req.getCustomerPhone() != null) {
+                        cust.setPhone(req.getCustomerPhone().trim());
+                    }
+                    if (req.getCustomerAddress() != null) {
+                        cust.setAddress(req.getCustomerAddress().trim());
+                    }
+                    if (req.getCustomerGstin() != null) {
+                        cust.setGstin(req.getCustomerGstin().trim().toUpperCase());
+                    }
+                    if (req.getCustomerEmail() != null) {
+                        cust.setEmail(req.getCustomerEmail().trim());
+                    }
+                    cust = customerRepo.save(cust);
+                }
+            }
+            if (req.getCustomerName() != null && !req.getCustomerName().isBlank()) {
+                existing.setCustomerNameSnapshot(req.getCustomerName().trim());
+            } else if (cust != null && existing.getCustomerNameSnapshot() == null) {
+                existing.setCustomerNameSnapshot(cust.getName());
+            }
+            if (req.getCustomerPhone() != null) {
+                existing.setCustomerPhoneSnapshot(req.getCustomerPhone().trim());
+            } else if (cust != null && existing.getCustomerPhoneSnapshot() == null) {
+                existing.setCustomerPhoneSnapshot(cust.getPhone());
+            }
+            if (req.getCustomerAddress() != null) {
+                existing.setCustomerAddressSnapshot(req.getCustomerAddress().trim());
+            } else if (cust != null && existing.getCustomerAddressSnapshot() == null) {
+                existing.setCustomerAddressSnapshot(cust.getAddress());
+            }
+            if (req.getCustomerGstin() != null) {
+                existing.setCustomerGstinSnapshot(req.getCustomerGstin().trim().toUpperCase());
+            } else if (cust != null && existing.getCustomerGstinSnapshot() == null) {
+                existing.setCustomerGstinSnapshot(cust.getGstin());
+            }
+        }
+
+        if (req.getEstimateNumber() != null) {
+            existing.setEstimateNumber(req.getEstimateNumber().isBlank() ? null : req.getEstimateNumber().trim());
+        }
 
         if (req.getInvoiceDate() != null) {
             LocalDateTime dt = parseDateLenient(req.getInvoiceDate());
@@ -1418,6 +1523,10 @@ public class InvoiceService {
                             allowOutOfStock);
                 }
             }
+        }
+
+        if (req != null && req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
+            idempotencyCache.put(saved.getFirmId() + ":" + req.getIdempotencyKey().trim(), saved);
         }
 
         return saved;

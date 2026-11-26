@@ -292,8 +292,18 @@ const API = {
       method: 'POST',
       body: { newPin, ...(oldPin ? { oldPin } : {}) }
     })),
-    getByCustomer: (customerId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/customer/${customerId}`)),
-    getByParty: (partyId) => API._ensureFirmReady().then(() => API._json(`/api/party-links/party/${partyId}`)),
+    getByCustomer: (customerId, firmIdOverride) => API._ensureFirmReady().then(() => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const url = fid ? API._qs(`/api/party-links/customer/${customerId}`, { firmId: fid }) : `/api/party-links/customer/${customerId}`;
+      return API._json(url, { headers });
+    }),
+    getByParty: (partyId, firmIdOverride) => API._ensureFirmReady().then(() => {
+      const fid = firmIdOverride || API.firmId;
+      const headers = fid ? { 'X-Firm-Id': String(fid) } : {};
+      const url = fid ? API._qs(`/api/party-links/party/${partyId}`, { firmId: fid }) : `/api/party-links/party/${partyId}`;
+      return API._json(url, { headers });
+    }),
     candidates: (type, query) => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/candidates', { type, query: query || '' }))),
     map: () => API._ensureFirmReady().then(() => API._json(API._qs('/api/party-links/map'))),
     enableCustomerRole: (data) => API._ensureFirmReady().then(() => API._json('/api/party-links/enable-customer-role', {

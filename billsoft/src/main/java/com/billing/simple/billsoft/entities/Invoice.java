@@ -22,7 +22,8 @@ import lombok.*;
     @Index(name = "idx_invoices_firm_status", columnList = "firmId, status"),
     @Index(name = "idx_invoices_firm_customer", columnList = "firmId, customer_id")
 }, uniqueConstraints = {
-    @UniqueConstraint(name = "uk_inv_firm_number", columnNames = {"firmId", "invoiceNumber"})
+    @UniqueConstraint(name = "uk_inv_firm_number", columnNames = {"firmId", "invoiceNumber"}),
+    @UniqueConstraint(name = "uk_est_firm_number", columnNames = {"firmId", "estimateNumber"})
 })
 public class Invoice {
 

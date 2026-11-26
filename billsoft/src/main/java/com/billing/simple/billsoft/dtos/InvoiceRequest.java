@@ -29,6 +29,18 @@ public class InvoiceRequest {
     private Long pricingProfileId;
     private String placeOfSupply;
     private Boolean allowOutOfStock;
+    private Boolean manualInvoiceNumber;
+    private Boolean manualEstimateNumber;
+    private String idempotencyKey;
+
+    public Boolean getManualInvoiceNumber() { return manualInvoiceNumber; }
+    public void setManualInvoiceNumber(Boolean manualInvoiceNumber) { this.manualInvoiceNumber = manualInvoiceNumber; }
+
+    public Boolean getManualEstimateNumber() { return manualEstimateNumber; }
+    public void setManualEstimateNumber(Boolean manualEstimateNumber) { this.manualEstimateNumber = manualEstimateNumber; }
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 
     public String getPlaceOfSupply() { return placeOfSupply; }
     public void setPlaceOfSupply(String placeOfSupply) { this.placeOfSupply = placeOfSupply; }

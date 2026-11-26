@@ -18017,8 +18017,10 @@ if (typeof window !== 'undefined') {
         return { subtotal, itemDiscount: itemDisc, invoiceDiscount: invDiscAmt, totalDiscount: itemDisc + invDiscAmt, taxableAmount: finalTaxable, gstAmount: gstOnFinal, roundOff: roundOffVal, totalAmount: grand };
       }, [form.items, form.invoiceDiscount, form.roundOff]);
 
+      const isSavingRef = useRef(false);
       const handleSave = async (andPrint = false, keepOpen = false, saveAsDraft = false) => {
-        if (submitDisabled) return;
+        if (isSavingRef.current || submitDisabled) return;
+        isSavingRef.current = true;
         if (!form.customerName || !form.customerName.trim()) { showToast('Customer Name is mandatory', 'error'); return; }
 
         // Filter out completely empty rows if other rows exist
@@ -18185,6 +18187,9 @@ if (typeof window !== 'undefined') {
             roundOff: form.roundOff || undefined,
             convertedInvoiceId: convertedFromQuotationId || undefined,
             allowOutOfStock: true,
+            idempotencyKey: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('idemp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)),
+            manualInvoiceNumber: false,
+            manualEstimateNumber: false,
           };
 
           let savedInv;
@@ -18262,6 +18267,7 @@ if (typeof window !== 'undefined') {
         } catch (e) {
           showToast(e.message || 'Save failed', 'error');
         } finally {
+          isSavingRef.current = false;
           setSubmitDisabled(false);
           setSaving(false);
           if (activeFirmId) API.firmId = prevFirmId;
@@ -18331,11 +18337,12 @@ if (typeof window !== 'undefined') {
           return;
         }
         let isCurrent = true;
-        API.partyLinks.getByCustomer(form.customerId)
+        const currentDocFirmId = form.firmId || activeFirmId || API.firmId;
+        API.partyLinks.getByCustomer(form.customerId, currentDocFirmId)
           .then(res => { if (isCurrent) setLinkedSupplierChip(res); })
           .catch(() => { if (isCurrent) setLinkedSupplierChip(null); });
         return () => { isCurrent = false; };
-      }, [form.customerId]);
+      }, [form.customerId, form.firmId, activeFirmId]);
 
       useEffect(() => {
         if (!showCompletionPopup) return;
@@ -50448,16 +50455,18 @@ function PartyDetailModal({
 
       const handleSavedDocTab = useCallback((tabId, savedData, savedFid) => {
         if (!savedData || !savedData.id) return;
+        const isQuote = (savedData.estimateNumber != null || savedData.status === 'ESTIMATE');
+        const docNum = isQuote
+          ? (savedData.estimateNumber || savedData.number || savedData.id)
+          : (savedData.invoiceNumber || savedData.number || savedData.id);
+
         setOpenTabs(prev => {
           return prev.map(tab => {
             if (tab.id !== tabId) return tab;
-            const isQuote = (tab.type === 'quotation');
-            const docNum = isQuote
-              ? (savedData.estimateNumber || savedData.number)
-              : (savedData.invoiceNumber || savedData.number);
+            const tabIsQuote = (tab.type === 'quotation');
             const newTitle = docNum
-              ? (isQuote ? `Quote #${docNum}` : `Inv #${docNum}`)
-              : (savedData.id ? (isQuote ? `Quote #${savedData.id}` : `Inv #${savedData.id}`) : tab.title);
+              ? (tabIsQuote ? `Quote #${docNum}` : `Inv #${docNum}`)
+              : tab.title;
 
             return {
               ...tab,
@@ -50471,7 +50480,11 @@ function PartyDetailModal({
         });
         loadSummary();
         window.dispatchEvent(new CustomEvent('billsoft:app-refresh'));
-      }, [loadSummary]);
+        if (onSubTabChange) {
+          onSubTabChange(isQuote ? 'quotations' : 'invoices');
+        }
+        setActiveView('overview');
+      }, [loadSummary, onSubTabChange]);
 
       // React to quickDocType from Sidebar
       const lastQuickTsRef = useRef(0);

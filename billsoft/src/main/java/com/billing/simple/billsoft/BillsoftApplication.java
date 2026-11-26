@@ -29,7 +29,7 @@ public class BillsoftApplication {
 		return args -> {
 			com.billing.simple.billsoft.security.DatabaseSafetyGuard.assertSafeDataSource(dataSource);
 			try (java.sql.Connection conn = dataSource.getConnection();
-				 java.sql.Statement stmt = conn.createStatement()) {
+					java.sql.Statement stmt = conn.createStatement()) {
 				try {
 					stmt.execute("ALTER TABLE invoices ALTER COLUMN status VARCHAR(50)");
 				} catch (Exception ignored) {
@@ -43,7 +43,8 @@ public class BillsoftApplication {
 				} catch (Exception ignored) {
 				}
 				try {
-					stmt.execute("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS hide_prices_on_po BOOLEAN DEFAULT FALSE");
+					stmt.execute(
+							"ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS hide_prices_on_po BOOLEAN DEFAULT FALSE");
 				} catch (Exception ignored) {
 				}
 				try {
@@ -51,7 +52,8 @@ public class BillsoftApplication {
 				} catch (Exception ignored) {
 				}
 				try {
-					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS in_inventory BOOLEAN DEFAULT TRUE NOT NULL");
+					stmt.execute(
+							"ALTER TABLE products ADD COLUMN IF NOT EXISTS in_inventory BOOLEAN DEFAULT TRUE NOT NULL");
 				} catch (Exception ignored) {
 				}
 				try {
@@ -59,7 +61,8 @@ public class BillsoftApplication {
 				} catch (Exception ignored) {
 				}
 				try {
-					stmt.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE NOT NULL");
+					stmt.execute(
+							"ALTER TABLE products ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE NOT NULL");
 				} catch (Exception ignored) {
 				}
 				try {
@@ -86,9 +89,12 @@ public class BillsoftApplication {
 				// AUDIT-032 & AUDIT-036: Add GST breakdown and master data snapshot columns
 				try {
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS place_of_supply VARCHAR(100)");
-					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoices ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
 
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_name_snapshot VARCHAR(255)");
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS firm_gstin_snapshot VARCHAR(50)");
@@ -98,24 +104,35 @@ public class BillsoftApplication {
 
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_name_snapshot VARCHAR(255)");
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_gstin_snapshot VARCHAR(50)");
-					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_address_snapshot VARCHAR(1000)");
+					stmt.execute(
+							"ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_address_snapshot VARCHAR(1000)");
 					stmt.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer_phone_snapshot VARCHAR(50)");
 
-					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
 
-					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
 
-					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
-					stmt.execute("ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS cgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS sgst_amount DECIMAL(15, 2) DEFAULT 0.00");
+					stmt.execute(
+							"ALTER TABLE sales_return_items ADD COLUMN IF NOT EXISTS igst_amount DECIMAL(15, 2) DEFAULT 0.00");
 				} catch (Exception ignored) {
 				}
 
-				// Category 3: Normalize legacy numeric/ordinal representations in notifications table
+				// Category 3: Normalize legacy numeric/ordinal representations in notifications
+				// table
 				try {
 					stmt.execute("UPDATE notifications SET category = 'LICENSING' WHERE category = '0'");
 					stmt.execute("UPDATE notifications SET category = 'BILLING' WHERE category = '1'");
@@ -141,22 +158,33 @@ public class BillsoftApplication {
 
 				// Enforce Required Unique Constraints
 				try {
-					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_firm_invoice_num ON invoices(firm_id, invoice_number)");
+					stmt.execute("UPDATE invoices SET invoice_number = NULL WHERE invoice_number = ''");
+					stmt.execute(
+							"CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_firm_invoice_num ON invoices(firm_id, invoice_number)");
 				} catch (Exception e) {
 					System.err.println("Note: uq_invoices_firm_invoice_num: " + e.getMessage());
 				}
 				try {
-					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_firm_po_num ON purchase_orders(firm_id, po_number)");
+					stmt.execute("UPDATE invoices SET estimate_number = NULL WHERE estimate_number = ''");
+					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_firm_est_num ON invoices(firm_id, estimate_number)");
+				} catch (Exception e) {
+					System.err.println("Note: uq_invoices_firm_est_num: " + e.getMessage());
+				}
+				try {
+					stmt.execute(
+							"CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_orders_firm_po_num ON purchase_orders(firm_id, po_number)");
 				} catch (Exception e) {
 					System.err.println("Note: uq_purchase_orders_firm_po_num: " + e.getMessage());
 				}
 				try {
-					stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_returns_firm_return_num ON sales_returns(firm_id, return_number)");
+					stmt.execute(
+							"CREATE UNIQUE INDEX IF NOT EXISTS uq_sales_returns_firm_return_num ON sales_returns(firm_id, return_number)");
 				} catch (Exception e) {
 					System.err.println("Note: uq_sales_returns_firm_return_num: " + e.getMessage());
 				}
 
-				// Phase 1 & 2: BusinessPartyLink shared Customer + Supplier identity table & unique constraints
+				// Phase 1 & 2: BusinessPartyLink shared Customer + Supplier identity table &
+				// unique constraints
 				try {
 					stmt.execute("CREATE TABLE IF NOT EXISTS business_party_links (" +
 							"id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, " +
@@ -168,26 +196,29 @@ public class BillsoftApplication {
 							"notes VARCHAR(500)" +
 							")");
 
-					// Drop legacy unconditional unique indexes so multiple historical unlinked rows can exist safely
+					// Drop legacy unconditional unique indexes so multiple historical unlinked rows
+					// can exist safely
 					try {
 						stmt.execute("DROP INDEX IF EXISTS uk_bpl_firm_customer");
-					} catch (Exception ignored) {}
+					} catch (Exception ignored) {
+					}
 					try {
 						stmt.execute("DROP INDEX IF EXISTS uk_bpl_firm_party");
-					} catch (Exception ignored) {}
+					} catch (Exception ignored) {
+					}
 
 					String[] bplCols = {
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ACTIVE'",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS customer_role_active BOOLEAN DEFAULT TRUE",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS party_role_active BOOLEAN DEFAULT TRUE",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS disabled_reason VARCHAR(300)",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS active_customer_id BIGINT",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS active_party_id BIGINT",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlinked_at TIMESTAMP",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlinked_by VARCHAR(100)",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlink_reason VARCHAR(500)",
-						"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS relationship_version INT DEFAULT 1"
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ACTIVE'",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS customer_role_active BOOLEAN DEFAULT TRUE",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS party_role_active BOOLEAN DEFAULT TRUE",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS status_updated_at TIMESTAMP",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS disabled_reason VARCHAR(300)",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS active_customer_id BIGINT",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS active_party_id BIGINT",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlinked_at TIMESTAMP",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlinked_by VARCHAR(100)",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS unlink_reason VARCHAR(500)",
+							"ALTER TABLE business_party_links ADD COLUMN IF NOT EXISTS relationship_version INT DEFAULT 1"
 					};
 					for (String sql : bplCols) {
 						try {
@@ -198,25 +229,38 @@ public class BillsoftApplication {
 
 					// Backfill active columns for existing active links
 					try {
-						stmt.execute("UPDATE business_party_links SET active_customer_id = customer_id WHERE active_customer_id IS NULL AND (status IS NULL OR status = 'ACTIVE' OR status = 'CUSTOMER_DISABLED' OR status = 'PARTY_DISABLED' OR status = 'BOTH_DISABLED')");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"UPDATE business_party_links SET active_customer_id = customer_id WHERE active_customer_id IS NULL AND (status IS NULL OR status = 'ACTIVE' OR status = 'CUSTOMER_DISABLED' OR status = 'PARTY_DISABLED' OR status = 'BOTH_DISABLED')");
+					} catch (Exception ignored) {
+					}
 					try {
-						stmt.execute("UPDATE business_party_links SET active_party_id = party_id WHERE active_party_id IS NULL AND (status IS NULL OR status = 'ACTIVE' OR status = 'CUSTOMER_DISABLED' OR status = 'PARTY_DISABLED' OR status = 'BOTH_DISABLED')");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"UPDATE business_party_links SET active_party_id = party_id WHERE active_party_id IS NULL AND (status IS NULL OR status = 'ACTIVE' OR status = 'CUSTOMER_DISABLED' OR status = 'PARTY_DISABLED' OR status = 'BOTH_DISABLED')");
+					} catch (Exception ignored) {
+					}
 					try {
-						stmt.execute("UPDATE business_party_links SET relationship_version = 1 WHERE relationship_version IS NULL");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"UPDATE business_party_links SET relationship_version = 1 WHERE relationship_version IS NULL");
+					} catch (Exception ignored) {
+					}
 
-					// Active-only unique indexes enforcing strict 1:1 active relationship while allowing historical unlinked version rows
+					// Active-only unique indexes enforcing strict 1:1 active relationship while
+					// allowing historical unlinked version rows
 					try {
-						stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_bpl_firm_act_cust ON business_party_links(firm_id, active_customer_id)");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"CREATE UNIQUE INDEX IF NOT EXISTS uk_bpl_firm_act_cust ON business_party_links(firm_id, active_customer_id)");
+					} catch (Exception ignored) {
+					}
 					try {
-						stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uk_bpl_firm_act_party ON business_party_links(firm_id, active_party_id)");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"CREATE UNIQUE INDEX IF NOT EXISTS uk_bpl_firm_act_party ON business_party_links(firm_id, active_party_id)");
+					} catch (Exception ignored) {
+					}
 					try {
-						stmt.execute("CREATE INDEX IF NOT EXISTS idx_bpl_firm_status ON business_party_links(firm_id, status)");
-					} catch (Exception ignored) {}
+						stmt.execute(
+								"CREATE INDEX IF NOT EXISTS idx_bpl_firm_status ON business_party_links(firm_id, status)");
+					} catch (Exception ignored) {
+					}
 				} catch (Exception e) {
 					System.err.println("Note: business_party_links init: " + e.getMessage());
 				}
@@ -238,10 +282,14 @@ public class BillsoftApplication {
 							"created_by VARCHAR(100), " +
 							"resolution_notes VARCHAR(500)" +
 							")");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bia_firm_norm ON business_identity_aliases(firm_id, normalized_value)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bia_firm_link ON business_identity_aliases(firm_id, link_id)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bia_firm_cust ON business_identity_aliases(firm_id, customer_id)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bia_firm_party ON business_identity_aliases(firm_id, party_id)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bia_firm_norm ON business_identity_aliases(firm_id, normalized_value)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bia_firm_link ON business_identity_aliases(firm_id, link_id)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bia_firm_cust ON business_identity_aliases(firm_id, customer_id)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bia_firm_party ON business_identity_aliases(firm_id, party_id)");
 				} catch (Exception e) {
 					System.err.println("Note: business_identity_aliases init: " + e.getMessage());
 				}
@@ -262,18 +310,23 @@ public class BillsoftApplication {
 							"after_value CLOB, " +
 							"reason VARCHAR(500)" +
 							")");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bple_firm_link ON business_party_link_events(firm_id, link_id)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_bple_firm_time ON business_party_link_events(firm_id, timestamp)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bple_firm_link ON business_party_link_events(firm_id, link_id)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_bple_firm_time ON business_party_link_events(firm_id, timestamp)");
 				} catch (Exception e) {
 					System.err.println("Note: business_party_link_events init: " + e.getMessage());
 				}
 
 				// Phase 2: Sales Return Historical Customer Snapshot
 				try {
-					stmt.execute("ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS customer_name_snapshot VARCHAR(255)");
-				} catch (Exception ignored) {}
+					stmt.execute(
+							"ALTER TABLE sales_returns ADD COLUMN IF NOT EXISTS customer_name_snapshot VARCHAR(255)");
+				} catch (Exception ignored) {
+				}
 
-				// Phase 3 & 4: Forecast Sync Job Records Schema Migration (ensuring columns exist for durable sync tracking)
+				// Phase 3 & 4: Forecast Sync Job Records Schema Migration (ensuring columns
+				// exist for durable sync tracking)
 				try {
 					stmt.execute("CREATE TABLE IF NOT EXISTS forecast_sync_job_records (" +
 							"id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, " +
@@ -295,12 +348,18 @@ public class BillsoftApplication {
 							"heartbeat_at TIMESTAMP" +
 							")");
 					stmt.execute("ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS stage VARCHAR(50)");
-					stmt.execute("ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS stage_text VARCHAR(100)");
-					stmt.execute("ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS progress_percent INT DEFAULT 0");
-					stmt.execute("ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP");
-					stmt.execute("ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS error_message VARCHAR(2000)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_fcjob_firm_status_time ON forecast_sync_job_records(firm_id, status, completed_at DESC)");
-					stmt.execute("CREATE INDEX IF NOT EXISTS idx_fcjob_firm_start_time ON forecast_sync_job_records(firm_id, started_at DESC)");
+					stmt.execute(
+							"ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS stage_text VARCHAR(100)");
+					stmt.execute(
+							"ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS progress_percent INT DEFAULT 0");
+					stmt.execute(
+							"ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP");
+					stmt.execute(
+							"ALTER TABLE forecast_sync_job_records ADD COLUMN IF NOT EXISTS error_message VARCHAR(2000)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_fcjob_firm_status_time ON forecast_sync_job_records(firm_id, status, completed_at DESC)");
+					stmt.execute(
+							"CREATE INDEX IF NOT EXISTS idx_fcjob_firm_start_time ON forecast_sync_job_records(firm_id, started_at DESC)");
 				} catch (Exception e) {
 					System.err.println("Note: forecast_sync_job_records init: " + e.getMessage());
 				}

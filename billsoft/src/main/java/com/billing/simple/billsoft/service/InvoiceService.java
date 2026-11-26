@@ -901,18 +901,22 @@ public class InvoiceService {
         invoice.setFirmId(effectiveFirmId);
         invoice.setPaid(status == InvoiceStatus.PAID);
 
-        // Populate customer snapshot fields
+        // Populate customer snapshot fields for finalized documents (DRAFT & ESTIMATE remain mutable without snapshots)
         if (customer != null) {
             invoice.setCustomer(customer);
-            invoice.setCustomerNameSnapshot(customer.getName());
-            invoice.setCustomerPhoneSnapshot(customer.getPhone());
-            invoice.setCustomerAddressSnapshot(customer.getAddress());
-            invoice.setCustomerGstinSnapshot(customer.getGstin());
+            if (status != InvoiceStatus.DRAFT && status != InvoiceStatus.ESTIMATE) {
+                invoice.setCustomerNameSnapshot(customer.getName());
+                invoice.setCustomerPhoneSnapshot(customer.getPhone());
+                invoice.setCustomerAddressSnapshot(customer.getAddress());
+                invoice.setCustomerGstinSnapshot(customer.getGstin());
+            }
         } else if (request.getCustomerName() != null && !request.getCustomerName().isBlank()) {
-            invoice.setCustomerNameSnapshot(request.getCustomerName().trim());
-            invoice.setCustomerPhoneSnapshot(request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank() ? request.getCustomerPhone().trim() : null);
-            invoice.setCustomerAddressSnapshot(request.getCustomerAddress() != null && !request.getCustomerAddress().isBlank() ? request.getCustomerAddress().trim() : null);
-            invoice.setCustomerGstinSnapshot(request.getCustomerGstin() != null && !request.getCustomerGstin().isBlank() ? request.getCustomerGstin().trim().toUpperCase() : null);
+            if (status != InvoiceStatus.DRAFT && status != InvoiceStatus.ESTIMATE) {
+                invoice.setCustomerNameSnapshot(request.getCustomerName().trim());
+                invoice.setCustomerPhoneSnapshot(request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank() ? request.getCustomerPhone().trim() : null);
+                invoice.setCustomerAddressSnapshot(request.getCustomerAddress() != null && !request.getCustomerAddress().isBlank() ? request.getCustomerAddress().trim() : null);
+                invoice.setCustomerGstinSnapshot(request.getCustomerGstin() != null && !request.getCustomerGstin().isBlank() ? request.getCustomerGstin().trim().toUpperCase() : null);
+            }
         }
 
         // identifiers (Option B behaviour)
@@ -1410,25 +1414,27 @@ public class InvoiceService {
                     cust = customerRepo.save(cust);
                 }
             }
-            if (req.getCustomerName() != null && !req.getCustomerName().isBlank()) {
-                existing.setCustomerNameSnapshot(req.getCustomerName().trim());
-            } else if (cust != null && existing.getCustomerNameSnapshot() == null) {
-                existing.setCustomerNameSnapshot(cust.getName());
-            }
-            if (req.getCustomerPhone() != null) {
-                existing.setCustomerPhoneSnapshot(req.getCustomerPhone().trim());
-            } else if (cust != null && existing.getCustomerPhoneSnapshot() == null) {
-                existing.setCustomerPhoneSnapshot(cust.getPhone());
-            }
-            if (req.getCustomerAddress() != null) {
-                existing.setCustomerAddressSnapshot(req.getCustomerAddress().trim());
-            } else if (cust != null && existing.getCustomerAddressSnapshot() == null) {
-                existing.setCustomerAddressSnapshot(cust.getAddress());
-            }
-            if (req.getCustomerGstin() != null) {
-                existing.setCustomerGstinSnapshot(req.getCustomerGstin().trim().toUpperCase());
-            } else if (cust != null && existing.getCustomerGstinSnapshot() == null) {
-                existing.setCustomerGstinSnapshot(cust.getGstin());
+            if (targetStatus != InvoiceStatus.DRAFT && targetStatus != InvoiceStatus.ESTIMATE) {
+                if (req.getCustomerName() != null && !req.getCustomerName().isBlank()) {
+                    existing.setCustomerNameSnapshot(req.getCustomerName().trim());
+                } else if (cust != null && existing.getCustomerNameSnapshot() == null) {
+                    existing.setCustomerNameSnapshot(cust.getName());
+                }
+                if (req.getCustomerPhone() != null) {
+                    existing.setCustomerPhoneSnapshot(req.getCustomerPhone().trim());
+                } else if (cust != null && existing.getCustomerPhoneSnapshot() == null) {
+                    existing.setCustomerPhoneSnapshot(cust.getPhone());
+                }
+                if (req.getCustomerAddress() != null) {
+                    existing.setCustomerAddressSnapshot(req.getCustomerAddress().trim());
+                } else if (cust != null && existing.getCustomerAddressSnapshot() == null) {
+                    existing.setCustomerAddressSnapshot(cust.getAddress());
+                }
+                if (req.getCustomerGstin() != null) {
+                    existing.setCustomerGstinSnapshot(req.getCustomerGstin().trim().toUpperCase());
+                } else if (cust != null && existing.getCustomerGstinSnapshot() == null) {
+                    existing.setCustomerGstinSnapshot(cust.getGstin());
+                }
             }
         }
 

@@ -1,4 +1,11 @@
 {
+  "1.0.408": [
+    "Telegram Estimate-to-Invoice Conversion: Direct conversion of customer quotations into official tax invoices via Telegram Assistant, reusing the authoritative desktop conversion engine, financial calculations, stock deduction, and accounting entries.",
+    "Conversational Document Selection & Ineligibility Guards: Customer search-first flow with 5-record pagination, human-readable previews, and automated blocking of already-converted or cancelled estimates with one-click existing invoice downloads.",
+    "Standardized WhatsApp Handoff for Converted Invoices: Seamless delivery of official vector invoice PDF accompanied by tailored WhatsApp chat-link handoff (wa.me) with phone normalization.",
+    "Optional Mobile-Number Collection: Automatic mobile detection with explicit skip option and optional master customer record update during conversion flows.",
+    "Transaction Parity & Idempotency: Complete duplicate protection under retry and double-tap conditions via database pessimistic locking and authoritative tenant isolation."
+  ],
   "1.0.407": [
     "WhatsApp Document Handoff: Standardized wa.me chat-link handoff for eligible invoices, quotations, purchase orders, customer/vendor statements, and individual payslips with automatic phone normalization and one-time alternate number support.",
     "Telegram Business Assistant — Six Authorized Operations: Completed end-to-end integration exposing strictly 6 business functions: Create Invoice/Quotation, Download Invoice/Quotation, Statements & Business Reports (Party, Customer, Firm, Forecast, Stock), Create/Download Purchase Orders, Employee Leaves/Advances/Payroll, and Record Expenses/Savings.",

@@ -1,4 +1,27 @@
 {
+  "1.0.406": [
+    "Telegram Business Assistant: Direct mobile Telegram integration enabling tax invoice generation, quotations, stock lookups, customer directory access, and instant PDF downloads with zero cloud hosting.",
+    "Polling Worker & Ingestion Hardening: Transactional lease claiming and orphan recovery prevents worker stall; Markdown entity parsing errors automatically fallback to plain text.",
+    "Targeted Device Pairing & Approval Workflow: Single-use Crockford Base32 challenge codes with optional target Telegram User ID binding; untargeted pairings require desktop owner approval.",
+    "Live Bot Diagnostics & Ping Tool: Real-time telemetry dashboard in Settings with poller state, circuit breaker status, update offsets, and outbound test messaging.",
+    "Debtors & Collections Workspace: Compact register density, automated settlement allocation rebalancing, customer statements, promise-to-pay tracking, and WhatsApp reminder focus stability."
+  ],
+  "1.0.405": [
+    "Settlement Allocation Rebalancing: Entering or modifying payment amount dynamically rebalances invoice allocations so allocations never exceed payment.",
+    "Input Focus & Cursor Stability: Preserved text cursor and focus across character typing in WhatsApp reminder modal and Settle Invoices forms.",
+    "Debtors Refresh & Visible Feedback: Added explicit 'Refreshing...' state, spinner, click lock, and success toast to Debtors & Collections workspace.",
+    "Modal Contrast & Styling Tokens: Hardened Promise to Pay, Log Activity, and Reschedule modals with high-contrast card backgrounds and standard theme tokens.",
+    "Debtor Register & Aging Reports: Export clean business CSV with full aging buckets and summary totals row; generate true formatted PDF Aging Reports.",
+    "Individual Customer Statement Download: One-click statement generation and PDF download directly from the Debtor Register table.",
+    "Party Details PO Preview Action: Standardized 'Preview / PDF' action button in Purchase Orders and Documents tabs opening the universal preview modal."
+  ],
+  "1.0.404": [
+    "Debtors & Collections Operating Center: Dedicated 5-sub-view receivables workspace (Overview, All Debtors, Overdue Invoices, Follow-ups, Statements & Reports) built directly into the Customers module.",
+    "Comprehensive Receivables Intelligence: Real-time 0–30, 31–60, 61–90, 90+ days aging buckets, customer risk classification, counterparty supplier link badge, and average payment delay tracking.",
+    "Promise-to-Pay System: Schedule, track, and manage customer payment commitments with automatic settlement reconciliation and collection timeline logging.",
+    "Overdue Invoices & Collection Queue: Unified firm-wide overdue tracking with aging badges and one-click settle, note, and WhatsApp collection reminders.",
+    "Statements & Bulk ZIP Export: Export debtor registers to CSV, Excel, and PDF aging reports, plus firm-scoped bulk customer statements ZIP streaming."
+  ],
   "1.0.401": [
     "Billing Workspace Multi-Document Reliability: Atomic numbering collision auto-recovery prevents HTTP 400 errors during concurrent invoice and quotation creation across multi-tab sessions.",
     "Quotation Number Uniqueness Constraint: Added database-level unique constraint (firm_id, estimate_number) ensuring strict quotation integrity and zero duplicate estimates.",

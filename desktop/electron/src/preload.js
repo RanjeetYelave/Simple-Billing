@@ -73,6 +73,20 @@ contextBridge.exposeInMainWorld('rupeeDesktop', {
     getDiagnostics: () => ipcRenderer.invoke('updater:diagnostics')
   },
 
+  // Telegram Remote Assistant Secure Bridge (Write-Only Credentials)
+  telegram: {
+    configure: (payload) => ipcRenderer.invoke('telegram:configure', payload),
+    getStatus: () => ipcRenderer.invoke('telegram:get-status'),
+    toggle: (payload) => ipcRenderer.invoke('telegram:toggle', payload),
+    generateChallenge: (payload) => ipcRenderer.invoke('telegram:generate-challenge', payload),
+    getUsers: () => ipcRenderer.invoke('telegram:get-users'),
+    approveUser: (payload) => ipcRenderer.invoke('telegram:approve-user', payload),
+    sendTestMessage: (payload) => ipcRenderer.invoke('telegram:send-test-message', payload),
+    revokeUser: (payload) => ipcRenderer.invoke('telegram:revoke-user', payload),
+    resumePoller: () => ipcRenderer.invoke('telegram:resume-poller'),
+    disconnect: () => ipcRenderer.invoke('telegram:disconnect')
+  },
+
   // Event Listeners for State Updates
   onBackendStateChange: (callback) => {
     if (typeof callback !== 'function') return () => {};

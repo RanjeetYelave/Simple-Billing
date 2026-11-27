@@ -1,4 +1,11 @@
 {
+  "1.0.406": [
+    "Telegram Business Assistant: Direct mobile Telegram integration enabling tax invoice generation, quotations, stock lookups, customer directory access, and instant PDF downloads with zero cloud hosting.",
+    "Polling Worker & Ingestion Hardening: Transactional lease claiming and orphan recovery prevents worker stall; Markdown entity parsing errors automatically fallback to plain text.",
+    "Targeted Device Pairing & Approval Workflow: Single-use Crockford Base32 challenge codes with optional target Telegram User ID binding; untargeted pairings require desktop owner approval.",
+    "Live Bot Diagnostics & Ping Tool: Real-time telemetry dashboard in Settings with poller state, circuit breaker status, update offsets, and outbound test messaging.",
+    "Debtors & Collections Workspace: Compact register density, automated settlement allocation rebalancing, customer statements, promise-to-pay tracking, and WhatsApp reminder focus stability."
+  ],
   "1.0.405": [
     "Settlement Allocation Rebalancing: Entering or modifying payment amount dynamically rebalances invoice allocations so allocations never exceed payment.",
     "Input Focus & Cursor Stability: Preserved text cursor and focus across character typing in WhatsApp reminder modal and Settle Invoices forms.",

@@ -24,7 +24,8 @@
     const debtorPageSize = 10;
 
     // Follow-ups filter
-    const [followUpFilter, setFollowUpFilter] = useState('DUE_TODAY'); // DUE_TODAY | UPCOMING | OVERDUE | ALL
+    const [followUpFilter, setFollowUpFilter] = useState('ALL'); // ALL | DUE_TODAY | UPCOMING | OVERDUE
+    const [activeMoreMenuCustomerId, setActiveMoreMenuCustomerId] = useState(null);
 
     // Bulk statement zip date range
     const [bulkFrom, setBulkFrom] = useState('');
@@ -179,14 +180,19 @@
           return;
         }
         const blob = await res.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `Debtors_Aging_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(blobUrl);
+        const filename = `Debtors_Aging_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+        if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.downloadBlob === 'function') {
+          BillsoftUtils.downloadBlob(blob, filename);
+        } else {
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+        }
         if (typeof showToast === 'function') showToast('Aging Report PDF downloaded successfully', 'success');
       } catch (err) {
         if (typeof showToast === 'function') showToast(err.message || 'PDF export failed', 'error');
@@ -195,24 +201,50 @@
 
     const handleDownloadCustomerStatement = async (d) => {
       try {
-        if (typeof showToast === 'function') showToast(`Generating statement for ${d.customerName}...`, 'info');
-        const blob = await API.statements.customerPdf(d.customerId);
-        const blobUrl = window.URL.createObjectURL(blob);
-        const sanitizedName = (d.customerName || 'Customer').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const custId = d.customerId || d.id;
+        const custName = d.customerName || d.name || 'Customer';
+        if (typeof showToast === 'function') showToast(`Generating statement for ${custName}...`, 'info');
+        const blob = await API.statements.customerPdf(custId);
+        const sanitizedName = custName.replace(/[^a-zA-Z0-9_-]/g, '_');
         const today = new Date().toISOString().slice(0, 10);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `Statement-${sanitizedName}-${today}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(blobUrl);
-        if (typeof showToast === 'function') showToast(`Statement for ${d.customerName} downloaded successfully!`, 'success');
+        const filename = `Statement-${sanitizedName}-${today}.pdf`;
+        if (typeof BillsoftUtils !== 'undefined' && typeof BillsoftUtils.downloadBlob === 'function') {
+          BillsoftUtils.downloadBlob(blob, filename);
+        } else {
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(blobUrl);
+        }
+        if (typeof showToast === 'function') showToast(`Statement for ${custName} downloaded successfully!`, 'success');
       } catch (err) {
         console.error(err);
         if (typeof showToast === 'function') showToast(err.message || 'Failed to download statement', 'error');
       }
     };
+
+    // Close More menu when clicking outside or pressing Escape
+    useEffect(() => {
+      if (!activeMoreMenuCustomerId) return;
+      const handleClickOutside = (e) => {
+        if (!e.target.closest('.debtor-more-menu-container')) {
+          setActiveMoreMenuCustomerId(null);
+        }
+      };
+      const handleKeyDown = (e) => {
+        if (e.key === 'Escape') setActiveMoreMenuCustomerId(null);
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }, [activeMoreMenuCustomerId]);
 
     useEffect(() => {
       refreshAll();
@@ -232,10 +264,15 @@
         if (typeof showToast === 'function') showToast('Please enter promised amount and date', 'warning');
         return;
       }
+      const custId = promiseModalCustomer.customerId || promiseModalCustomer.id;
+      if (!custId) {
+        if (typeof showToast === 'function') showToast('Invalid customer ID', 'error');
+        return;
+      }
       setIsSavingPromise(true);
       try {
         await API.debtors.createPromise({
-          customerId: promiseModalCustomer.customerId,
+          customerId: custId,
           promisedAmount: parseFloat(promiseAmount),
           promisedDate: promiseDate,
           notes: promiseNotes
@@ -245,6 +282,7 @@
         setPromiseAmount('');
         setPromiseDate('');
         setPromiseNotes('');
+        setFollowUpFilter('ALL');
         refreshAll();
       } catch (err) {
         if (typeof showToast === 'function') showToast('Failed to record promise: ' + (err.message || 'Error'), 'error');
@@ -540,33 +578,33 @@
       ),
 
       // ── SUB-VIEW 2: ALL DEBTORS REGISTER ──
-      activeSubTab === 'debtors' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-        // Filter & Search Controls
+      activeSubTab === 'debtors' && h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+        // Unified Compact Toolbar Strip
         h('div', {
           style: {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 10,
+            gap: 8,
             background: 'var(--bg-secondary)',
-            padding: '10px 14px',
+            padding: '8px 12px',
             borderRadius: 8,
             border: '1px solid var(--border)'
           }
         },
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1 } },
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flex: 1 } },
             h('input', {
               type: 'text',
               className: 'form-control form-control-sm',
               placeholder: 'Search debtor name, phone, email...',
-              style: { maxWidth: 260 },
+              style: { maxWidth: 260, height: 32, fontSize: '0.80rem' },
               value: debtorSearch,
               onChange: (e) => setDebtorSearch(e.target.value)
             }),
             h('select', {
               className: 'form-control form-control-sm',
-              style: { maxWidth: 170 },
+              style: { maxWidth: 170, height: 32, fontSize: '0.80rem' },
               value: debtorFilter,
               onChange: (e) => setDebtorFilter(e.target.value)
             },
@@ -579,7 +617,7 @@
             ),
             h('select', {
               className: 'form-control form-control-sm',
-              style: { maxWidth: 170 },
+              style: { maxWidth: 170, height: 32, fontSize: '0.80rem' },
               value: debtorSortBy,
               onChange: (e) => setDebtorSortBy(e.target.value)
             },
@@ -590,32 +628,41 @@
               h('option', { value: 'name' }, 'Sort: Customer Name')
             )
           ),
-          h('div', { style: { display: 'flex', gap: 6 } },
+          h('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
             h('button', {
               className: 'btn btn-outline btn-xs',
+              style: { height: 30, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 10px', fontSize: '0.76rem', fontWeight: 600 },
+              disabled: isRefreshing,
+              onClick: handleUserRefresh,
+              title: 'Refresh debtors register and stats'
+            }, isRefreshing ? '⏳' : '🔄', isRefreshing ? 'Refreshing...' : 'Refresh'),
+            h('button', {
+              className: 'btn btn-outline btn-xs',
+              style: { height: 30, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 10px', fontSize: '0.76rem', fontWeight: 600 },
               onClick: handleExportCsv,
               title: 'Export Debtor Register CSV'
             }, '📥 CSV'),
             h('button', {
               className: 'btn btn-outline btn-xs',
+              style: { height: 30, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0 10px', fontSize: '0.76rem', fontWeight: 600 },
               onClick: handleExportPdf,
               title: 'Export Aging Report PDF'
             }, '📄 PDF Aging')
           )
         ),
 
-        // Debtor Register Table
-        h('div', { style: { overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8 } },
-          h('table', { className: 'table table-hover', style: { width: '100%', margin: 0, fontSize: '0.82rem' } },
+        // Debtor Register Table — Invoice-Style Compact Density
+        h('div', { style: { overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-card)' } },
+          h('table', { className: 'table table-hover', style: { width: '100%', margin: 0, fontSize: '0.80rem' } },
             h('thead', null,
               h('tr', { style: { background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border)' } },
-                h('th', { style: { padding: '8px 12px' } }, 'Customer Identity'),
-                h('th', { style: { padding: '8px 12px', textAlign: 'right' } }, 'Outstanding Due'),
-                h('th', { style: { padding: '8px 12px', textAlign: 'right' } }, 'Overdue'),
-                h('th', { style: { padding: '8px 12px' } }, 'Aging Breakdown'),
-                h('th', { style: { padding: '8px 12px' } }, 'Risk Status'),
-                h('th', { style: { padding: '8px 12px' } }, 'Promise / Follow-up'),
-                h('th', { style: { padding: '8px 12px', textAlign: 'center' } }, 'Actions')
+                h('th', { style: { padding: '7px 10px', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Customer Identity'),
+                h('th', { style: { padding: '7px 10px', textAlign: 'right', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Outstanding Due'),
+                h('th', { style: { padding: '7px 10px', textAlign: 'right', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Overdue'),
+                h('th', { style: { padding: '7px 10px', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Aging Breakdown'),
+                h('th', { style: { padding: '7px 10px', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Risk Status'),
+                h('th', { style: { padding: '7px 10px', fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Promise / Follow-up'),
+                h('th', { style: { padding: '7px 10px', textAlign: 'center', width: 140, fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 } }, 'Actions')
               )
             ),
             h('tbody', null,
@@ -629,112 +676,163 @@
                   key: d.customerId,
                   style: { borderBottom: '1px solid var(--border)' }
                 },
-                  // Customer Identity
-                  h('td', { style: { padding: '10px 12px' } },
-                    h('div', { style: { fontWeight: 700, color: 'var(--text-primary)' } }, d.customerName),
-                    h('div', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } },
+                  // 1. Customer Identity — No Clipping, Prominent Display
+                  h('td', { style: { padding: '6px 10px', verticalAlign: 'middle', minWidth: 160 } },
+                    h('div', { style: { fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.84rem', lineHeight: 1.2 } }, d.customerName),
+                    h('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 2 } },
                       `ID #${d.customerId} ${d.customerPhone ? '• ' + d.customerPhone : ''}`
                     ),
-                    // Counterparty supplier link indicator
-                    d.hasSupplierCounterpart && h('div', { style: { marginTop: 3 } },
+                    d.hasSupplierCounterpart && h('div', { style: { marginTop: 2 } },
                       h('span', {
                         className: 'badge',
-                        style: { background: '#f1f5f9', color: '#475569', fontSize: '0.68rem', border: '1px solid #cbd5e1' },
+                        style: { background: '#f1f5f9', color: '#475569', fontSize: '0.64rem', padding: '1px 5px', border: '1px solid #cbd5e1' },
                         title: 'Also registered as Supplier in this firm'
-                      }, `🔄 Counterparty Supplier (Payable: ${formatInr(d.supplierPayableAmount || 0)})`)
+                      }, `🔄 Supplier (${formatInr(d.supplierPayableAmount || 0)})`)
                     )
                   ),
-                  // Outstanding Due
-                  h('td', { style: { padding: '10px 12px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono, monospace)' } },
+                  // 2. Outstanding Due
+                  h('td', { style: { padding: '6px 10px', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono, monospace)', verticalAlign: 'middle' } },
                     d.outstandingAmount > 0 ?
                       h('span', { style: { color: '#b91c1c' } }, formatInr(d.outstandingAmount)) :
                       d.advanceCredit > 0 ?
                         h('span', { style: { color: '#2563eb' } }, `Credit: ${formatInr(d.advanceCredit)}`) :
                         h('span', { style: { color: '#16a34a' } }, '₹0.00')
                   ),
-                  // Overdue
-                  h('td', { style: { padding: '10px 12px', textAlign: 'right', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)' } },
+                  // 3. Overdue
+                  h('td', { style: { padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontFamily: 'var(--font-mono, monospace)', verticalAlign: 'middle' } },
                     d.overdueAmount > 0 ?
                       h('div', null,
                         h('span', { style: { color: '#c2410c' } }, formatInr(d.overdueAmount)),
-                        h('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)' } }, `${d.oldestOverdueDays}d overdue`)
+                        h('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)' } }, `${d.oldestOverdueDays}d overdue`)
                       ) :
                       h('span', { style: { color: 'var(--text-secondary)' } }, '-')
                   ),
-                  // Aging Breakdown
-                  h('td', { style: { padding: '10px 12px' } },
-                    h('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
-                      d.aging0To30 > 0 && h('span', { className: 'badge', style: { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.68rem' } }, `0-30: ${formatInr(d.aging0To30)}`),
-                      d.aging31To60 > 0 && h('span', { className: 'badge', style: { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', fontSize: '0.68rem' } }, `31-60: ${formatInr(d.aging31To60)}`),
-                      d.aging61To90 > 0 && h('span', { className: 'badge', style: { background: '#fff7ed', color: '#9a3412', border: '1px solid #fed7aa', fontSize: '0.68rem' } }, `61-90: ${formatInr(d.aging61To90)}`),
-                      d.aging90Plus > 0 && h('span', { className: 'badge', style: { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '0.68rem' } }, `90+: ${formatInr(d.aging90Plus)}`)
+                  // 4. Aging Breakdown
+                  h('td', { style: { padding: '6px 10px', verticalAlign: 'middle' } },
+                    h('div', { style: { display: 'flex', gap: 3, flexWrap: 'wrap' } },
+                      d.aging0To30 > 0 && h('span', { className: 'badge', style: { background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', fontSize: '0.66rem', padding: '1px 4px' } }, `0-30: ${formatInr(d.aging0To30)}`),
+                      d.aging31To60 > 0 && h('span', { className: 'badge', style: { background: '#fefce8', color: '#854d0e', border: '1px solid #fef08a', fontSize: '0.66rem', padding: '1px 4px' } }, `31-60: ${formatInr(d.aging31To60)}`),
+                      d.aging61To90 > 0 && h('span', { className: 'badge', style: { background: '#fff7ed', color: '#9a3412', border: '1px solid #fed7aa', fontSize: '0.66rem', padding: '1px 4px' } }, `61-90: ${formatInr(d.aging61To90)}`),
+                      d.aging90Plus > 0 && h('span', { className: 'badge', style: { background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca', fontSize: '0.66rem', padding: '1px 4px' } }, `90+: ${formatInr(d.aging90Plus)}`)
                     )
                   ),
-                  // Risk Status
-                  h('td', { style: { padding: '10px 12px' } },
+                  // 5. Risk Status
+                  h('td', { style: { padding: '6px 10px', verticalAlign: 'middle' } },
                     h('span', {
                       className: `badge ${d.riskLevel === 'HIGH' ? 'badge-danger' : d.riskLevel === 'MEDIUM' ? 'badge-warning' : 'badge-paid'}`,
-                      style: { fontSize: '0.72rem', fontWeight: 600 },
+                      style: { fontSize: '0.68rem', fontWeight: 600, padding: '1px 6px' },
                       title: d.riskReason
                     }, d.riskLevel + ' RISK'),
-                    h('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: d.riskReason },
+                    h('div', { style: { fontSize: '0.66rem', color: 'var(--text-secondary)', marginTop: 2, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: d.riskReason },
                       d.riskReason
                     )
                   ),
-                  // Promise / Follow-up
-                  h('td', { style: { padding: '10px 12px' } },
+                  // 6. Promise / Follow-up
+                  h('td', { style: { padding: '6px 10px', verticalAlign: 'middle' } },
                     d.activePromiseAmount ?
                       h('div', null,
-                        h('span', { className: 'badge badge-primary', style: { fontSize: '0.70rem' } },
+                        h('span', { className: 'badge badge-primary', style: { fontSize: '0.68rem', padding: '1px 6px' } },
                           `Promise: ${formatInr(d.activePromiseAmount)}`
                         ),
-                        h('div', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)', marginTop: 2 } },
+                        h('div', { style: { fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 2 } },
                           `By ${d.activePromiseDate}`
                         )
                       ) :
-                      h('span', { style: { fontSize: '0.72rem', color: 'var(--text-secondary)' } }, 'None scheduled')
+                      h('span', { style: { fontSize: '0.70rem', color: 'var(--text-secondary)' } }, 'None scheduled')
                   ),
-                  // Actions
-                  h('td', { style: { padding: '10px 12px', textAlign: 'center' } },
-                    h('div', { style: { display: 'flex', gap: 4, justifyContent: 'center', flexWrap: 'wrap' } },
+                  // 7. Actions — Only Visible Primary 'Settle' + Compact 'More ▾' Dropdown
+                  h('td', { style: { padding: '6px 10px', textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' } },
+                    h('div', { style: { display: 'inline-flex', alignItems: 'center', gap: 6 } },
                       h('button', {
                         className: 'btn btn-primary btn-xs',
-                        title: 'Settle Invoices',
-                        onClick: () => {
-                          if (onSettle) onSettle({ id: d.customerId, name: d.customerName });
+                        style: { padding: '3px 9px', fontSize: '0.74rem', fontWeight: 600 },
+                        title: 'Settle Invoices for ' + d.customerName,
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          if (onSettle) onSettle({ id: d.customerId, name: d.customerName, outstanding: d.outstandingAmount });
                         }
                       }, 'Settle'),
-                      h('button', {
-                        className: 'btn btn-outline btn-xs',
-                        title: 'Record Promise to Pay',
-                        onClick: () => setPromiseModalCustomer(d)
-                      }, 'Promise'),
-                      h('button', {
-                        className: 'btn btn-outline btn-xs',
-                        title: 'Log Note / Activity',
-                        onClick: () => setActivityModalCustomer(d)
-                      }, 'Note'),
-                      h('button', {
-                        className: 'btn btn-outline btn-xs',
-                        style: { color: '#16a34a' },
-                        title: 'Share WhatsApp Reminder',
-                        onClick: () => {
-                          if (onWhatsApp) onWhatsApp({ id: d.customerId, name: d.customerName, phone: d.customerPhone });
-                        }
-                      }, 'WA'),
-                      h('button', {
-                        className: 'btn btn-outline btn-xs',
-                        title: 'Customer 360',
-                        onClick: () => {
-                          if (onCustomer360) onCustomer360({ id: d.customerId, name: d.customerName });
-                        }
-                      }, '360'),
-                      h('button', {
-                        className: 'btn btn-outline btn-xs',
-                        style: { color: 'var(--primary)' },
-                        title: 'Download Statement (PDF)',
-                        onClick: () => handleDownloadCustomerStatement(d)
-                      }, 'Stmt')
+                      h('div', {
+                        className: 'debtor-more-menu-container actions-dropdown-container',
+                        style: { position: 'relative', display: 'inline-block' }
+                      },
+                        h('button', {
+                          type: 'button',
+                          className: `btn btn-outline btn-xs btn-more-actions ${activeMoreMenuCustomerId === d.customerId ? 'active' : ''}`,
+                          style: { padding: '3px 7px', fontSize: '0.74rem', display: 'inline-flex', alignItems: 'center', gap: 4 },
+                          title: 'More Actions',
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            setActiveMoreMenuCustomerId(prev => prev === d.customerId ? null : d.customerId);
+                          }
+                        },
+                          h('span', null, 'More'),
+                          h('span', { style: { fontSize: '0.60rem' } }, activeMoreMenuCustomerId === d.customerId ? '▲' : '▾')
+                        ),
+                        activeMoreMenuCustomerId === d.customerId && h('div', {
+                          className: 'actions-dropdown-menu',
+                          style: {
+                            position: 'absolute',
+                            right: 0,
+                            top: 'calc(100% + 4px)',
+                            minWidth: 175,
+                            zIndex: 1100,
+                            background: 'var(--bg-card, #ffffff)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                            padding: '4px 0',
+                            textAlign: 'left'
+                          },
+                          onClick: (e) => e.stopPropagation()
+                        },
+                          h('button', {
+                            className: 'actions-dropdown-item',
+                            style: { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' },
+                            onClick: () => {
+                              setActiveMoreMenuCustomerId(null);
+                              setPromiseModalCustomer(d);
+                            }
+                          }, h('span', null, '🤝'), h('span', null, 'Promise to Pay')),
+                          h('button', {
+                            className: 'actions-dropdown-item',
+                            style: { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' },
+                            onClick: () => {
+                              setActiveMoreMenuCustomerId(null);
+                              setActivityModalCustomer(d);
+                            }
+                          }, h('span', null, '📝'), h('span', null, 'Log Note / Activity')),
+                          h('button', {
+                            className: 'actions-dropdown-item',
+                            style: { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer', color: '#16a34a' },
+                            onClick: () => {
+                              setActiveMoreMenuCustomerId(null);
+                              if (onWhatsApp) onWhatsApp({ id: d.customerId, name: d.customerName, phone: d.customerPhone });
+                            }
+                          }, h('span', null, '💬'), h('span', null, 'WhatsApp Reminder')),
+                          h('div', { style: { height: 1, background: 'var(--border)', margin: '4px 0' } }),
+                          h('button', {
+                            className: 'actions-dropdown-item',
+                            style: { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' },
+                            onClick: () => {
+                              setActiveMoreMenuCustomerId(null);
+                              if (onCustomer360) onCustomer360({ id: d.customerId, name: d.customerName });
+                            }
+                          }, h('span', null, '👁️'), h('span', null, 'Customer 360')),
+                          h('button', {
+                            className: 'actions-dropdown-item',
+                            style: { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' },
+                            onClick: () => {
+                              setActiveMoreMenuCustomerId(null);
+                              if (onStatement) {
+                                onStatement({ id: d.customerId, name: d.customerName });
+                              } else {
+                                handleDownloadCustomerStatement(d);
+                              }
+                            }
+                          }, h('span', null, '📜'), h('span', null, 'Customer Statement'))
+                        )
+                      )
                     )
                   )
                 ))

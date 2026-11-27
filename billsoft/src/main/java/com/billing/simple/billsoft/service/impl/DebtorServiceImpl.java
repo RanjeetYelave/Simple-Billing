@@ -905,10 +905,11 @@ public class DebtorServiceImpl implements DebtorService {
         }
 
         // Filter
-        if (statusFilter != null && !statusFilter.isBlank() && !"ALL".equalsIgnoreCase(statusFilter)) {
-            String target = statusFilter.toUpperCase();
+        if (statusFilter != null && !statusFilter.isBlank() && !"ALL".equalsIgnoreCase(statusFilter.trim())) {
+            String target = statusFilter.trim().toUpperCase();
             result = result.stream()
-                    .filter(f -> f.getStatus().equalsIgnoreCase(target))
+                    .filter(f -> f.getStatus().equalsIgnoreCase(target)
+                            || ("PROMISED".equalsIgnoreCase(target) && "PROMISE".equalsIgnoreCase(f.getSource())))
                     .collect(Collectors.toList());
         }
 

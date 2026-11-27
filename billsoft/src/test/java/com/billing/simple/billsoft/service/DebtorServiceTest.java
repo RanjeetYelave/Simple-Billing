@@ -297,4 +297,60 @@ public class DebtorServiceTest {
         // Valid PDF magic header %PDF
         assertEquals("%PDF", new String(pdfBytes, 0, 4));
     }
+
+    @Test
+    void testPromiseFollowUpStatusFilteringAndMultiFirmIsolation() {
+        Customer cA = Customer.builder().id(101L).firmId(firmId).name("Customer A").phone("9876543210").build();
+        Customer cB = Customer.builder().id(102L).firmId(firmId).name("Customer B").phone("9876543211").build();
+        when(customerRepo.findByFirmId(firmId)).thenReturn(List.of(cA, cB));
+
+        LocalDate today = LocalDate.now();
+        CustomerPromiseToPay pToday = CustomerPromiseToPay.builder()
+                .id(1L).firmId(firmId).customerId(101L)
+                .promisedAmount(new BigDecimal("1000.00")).remainingAmount(new BigDecimal("1000.00"))
+                .promisedDate(today).status(PromiseStatus.PROMISED).notes("Due today").build();
+
+        CustomerPromiseToPay pUpcoming = CustomerPromiseToPay.builder()
+                .id(2L).firmId(firmId).customerId(101L)
+                .promisedAmount(new BigDecimal("2500.00")).remainingAmount(new BigDecimal("2500.00"))
+                .promisedDate(today.plusDays(4)).status(PromiseStatus.PROMISED).notes("Upcoming").build();
+
+        CustomerPromiseToPay pOverdue = CustomerPromiseToPay.builder()
+                .id(3L).firmId(firmId).customerId(102L)
+                .promisedAmount(new BigDecimal("4000.00")).remainingAmount(new BigDecimal("4000.00"))
+                .promisedDate(today.minusDays(3)).status(PromiseStatus.PROMISED).notes("Overdue").build();
+
+        when(promiseRepo.findByFirmId(firmId)).thenReturn(List.of(pToday, pUpcoming, pOverdue));
+        when(reminderRepo.findByFirmId(firmId)).thenReturn(Collections.emptyList());
+
+        // 1. ALL filter returns all 3
+        List<DebtorFollowUpDto> allFollowUps = debtorService.getFollowUps(firmId, "ALL");
+        assertEquals(3, allFollowUps.size());
+
+        // 2. DUE_TODAY filter returns only 1
+        List<DebtorFollowUpDto> todayFollowUps = debtorService.getFollowUps(firmId, "DUE_TODAY");
+        assertEquals(1, todayFollowUps.size());
+        assertEquals("DUE_TODAY", todayFollowUps.get(0).getStatus());
+        assertEquals(101L, todayFollowUps.get(0).getCustomerId());
+
+        // 3. UPCOMING filter returns only 1
+        List<DebtorFollowUpDto> upcomingFollowUps = debtorService.getFollowUps(firmId, "UPCOMING");
+        assertEquals(1, upcomingFollowUps.size());
+        assertEquals("UPCOMING", upcomingFollowUps.get(0).getStatus());
+
+        // 4. OVERDUE filter returns only 1
+        List<DebtorFollowUpDto> overdueFollowUps = debtorService.getFollowUps(firmId, "OVERDUE");
+        assertEquals(1, overdueFollowUps.size());
+        assertEquals("OVERDUE", overdueFollowUps.get(0).getStatus());
+        assertEquals(102L, overdueFollowUps.get(0).getCustomerId());
+
+        // 5. Multi-firm isolation: querying another firm
+        Long firmId2 = 999L;
+        when(customerRepo.findByFirmId(firmId2)).thenReturn(Collections.emptyList());
+        when(promiseRepo.findByFirmId(firmId2)).thenReturn(Collections.emptyList());
+        when(reminderRepo.findByFirmId(firmId2)).thenReturn(Collections.emptyList());
+
+        List<DebtorFollowUpDto> firm2FollowUps = debtorService.getFollowUps(firmId2, "ALL");
+        assertTrue(firm2FollowUps.isEmpty());
+    }
 }

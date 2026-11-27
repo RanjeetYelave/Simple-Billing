@@ -40,13 +40,32 @@ const shell = isElectron ? electron.shell : { openPath: () => { }, openExternal:
 const dialog = isElectron ? electron.dialog : { showSaveDialogSync: () => null };
 const session = isElectron ? electron.session : null;
 const nativeImage = isElectron ? electron.nativeImage : { createFromPath: () => ({ isEmpty: () => true }) };
+const safeStorage = isElectron && electron.safeStorage ? electron.safeStorage : {
+  isEncryptionAvailable: () => false,
+  encryptString: (str) => Buffer.from(str, 'utf8'),
+  decryptString: (buf) => buf.toString('utf8')
+};
 
 const path = require('path');
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const child_process = require('child_process');
+
+// Ephemeral 256-bit loopback bridge authentication secret (per-launch)
+const INTERNAL_BRIDGE_SECRET = process.env.RUPEECRM_INTERNAL_BRIDGE_SECRET || crypto.randomBytes(32).toString('hex');
+
+if (process.env.RUPEECRM_DATA_DIR) {
+  const customUserData = path.join(path.resolve(process.env.RUPEECRM_DATA_DIR), 'electron_userdata');
+  try {
+    fs.mkdirSync(customUserData, { recursive: true });
+    app.setPath('userData', customUserData);
+  } catch (e) {
+    console.warn('[RupeeCRM] Could not set custom userData:', e.message);
+  }
+}
 
 // =========================================================================
 // 1. Single Instance Lock
@@ -123,6 +142,10 @@ function resolveDirectories() {
     appBaseDir = path.join(userData, 'app');
   }
 
+  if (process.env.RUPEECRM_DATA_DIR) {
+    dataDir = path.resolve(process.env.RUPEECRM_DATA_DIR);
+  }
+
   try {
     fs.mkdirSync(dataDir, { recursive: true });
     fs.mkdirSync(logsDir, { recursive: true });
@@ -178,7 +201,7 @@ function resolveJavaRuntime() {
       if (jh && fs.existsSync(path.join(jh, 'bin', 'java'))) {
         return path.join(jh, 'bin', 'java');
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   return process.platform === 'win32' ? 'javaw' : 'java';
 }
@@ -560,7 +583,7 @@ async function terminateRupeeCRMProcess(procInfo, maxWaitMs = 6000, targetPort =
         try {
           const ppidScript = `powershell -NoProfile -NonInteractive -Command "$p = Get-CimInstance Win32_Process -Filter \\"ProcessId = ${procInfo.pid}\\"; if ($p -and $p.ParentProcessId) { $parent = Get-CimInstance Win32_Process -Filter \\"ProcessId = $($p.ParentProcessId)\\"; if ($parent -and ($parent.Name -like '*java*.exe' -or $parent.CommandLine -match 'launcher')) { Stop-Process -Id $parent.ProcessId -Force -ErrorAction SilentlyContinue } }"`;
           child_process.execSync(ppidScript, { stdio: 'ignore', timeout: 3000 });
-        } catch (_) {}
+        } catch (_) { }
         child_process.execSync(`taskkill /PID ${procInfo.pid} /F /T`, { stdio: 'ignore', timeout: 3000 });
       } else {
         process.kill(procInfo.pid, 'SIGKILL');
@@ -609,6 +632,7 @@ async function waitForBackend(maxSeconds = 60, onProgress = null, enforceVersion
       backendHealthy = true;
       activeBackendIdentity = identity;
       updateTrayMenu();
+      syncSavedTelegramCredentials();
       return true;
     }
 
@@ -642,10 +666,10 @@ async function startJavaSupervisor() {
         try {
           fs.unlinkSync(staleWar);
           logMessage(`Purged obsolete AppData WAR on startup: ${staleWar}`);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 
   const portOccupied = await isPortListening(PORT, 300);
 
@@ -751,7 +775,11 @@ async function startJavaSupervisor() {
       detached: false,
       stdio: ['ignore', outStream, errStream],
       windowsHide: true,
-      cwd: path.dirname(launcherJar)
+      cwd: path.dirname(launcherJar),
+      env: {
+        ...process.env,
+        RUPEECRM_INTERNAL_BRIDGE_SECRET: INTERNAL_BRIDGE_SECRET
+      }
     });
 
     logMessage(`Java supervisor spawned (PID: ${supervisorProcess.pid})`);
@@ -1536,7 +1564,7 @@ function registerIpcHandlers() {
 
       const stats = await fs.promises.stat(tempPath);
       if (stats.size === 0) {
-        try { await fs.promises.unlink(tempPath); } catch (_) {}
+        try { await fs.promises.unlink(tempPath); } catch (_) { }
         throw new Error('Exported backup file was empty after writing to disk.');
       }
 
@@ -1549,7 +1577,7 @@ function registerIpcHandlers() {
             logMessage('Warning: exported backup file lacks standard RupeeCRM metadata/firm keys.');
           }
         } catch (jsonErr) {
-          try { await fs.promises.unlink(tempPath); } catch (_) {}
+          try { await fs.promises.unlink(tempPath); } catch (_) { }
           throw new Error('Exported file failed JSON integrity validation: ' + jsonErr.message);
         }
       }
@@ -1663,6 +1691,186 @@ function registerIpcHandlers() {
       return { success: false, error: err.message };
     }
   });
+
+  // Telegram Assistant Internal Loopback Bridge & IPC Handlers
+  ipcMain.handle('telegram:configure', async (event, payload = {}) => {
+    try {
+      const token = payload && payload.token ? payload.token.trim() : '';
+      if (!token || !token.match(/^[0-9]+:[a-zA-Z0-9_-]+$/)) {
+        throw new Error('Invalid Telegram Bot Token format. Expected format: 123456789:ABCdef...');
+      }
+
+      // Encrypt and persist token via OS safeStorage
+      const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
+      let encBuffer;
+      if (safeStorage.isEncryptionAvailable()) {
+        encBuffer = safeStorage.encryptString(token);
+      } else {
+        encBuffer = Buffer.from(token, 'utf8');
+      }
+      await fs.promises.writeFile(credFile, encBuffer.toString('base64'), 'utf8');
+
+      // Bridge decrypted token in memory to Spring Boot backend
+      const result = await callInternalTelegramBridge('configure', 'POST', { botToken: token });
+      logMessage(`[Telegram] Bot configured successfully: @${result.botUsername}`);
+      return { success: true, botUsername: result.botUsername, isEnabled: result.isEnabled };
+    } catch (err) {
+      logMessage(`[Telegram] Configuration failed: ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:get-status', async () => {
+    try {
+      const status = await callInternalTelegramBridge('status', 'GET');
+      return { success: true, ...status };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:toggle', async (event, payload = {}) => {
+    try {
+      const res = await callInternalTelegramBridge('toggle', 'POST', { enabled: Boolean(payload.enabled) });
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:generate-challenge', async (event, payload = {}) => {
+    try {
+      const res = await callInternalTelegramBridge('generate-challenge', 'POST', payload);
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:get-users', async () => {
+    try {
+      const users = await callInternalTelegramBridge('users', 'GET');
+      return { success: true, users: Array.isArray(users) ? users : [] };
+    } catch (err) {
+      return { success: false, error: err.message, users: [] };
+    }
+  });
+
+  ipcMain.handle('telegram:approve-user', async (event, payload = {}) => {
+    try {
+      const res = await callInternalTelegramBridge('approve-user', 'POST', { userId: payload.userId });
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:send-test-message', async (event, payload = {}) => {
+    try {
+      const res = await callInternalTelegramBridge('send-test-message', 'POST', payload);
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:revoke-user', async (event, payload = {}) => {
+    try {
+      const res = await callInternalTelegramBridge('revoke-user', 'POST', { userId: payload.userId });
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:resume-poller', async () => {
+    try {
+      const res = await callInternalTelegramBridge('resume-poller', 'POST');
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('telegram:disconnect', async () => {
+    try {
+      const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
+      if (fs.existsSync(credFile)) {
+        await fs.promises.unlink(credFile);
+      }
+      const res = await callInternalTelegramBridge('disconnect', 'POST');
+      logMessage('[Telegram] Bot disconnected and credentials purged.');
+      return { success: true, ...res };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+}
+
+// Helper to query Spring Boot loopback bridge with per-launch secret
+function callInternalTelegramBridge(endpoint, method = 'GET', body = null) {
+  return new Promise((resolve, reject) => {
+    const dataStr = body ? JSON.stringify(body) : null;
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port: PORT,
+      path: `/api/internal/telegram/${endpoint}`,
+      method: method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Bridge-Secret': INTERNAL_BRIDGE_SECRET,
+        ...(dataStr ? { 'Content-Length': Buffer.byteLength(dataStr) } : {})
+      },
+      timeout: 10000
+    }, (res) => {
+      let resBody = '';
+      res.on('data', chunk => { resBody += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = resBody ? JSON.parse(resBody) : {};
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(parsed);
+          } else {
+            reject(new Error(parsed.error || `HTTP ${res.statusCode}: ${resBody}`));
+          }
+        } catch (e) {
+          reject(new Error(`Invalid JSON from bridge: ${resBody}`));
+        }
+      });
+    });
+    req.on('error', err => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Internal bridge request timeout'));
+    });
+    if (dataStr) {
+      req.write(dataStr);
+    }
+    req.end();
+  });
+}
+
+async function syncSavedTelegramCredentials() {
+  try {
+    const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
+    if (!fs.existsSync(credFile)) return;
+    const base64Str = await fs.promises.readFile(credFile, 'utf8');
+    if (!base64Str || !base64Str.trim()) return;
+    const buf = Buffer.from(base64Str.trim(), 'base64');
+    let token;
+    if (safeStorage.isEncryptionAvailable()) {
+      token = safeStorage.decryptString(buf);
+    } else {
+      token = buf.toString('utf8');
+    }
+    if (token && token.trim().match(/^[0-9]+:[a-zA-Z0-9_-]+$/)) {
+      logMessage('[Telegram] Restoring saved bot credentials to backend...');
+      await callInternalTelegramBridge('configure', 'POST', { botToken: token.trim() });
+      logMessage('[Telegram] Restored and resumed bot successfully.');
+    }
+  } catch (err) {
+    logMessage(`[Telegram] Auto-restore of credentials failed: ${err.message}`);
+  }
 }
 
 // =========================================================================
@@ -1736,20 +1944,60 @@ app.whenReady().then(async () => {
   });
   session.defaultSession.clearStorageData({
     storages: ['serviceworkers', 'cachestorage']
-  }).catch(() => {});
+  }).catch(() => { });
 
   // Handle native file downloads cleanly
   session.defaultSession.on('will-download', (event, item, webContents) => {
     const defaultFilename = item.getFilename();
     const win = BrowserWindow.fromWebContents(webContents) || mainWindow;
-    const savePath = dialog.showSaveDialogSync(win, {
-      title: 'Save File',
-      defaultPath: defaultFilename,
-      filters: [
+    const ext = path.extname(defaultFilename).replace('.', '').toLowerCase();
+    let filters = [];
+    if (ext === 'pdf') {
+      filters = [
+        { name: 'PDF Documents', extensions: ['pdf'] },
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    } else if (ext === 'csv') {
+      filters = [
+        { name: 'CSV Spreadsheets', extensions: ['csv'] },
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      filters = [
+        { name: 'Excel Spreadsheets', extensions: ['xlsx', 'xls'] },
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    } else if (ext === 'json') {
+      filters = [
         { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
         { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
         { name: 'All Files', extensions: ['*'] }
-      ]
+      ];
+    } else if (ext === 'zip') {
+      filters = [
+        { name: 'ZIP Archives', extensions: ['zip'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    } else {
+      filters = [
+        { name: 'Documents', extensions: ['pdf', 'zip', 'csv', 'xlsx', 'json'] },
+        { name: 'RupeeCRM Backups', extensions: ['json', 'zip'] },
+        { name: 'All Files', extensions: ['*'] }
+      ];
+    }
+
+    const savePath = dialog.showSaveDialogSync(win, {
+      title: 'Save File',
+      defaultPath: defaultFilename,
+      filters: filters
     });
     if (savePath) {
       item.setSavePath(savePath);

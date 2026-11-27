@@ -1,6 +1,6 @@
 {
   "name": "rupeecrm-desktop",
-  "version": "1.0.406",
+  "version": "1.0.407",
   "description": "RupeeCRM Desktop Application for Windows",
   "main": "src/main.js",
   "author": "RupeeCRM Team",

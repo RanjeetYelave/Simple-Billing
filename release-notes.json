@@ -1,4 +1,12 @@
 {
+  "1.0.407": [
+    "WhatsApp Document Handoff: Standardized wa.me chat-link handoff for eligible invoices, quotations, purchase orders, customer/vendor statements, and individual payslips with automatic phone normalization and one-time alternate number support.",
+    "Telegram Business Assistant — Six Authorized Operations: Completed end-to-end integration exposing strictly 6 business functions: Create Invoice/Quotation, Download Invoice/Quotation, Statements & Business Reports (Party, Customer, Firm, Forecast, Stock), Create/Download Purchase Orders, Employee Leaves/Advances/Payroll, and Record Expenses/Savings.",
+    "Settings Telegram Compact Redesign: Resolved flexbox hierarchy and visual clipping; streamlined into 4 compact cards: Bot Connection, Link Telegram Account, Authorized Accounts with Responsive Table, and Live Diagnostics & Telemetry.",
+    "Telegram Purchase Orders & Statements: Seamless issuance of purchase orders and instant download of official vector PDFs directly inside Telegram chat.",
+    "Mobile HR & Payroll Integration: Fast remote recording of employee leaves, salary advances with automatic balance tracking, and monthly payroll execution with payslip delivery.",
+    "Natural-Language Expense & Savings Tracking: Rapid recording of business expenses and savings deposits via plain chat commands or guided prompts."
+  ],
   "1.0.406": [
     "Telegram Business Assistant: Direct mobile Telegram integration enabling tax invoice generation, quotations, stock lookups, customer directory access, and instant PDF downloads with zero cloud hosting.",
     "Polling Worker & Ingestion Hardening: Transactional lease claiming and orphan recovery prevents worker stall; Markdown entity parsing errors automatically fallback to plain text.",

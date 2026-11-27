@@ -21,13 +21,13 @@ import java.util.Optional;
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     List<Invoice> findByFirmId(Long firmId);
-    
+
     // Used by BackupService
     List<Invoice> findAllByFirmId(Long firmId);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items WHERE i.firmId = :firmId")
     List<Invoice> findAllByFirmIdWithItems(@Param("firmId") Long firmId);
-    
+
     Optional<Invoice> findByIdAndFirmId(Long id, Long firmId);
 
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.firmId = :firmId AND (i.updatedAt > :since OR i.createdAt > :since)")
@@ -52,57 +52,66 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     boolean existsByIdAndFirmId(Long id, Long firmId);
 
     void deleteByIdAndFirmId(Long id, Long firmId);
-    
+
     long countByFirmId(Long firmId);
-    
+
     long countByFirmIdAndStatus(Long firmId, InvoiceStatus status);
-    
+
     List<Invoice> findByCustomer_Id(Long customerId);
-    
+
     // Used by StatementServiceImpl
     List<Invoice> findByFirmIdAndCustomer_Id(Long firmId, Long customerId);
-    
+
     // Used by StatementServiceImpl
-    List<Invoice> findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(Long firmId, LocalDateTime from, LocalDateTime to);
-    
+    List<Invoice> findAllByFirmIdAndInvoiceDateBetweenOrderByInvoiceDateAsc(Long firmId, LocalDateTime from,
+            LocalDateTime to);
+
     // Used by StatementServiceImpl
     List<Invoice> findAllByInvoiceDateBetweenOrderByInvoiceDateAsc(LocalDateTime from, LocalDateTime to);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items WHERE i.firmId = :firmId AND LOWER(i.customer.name) LIKE LOWER(CONCAT('%',:name,'%'))")
-    List<Invoice> findByFirmIdAndCustomerNameContainingIgnoreCase(@Param("firmId") Long firmId, @Param("name") String name);
+    List<Invoice> findByFirmIdAndCustomerNameContainingIgnoreCase(@Param("firmId") Long firmId,
+            @Param("name") String name);
 
     // Paginated queries
     Page<Invoice> findByFirmId(Long firmId, Pageable pageable);
+
     Page<Invoice> findByFirmIdAndStatus(Long firmId, InvoiceStatus status, Pageable pageable);
+
     Page<Invoice> findByFirmIdAndStatusIn(Long firmId, List<InvoiceStatus> statuses, Pageable pageable);
 
     List<Invoice> findByCustomer_NameContainingIgnoreCase(String name);
-    
+
     List<Invoice> findAllByFirmIdAndStatusOrderByInvoiceDateAsc(Long firmId, InvoiceStatus status);
+
     List<Invoice> findAllByFirmIdAndStatusOrderByInvoiceDateDesc(Long firmId, InvoiceStatus status);
-    
+
     List<Invoice> findAllByFirmIdAndStatusIn(Long firmId, List<InvoiceStatus> statuses);
 
     List<Invoice> findAllByFirmIdAndStatusInOrderByInvoiceDateDesc(Long firmId, List<InvoiceStatus> statuses);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.items")
     List<Invoice> findAllWithItems();
-    
+
     List<Invoice> findAllByStatusOrderByInvoiceDateAsc(InvoiceStatus status);
+
     List<Invoice> findAllByStatusOrderByInvoiceDateDesc(InvoiceStatus status);
-    
+
     // For quotation conversion lookup
     Invoice findByConvertedInvoiceId(Long convertedInvoiceId);
 
     Optional<Invoice> findByConvertedInvoiceIdAndFirmId(Long convertedInvoiceId, Long firmId);
+
     Optional<Invoice> findByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
+
     Optional<Invoice> findByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
+
     boolean existsByInvoiceNumberAndFirmId(String invoiceNumber, Long firmId);
+
     boolean existsByEstimateNumberAndFirmId(String estimateNumber, Long firmId);
 
     @Query("SELECT i.id FROM Invoice i WHERE i.id IN :ids")
     Set<Long> findExistingIds(@Param("ids") Collection<Long> ids);
-
 
     // ── Aggregation queries for analytics ──
     @Query("SELECT COUNT(i) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
@@ -112,7 +121,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     double sumTotalAmountByFirmIdAndPaid(@Param("firmId") Long firmId, @Param("paid") boolean paid);
 
     @Query("SELECT COALESCE(SUM(i.totalAmount), 0) FROM Invoice i WHERE i.firmId = :firmId AND i.status IN :statuses")
-    double sumTotalAmountByFirmIdAndStatusIn(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
+    double sumTotalAmountByFirmIdAndStatusIn(@Param("firmId") Long firmId,
+            @Param("statuses") List<InvoiceStatus> statuses);
 
     @Query("SELECT i.invoiceNumber FROM Invoice i WHERE i.firmId = :firmId AND i.invoiceNumber IS NOT NULL")
     List<String> findInvoiceNumbersByFirmId(@Param("firmId") Long firmId);
@@ -124,7 +134,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findOverdueInvoices(@Param("today") java.time.LocalDate today);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.firmId = :firmId AND i.status IN :statuses")
-    List<Invoice> findInvoicesWithCustomerForAnalytics(@Param("firmId") Long firmId, @Param("statuses") List<InvoiceStatus> statuses);
+    List<Invoice> findInvoicesWithCustomerForAnalytics(@Param("firmId") Long firmId,
+            @Param("statuses") List<InvoiceStatus> statuses);
 
     @Query("SELECT DISTINCT i FROM Invoice i LEFT JOIN FETCH i.customer WHERE i.status IN :statuses")
     List<Invoice> findInvoicesWithCustomerForAnalyticsAll(@Param("statuses") List<InvoiceStatus> statuses);
@@ -132,4 +143,22 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     List<Invoice> findTop10ByFirmIdAndCustomer_IdOrderByInvoiceDateDesc(Long firmId, Long customerId);
 
     List<Invoice> findTop10ByFirmIdOrderByInvoiceDateDesc(Long firmId);
+
+    @Query("SELECT i FROM Invoice i WHERE i.firmId = :firmId AND i.customer.id = :customerId AND i.invoiceNumber IS NOT NULL " +
+           "AND (:from IS NULL OR i.invoiceDate >= :from) AND (:to IS NULL OR i.invoiceDate <= :to) " +
+           "ORDER BY i.invoiceDate DESC, i.id DESC")
+    Page<Invoice> findCustomerInvoices(@Param("firmId") Long firmId,
+                                       @Param("customerId") Long customerId,
+                                       @Param("from") LocalDateTime from,
+                                       @Param("to") LocalDateTime to,
+                                       Pageable pageable);
+
+    @Query("SELECT i FROM Invoice i WHERE i.firmId = :firmId AND i.customer.id = :customerId AND i.status = com.billing.simple.billsoft.entities.InvoiceStatus.ESTIMATE " +
+           "AND (:from IS NULL OR i.invoiceDate >= :from) AND (:to IS NULL OR i.invoiceDate <= :to) " +
+           "ORDER BY i.invoiceDate DESC, i.id DESC")
+    Page<Invoice> findCustomerEstimates(@Param("firmId") Long firmId,
+                                        @Param("customerId") Long customerId,
+                                        @Param("from") LocalDateTime from,
+                                        @Param("to") LocalDateTime to,
+                                        Pageable pageable);
 }

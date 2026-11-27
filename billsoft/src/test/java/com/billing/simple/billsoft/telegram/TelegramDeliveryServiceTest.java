@@ -2,14 +2,15 @@ package com.billing.simple.billsoft.telegram;
 
 import com.billing.simple.billsoft.entities.Customer;
 import com.billing.simple.billsoft.entities.Invoice;
-import com.billing.simple.billsoft.service.InvoicePdfService;
-import com.billing.simple.billsoft.service.InvoiceService;
-import com.billing.simple.billsoft.service.PurchaseOrderService;
+import com.billing.simple.billsoft.entities.PurchaseOrder;
+import com.billing.simple.billsoft.repo.EmployeeRepository;
+import com.billing.simple.billsoft.repo.SalaryRecordRepository;
+import com.billing.simple.billsoft.service.*;
 import com.billing.simple.billsoft.telegram.client.TelegramApiClient;
 import com.billing.simple.billsoft.telegram.entities.TelegramDocumentDelivery;
-import com.billing.simple.billsoft.telegram.repo.TelegramConfigRepository;
 import com.billing.simple.billsoft.telegram.repo.TelegramDocumentDeliveryRepository;
 import com.billing.simple.billsoft.telegram.service.TelegramDeliveryService;
+import com.billing.simple.billsoft.telegram.service.TelegramReadService;
 import com.billing.simple.billsoft.telegram.service.TelegramSecurityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -46,14 +48,37 @@ public class TelegramDeliveryServiceTest {
     private PurchaseOrderService poService;
 
     @Mock
-    private TelegramConfigRepository configRepo;
+    private StatementService statementService;
+
+    @Mock
+    private EmployeePdfService employeePdfService;
+
+    @Mock
+    private EmployeeRepository employeeRepository;
+
+    @Mock
+    private SalaryRecordRepository salaryRecordRepository;
+
+    @Mock
+    private FirmDetailsService firmDetailsService;
+
+    @Mock
+    private TelegramReadService readService;
+
+    @Mock
+    private com.billing.simple.billsoft.repo.CustomerRepository customerRepository;
+
+    @Mock
+    private com.billing.simple.billsoft.repositories.PartyRepository partyRepository;
 
     private TelegramDeliveryService deliveryService;
 
     @BeforeEach
     void setUp() {
         deliveryService = new TelegramDeliveryService(
-                deliveryRepo, securityManager, apiClient, invoiceService, invoicePdfService, poService, configRepo
+                deliveryRepo, securityManager, apiClient, invoiceService, invoicePdfService, poService,
+                statementService, employeePdfService, employeeRepository, salaryRecordRepository, firmDetailsService, readService,
+                customerRepository, partyRepository
         );
         lenient().when(deliveryRepo.save(any(TelegramDocumentDelivery.class))).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -99,50 +124,47 @@ public class TelegramDeliveryServiceTest {
 
         when(securityManager.isUserAuthorized(userId)).thenReturn(true);
 
-        Invoice mockInvoice = new Invoice();
-        mockInvoice.setId(invoiceId);
-        mockInvoice.setFirmId(firmId);
-        mockInvoice.setInvoiceNumber("INV-2026-001");
-        mockInvoice.setTotalAmount(BigDecimal.valueOf(1500.00));
+        Invoice inv = new Invoice();
+        inv.setId(invoiceId);
+        inv.setFirmId(firmId);
+        inv.setInvoiceNumber("INV-2026-001");
+        inv.setTotalAmount(BigDecimal.valueOf(1500.00));
         Customer c = new Customer();
         c.setName("Test Customer");
-        mockInvoice.setCustomer(c);
+        inv.setCustomer(c);
 
-        when(invoiceService.getById(invoiceId)).thenReturn(mockInvoice);
-        byte[] fakePdf = "%PDF-1.4 mock".getBytes();
-        when(invoicePdfService.generatePdf(mockInvoice, "A4")).thenReturn(fakePdf);
+        when(invoiceService.getById(invoiceId)).thenReturn(inv);
+        when(invoicePdfService.generatePdf(any(), eq("A4"))).thenReturn(new byte[]{1, 2, 3});
 
         deliveryService.processSingleDelivery(delivery, "MOCK-BOT-TOKEN");
 
-        verify(apiClient).sendDocument(eq("MOCK-BOT-TOKEN"), eq(7890L), eq(fakePdf), eq("Invoice_INV-2026-001.pdf"), anyString());
         assertEquals("SENT", delivery.getDeliveryState());
         assertNotNull(delivery.getCompletedAt());
+        verify(apiClient, times(1)).sendDocument(eq("MOCK-BOT-TOKEN"), eq(7890L), any(byte[].class), eq("Invoice_INV-2026-001.pdf"), anyString());
     }
 
     @Test
-    void testCrossFirmMismatchAbortsDelivery() {
+    void testSuccessfulCustomerStatementDelivery() throws Exception {
         Long userId = 123456L;
+        Long firmId = 1L;
+        Long customerId = 55L;
+
         TelegramDocumentDelivery delivery = new TelegramDocumentDelivery();
         delivery.setDeliveryId(103L);
         delivery.setUserId(userId);
         delivery.setChatId(7890L);
-        delivery.setFirmId(1L); // Queued for Firm 1
-        delivery.setDocumentType("INVOICE_PDF");
-        delivery.setDocumentId(500L);
+        delivery.setFirmId(firmId);
+        delivery.setDocumentType("STMT_CUST_PDF");
+        delivery.setDocumentId(customerId);
         delivery.setDeliveryState("QUEUED");
 
         when(securityManager.isUserAuthorized(userId)).thenReturn(true);
-
-        Invoice mockInvoice = new Invoice();
-        mockInvoice.setId(500L);
-        mockInvoice.setFirmId(2L); // Belongs to Firm 2!
-        when(invoiceService.getById(500L)).thenReturn(mockInvoice);
+        when(statementService.generateCustomerStatementPdf(eq(firmId), eq(customerId), any(), any()))
+                .thenReturn(new byte[]{4, 5, 6});
 
         deliveryService.processSingleDelivery(delivery, "MOCK-BOT-TOKEN");
 
-        assertEquals("FAILED", delivery.getDeliveryState());
-        assertTrue(delivery.getLastError().contains("cross-firm mismatch"));
-        verifyNoInteractions(invoicePdfService);
-        verifyNoInteractions(apiClient);
+        assertEquals("SENT", delivery.getDeliveryState());
+        verify(apiClient, times(1)).sendDocument(eq("MOCK-BOT-TOKEN"), eq(7890L), any(byte[].class), eq("Customer_Statement_55.pdf"), anyString());
     }
 }

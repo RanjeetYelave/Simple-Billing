@@ -74,4 +74,14 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
             "WHERE po.firmId = :firmId AND poi.productId IS NOT NULL AND po.status <> com.billing.simple.billsoft.entities.PurchaseOrderStatus.CANCELLED " +
             "ORDER BY poi.productId, po.poDate DESC, po.id DESC")
     List<Object[]> findProductVendorHistoryRaw(@org.springframework.data.repository.query.Param("firmId") Long firmId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT po FROM PurchaseOrder po WHERE po.firmId = :firmId AND po.party.id = :partyId " +
+           "AND (:from IS NULL OR po.poDate >= :from) AND (:to IS NULL OR po.poDate <= :to) " +
+           "ORDER BY po.poDate DESC, po.id DESC")
+    org.springframework.data.domain.Page<PurchaseOrder> findPartyPurchaseOrders(
+            @org.springframework.data.repository.query.Param("firmId") Long firmId,
+            @org.springframework.data.repository.query.Param("partyId") Long partyId,
+            @org.springframework.data.repository.query.Param("from") LocalDate from,
+            @org.springframework.data.repository.query.Param("to") LocalDate to,
+            org.springframework.data.domain.Pageable pageable);
 }

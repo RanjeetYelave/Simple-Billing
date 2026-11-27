@@ -36,6 +36,15 @@ public class TelegramDocumentDelivery {
     @Column(name = "document_number", length = 100)
     private String documentNumber;
 
+    @Column(name = "operation_type", length = 30)
+    private String operationType; // CREATE, DOWNLOAD, INDIVIDUAL, BULK
+
+    @Column(name = "recipient_name", length = 150)
+    private String recipientName;
+
+    @Column(name = "recipient_phone", length = 50)
+    private String recipientPhone;
+
     @Column(name = "delivery_state", length = 20, nullable = false)
     private String deliveryState = "QUEUED"; // QUEUED, SENDING, SENT, CANCELLED, FAILED
 
@@ -79,6 +88,15 @@ public class TelegramDocumentDelivery {
 
     public String getDocumentNumber() { return documentNumber; }
     public void setDocumentNumber(String documentNumber) { this.documentNumber = documentNumber; }
+
+    public String getOperationType() { return operationType; }
+    public void setOperationType(String operationType) { this.operationType = operationType; }
+
+    public String getRecipientName() { return recipientName; }
+    public void setRecipientName(String recipientName) { this.recipientName = recipientName; }
+
+    public String getRecipientPhone() { return recipientPhone; }
+    public void setRecipientPhone(String recipientPhone) { this.recipientPhone = recipientPhone; }
 
     public String getDeliveryState() { return deliveryState; }
     public void setDeliveryState(String deliveryState) { this.deliveryState = deliveryState; }

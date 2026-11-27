@@ -14,6 +14,8 @@ public interface TelegramDocumentDeliveryRepository extends JpaRepository<Telegr
 
     List<TelegramDocumentDelivery> findTop20ByDeliveryStateOrderByCreatedAtAsc(String deliveryState);
 
+    List<TelegramDocumentDelivery> findByChatIdOrderByCreatedAtDesc(Long chatId);
+
     @Modifying(clearAutomatically = true)
     @Query("UPDATE TelegramDocumentDelivery d SET d.deliveryState = 'CANCELLED', d.lastError = 'Account revoked' WHERE d.userId = :userId AND d.deliveryState IN ('QUEUED', 'SENDING')")
     int cancelPendingDeliveriesForUser(@Param("userId") Long userId);

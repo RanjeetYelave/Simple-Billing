@@ -31,5 +31,11 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
     void deleteByIdAndFirmId(Long id, Long firmId);
 
     long countByFirmId(Long firmId);
-}
 
+    @org.springframework.data.jpa.repository.Query("SELECT e FROM Employee e WHERE e.firmId = :firmId AND (" +
+            "LOWER(e.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "e.phone LIKE CONCAT('%', :query, '%')" +
+            ") ORDER BY e.name ASC")
+    List<Employee> searchByFirmIdAndQuery(@org.springframework.data.repository.query.Param("firmId") Long firmId,
+                                          @org.springframework.data.repository.query.Param("query") String query);
+}

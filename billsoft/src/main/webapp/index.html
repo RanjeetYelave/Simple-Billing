@@ -65,7 +65,7 @@
   <script src="js/components/CompactEditableGrid.js?v=20261124_v1"></script>
   <script src="js/components/ProductIntelligence.js?v=20261029_matrix_operator_v4"></script>
   <script src="js/components/DebtorsCollectionsWorkspace.js?v=20261126_v1"></script>
-  <script src="js/components/SettingsTelegram.js?v=20261127_v1"></script>
+  <script src="js/components/SettingsTelegram.js?v=20261127_v2"></script>
   <script src="js/featureLock.js"></script>
   <script src="js/modalLayerManager.js?v=20261112_v1"></script>
 
@@ -45737,7 +45737,10 @@ function PartyDetailModal({
         activeTab === 'firm' && React.createElement(FirmProfile, { key: API.firmId, onFirmChanged: onFirmChanged }),
         activeTab === 'backup' && React.createElement(BackupRestore, { key: API.firmId }),
         activeTab === 'updates' && React.createElement(SoftwareUpdate, { key: API.firmId, onStartUpdate: onStartUpdate, onInstallStaged: onInstallStaged }),
-        activeTab === 'telegram' && (window.SettingsTelegram ? React.createElement(window.SettingsTelegram, null) : React.createElement('div', null, 'Telegram Assistant loading...')),
+        activeTab === 'telegram' && (window.SettingsTelegram ? React.createElement(window.SettingsTelegram, null) : React.createElement('div', { style: { padding: 32, textAlign: 'center', color: 'var(--text-muted)' } },
+          React.createElement('div', { style: { fontSize: '1.5rem', marginBottom: 8 } }, '⏳'),
+          React.createElement('div', { style: { fontWeight: 600 } }, 'Telegram Assistant loading...')
+        )),
         activeTab === 'credits' && React.createElement(CreditsHelpdesk, null)
       );
     }

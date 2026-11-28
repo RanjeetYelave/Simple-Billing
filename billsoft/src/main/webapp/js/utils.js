@@ -233,7 +233,7 @@ const BillsoftUtils = {
       if (typeof rawDate === 'string') {
         dateStr = rawDate.split('T')[0];
       } else if (rawDate instanceof Date) {
-        dateStr = rawDate.toISOString().split('T')[0];
+        dateStr = this.formatLocalDate ? this.formatLocalDate(rawDate) : rawDate.toISOString().split('T')[0];
       }
     }
 
@@ -791,6 +791,10 @@ const BillsoftUtils = {
 
   todayStr() {
     return this.formatLocalDate(new Date());
+  },
+
+  currentMonthStr() {
+    return this.todayStr().slice(0, 7);
   },
 
   futureDateStr(days) {

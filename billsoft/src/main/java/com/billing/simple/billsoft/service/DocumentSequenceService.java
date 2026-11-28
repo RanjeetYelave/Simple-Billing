@@ -34,13 +34,4 @@ public interface DocumentSequenceService {
     default void syncSequenceIfApplicable(DocumentType type, Long firmId, String number) {
         syncSequenceIfApplicable(type, firmId, number, LocalDate.now());
     }
-
-    /**
-     * Safely releases/rolls back an allocated candidate number if a transaction fails before persisting.
-     */
-    void releaseCandidate(DocumentType type, Long firmId, String candidate, LocalDate date);
-
-    default void releaseCandidate(DocumentType type, Long firmId, String candidate) {
-        releaseCandidate(type, firmId, candidate, LocalDate.now());
-    }
 }

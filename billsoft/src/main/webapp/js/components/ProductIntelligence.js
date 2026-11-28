@@ -1521,7 +1521,7 @@
         const clientRequestId = 'req_smart_queue_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         const todayStr = (typeof BillsoftUtils !== 'undefined' && BillsoftUtils.todayStr)
           ? BillsoftUtils.todayStr()
-          : new Date().toISOString().split('T')[0];
+          : BillsoftUtils.todayStr();
 
         const payload = {
           clientRequestId: clientRequestId,
@@ -6178,7 +6178,7 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `products_export_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.download = `products_export_${BillsoftUtils.todayStr ? BillsoftUtils.todayStr() : new Date().toLocaleDateString('en-CA')}.csv`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);

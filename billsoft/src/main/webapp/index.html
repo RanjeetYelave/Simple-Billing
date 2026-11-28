@@ -2650,7 +2650,7 @@
                 type: 'date',
                 className: 'form-input',
                 style: { width: '100%', padding: '8px 12px' },
-                value: data.expenseDate || new Date().toISOString().slice(0, 10),
+                value: data.expenseDate || BillsoftUtils.todayStr(),
                 onChange: e => setData(prev => ({ ...prev, expenseDate: e.target.value }))
               })
             )
@@ -3703,7 +3703,7 @@
             await API.invoices.recordPayment(quickPayInvoice.id, {
               amount: parseFloat(quickPayAmount),
               paymentMode: quickPayMode,
-              paymentDate: new Date().toISOString().slice(0, 10),
+              paymentDate: BillsoftUtils.todayStr(),
               notes: quickPayNotes || 'Settled via Quick Omnibar'
             });
             if (window.showToast) window.showToast(`✓ Payment of ₹${quickPayAmount} recorded for ${quickPayInvoice.invoiceNumber || 'invoice'}!`, 'success');
@@ -3749,7 +3749,7 @@
               await API.expenses.create({
                 title: data.title || 'General Expense',
                 amount: parseFloat(data.amount) || 0,
-                expenseDate: data.expenseDate || new Date().toISOString().slice(0, 10),
+                expenseDate: data.expenseDate || BillsoftUtils.todayStr(),
                 category: data.category || 'General',
                 paymentMode: data.paymentMode || 'Cash'
               });
@@ -11293,7 +11293,7 @@
           if (diffMin < 60) return `${diffMin}m ago`;
           if (diffHr < 24) return `${diffHr}h ago`;
           if (diffDay < 7) return `${diffDay}d ago`;
-          return d.toISOString().split('T')[0];
+          return BillsoftUtils.formatLocalDate ? BillsoftUtils.formatLocalDate(d) : d.toISOString().split('T')[0];
         } catch {
           return dtStr.split('T')[0] || dtStr;
         }
@@ -22857,7 +22857,7 @@ if (typeof window !== 'undefined') {
           const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
           const link = document.createElement('a');
           link.href = URL.createObjectURL(blob);
-          link.download = `Forecast_Dashboard_${horizonDays}d_${BillsoftUtils.todayStr ? BillsoftUtils.todayStr() : new Date().toISOString().slice(0, 10)}.csv`;
+          link.download = `Forecast_Dashboard_${horizonDays}d_${BillsoftUtils.todayStr()}.csv`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -24406,7 +24406,7 @@ if (typeof window !== 'undefined') {
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `Stock_Movement_Ledger_${new Date().toISOString().slice(0, 10)}.csv`;
+          link.download = `Stock_Movement_Ledger_${BillsoftUtils.todayStr()}.csv`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -29200,7 +29200,7 @@ if (typeof window !== 'undefined') {
         });
         const csvContent = [headers.join(','), ...rows].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        BillsoftUtils.downloadBlob(blob, `RupeeCRM_Customers_${new Date().toISOString().substring(0, 10)}.csv`);
+        BillsoftUtils.downloadBlob(blob, `RupeeCRM_Customers_${BillsoftUtils.todayStr()}.csv`);
         showToast('Exported customer directory to CSV', 'success');
       };
 
@@ -31252,7 +31252,7 @@ function PartyDetailModal({
       const [loadingPos, setLoadingPos] = useState(false);
       const [paymentForm, setPaymentForm] = useState({
         amount: '',
-        paymentDate: new Date().toISOString().split('T')[0],
+        paymentDate: BillsoftUtils.todayStr(),
         paymentMode: 'BANK_TRANSFER',
         referenceNumber: '',
         purchaseOrderId: '',
@@ -31471,7 +31471,7 @@ function PartyDetailModal({
         setLoadingPos(true);
         setPaymentForm({
           amount: '',
-          paymentDate: new Date().toISOString().split('T')[0],
+          paymentDate: BillsoftUtils.todayStr(),
           paymentMode: 'BANK_TRANSFER',
           referenceNumber: '',
           purchaseOrderId: '',
@@ -35840,7 +35840,7 @@ function PartyDetailModal({
 
         // Letter Details
         letterNumber: '',
-        letterDate: new Date().toISOString().split('T')[0],
+        letterDate: BillsoftUtils.todayStr(),
         subject: '',
         category: 'GENERAL',
         content: letterTemplates.GENERAL.content,
@@ -35934,7 +35934,7 @@ function PartyDetailModal({
           recipientEmail: initialRecEmail,
 
           letterNumber: nextNo,
-          letterDate: new Date().toISOString().split('T')[0],
+          letterDate: BillsoftUtils.todayStr(),
           subject: 'Business Correspondence & Update',
           category: 'GENERAL',
           content: letterTemplates.GENERAL.content,
@@ -35970,7 +35970,7 @@ function PartyDetailModal({
           recipientEmail: l.recipientEmail || '',
 
           letterNumber: l.letterNumber || '',
-          letterDate: l.letterDate || new Date().toISOString().split('T')[0],
+          letterDate: l.letterDate || BillsoftUtils.todayStr(),
           subject: l.subject || '',
           category: l.category || 'GENERAL',
           content: l.content || '',
@@ -48870,7 +48870,7 @@ function PartyDetailModal({
       const [rejoinData, setRejoinData] = useState({ dateOfJoining: BillsoftUtils.todayStr(), monthlyBaseSalary: '', role: '' });
 
       // Payroll State
-      const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+      const [payrollMonth, setPayrollMonth] = useState(BillsoftUtils.currentMonthStr()); // YYYY-MM
       const [payrollInputs, setPayrollInputs] = useState({}); // { empId: { daysAbsent: 0, bonus: 0, advanceDeduct: 0, autoAdvance: false, autoLeaves: true } }
       const [salaryConfirmData, setSalaryConfirmData] = useState(null);
 
@@ -49094,7 +49094,7 @@ function PartyDetailModal({
           const savePromises = [];
           const currentDate = new Date(startDate);
           while (currentDate <= endDate) {
-            const dateStr = currentDate.toISOString().slice(0, 10);
+            const dateStr = BillsoftUtils.formatLocalDate(currentDate);
             savePromises.push(
               API.employees.attendance.set(
                 leaveFormData.empId,

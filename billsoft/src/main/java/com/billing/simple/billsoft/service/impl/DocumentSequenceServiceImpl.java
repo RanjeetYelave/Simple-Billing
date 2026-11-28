@@ -311,32 +311,4 @@ public class DocumentSequenceServiceImpl implements DocumentSequenceService {
             }
         }
     }
-
-    @Override
-    public void releaseCandidate(DocumentType type, Long firmId, String candidate, LocalDate date) {
-        if (candidate == null || candidate.trim().isEmpty())
-            return;
-        Long safeFirmId = resolveSafeFirmId(firmId);
-        if (date == null)
-            date = LocalDate.now();
-
-        if (existsInDatabase(type, candidate.trim(), safeFirmId)) {
-            return;
-        }
-
-        String configKey = buildConfigKey(type, safeFirmId, date);
-        synchronized (configKey.intern()) {
-            AppConfig cfg = appConfigRepo.findById(configKey).orElse(null);
-            if (cfg == null)
-                return;
-            long currentSeq = parseLongSafe(cfg.getConfigValue());
-            String expectedCandidate = formatCandidate(type, currentSeq, date);
-            if (candidate.trim().equalsIgnoreCase(expectedCandidate) && currentSeq > 0) {
-                long newSeq = currentSeq - 1;
-                cfg.setConfigValue(String.valueOf(newSeq));
-                appConfigRepo.saveAndFlush(cfg);
-                log.info("Released unpersisted candidate {} for {} (key: {}, rolled back to {})", candidate, type, configKey, newSeq);
-            }
-        }
-    }
 }

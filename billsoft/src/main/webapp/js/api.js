@@ -1347,7 +1347,7 @@ const API = {
       }
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition') || '';
-      let filename = `billsoft-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      let filename = `billsoft-backup-${BillsoftUtils.todayStr ? BillsoftUtils.todayStr() : new Date().toLocaleDateString('en-CA')}.json`;
       const match = disposition.match(/filename="?([^";]+)"?/);
       if (match && match[1]) filename = match[1].trim();
 
@@ -1389,7 +1389,7 @@ const API = {
       }
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition') || '';
-      let filename = `billsoft-full-system-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      let filename = `billsoft-full-system-backup-${BillsoftUtils.todayStr ? BillsoftUtils.todayStr() : new Date().toLocaleDateString('en-CA')}.json`;
       const match = disposition.match(/filename="?([^";]+)"?/);
       if (match && match[1]) filename = match[1].trim();
 

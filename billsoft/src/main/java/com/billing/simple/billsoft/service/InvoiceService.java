@@ -1064,16 +1064,7 @@ public class InvoiceService {
 
             return saved;
         } catch (Exception e) {
-            if (allocatedInvoiceSeq && sequenceService != null && invoice.getInvoiceNumber() != null) {
-                try {
-                    sequenceService.releaseCandidate(DocumentType.INVOICE, effectiveFirmId, invoice.getInvoiceNumber());
-                } catch (Exception ignored) {}
-            }
-            if (allocatedEstimateSeq && sequenceService != null && invoice.getEstimateNumber() != null) {
-                try {
-                    sequenceService.releaseCandidate(DocumentType.ESTIMATE, effectiveFirmId, invoice.getEstimateNumber());
-                } catch (Exception ignored) {}
-            }
+            // Sequence numbers are strictly monotonic and never rolled back (AUDIT-008)
             throw e;
         }
     }

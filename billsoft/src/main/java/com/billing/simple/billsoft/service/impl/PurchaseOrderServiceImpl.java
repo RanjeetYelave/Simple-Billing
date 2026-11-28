@@ -238,6 +238,20 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             }
         }
 
+        // Map existing received quantities per line item / product before replacing items
+        Map<Long, BigDecimal> existingReceivedByProductId = new HashMap<>();
+        Map<Long, PurchaseOrderItem> existingItemsById = new HashMap<>();
+        if (existing.getItems() != null) {
+            for (PurchaseOrderItem item : existing.getItems()) {
+                if (item.getId() != null) {
+                    existingItemsById.put(item.getId(), item);
+                }
+                if (item.getProductId() != null && item.getReceivedQuantity() != null) {
+                    existingReceivedByProductId.merge(item.getProductId(), item.getReceivedQuantity(), BigDecimal::add);
+                }
+            }
+        }
+
         // Update line items
         if (existing.getItems() == null) {
             existing.setItems(new ArrayList<>());
@@ -253,6 +267,19 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                                 "Referenced product does not belong to the current firm: " + item.getProductId());
                     }
                 }
+                // Preserve received quantity if this line item was already received
+                if (item.getId() != null && existingItemsById.containsKey(item.getId())) {
+                    PurchaseOrderItem oldItem = existingItemsById.get(item.getId());
+                    if (oldItem.getReceivedQuantity() != null) {
+                        item.setReceivedQuantity(oldItem.getReceivedQuantity());
+                    }
+                }
+                // Prevent reducing ordered quantity below already received quantity
+                BigDecimal orderedQty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                BigDecimal receivedQty = item.getReceivedQuantity() != null ? item.getReceivedQuantity() : BigDecimal.ZERO;
+                if (orderedQty.compareTo(receivedQty) < 0) {
+                    throw new IllegalArgumentException("Ordered quantity (" + orderedQty + ") cannot be less than received quantity (" + receivedQty + ") for item: " + item.getProductName());
+                }
                 item.setPurchaseOrder(existing);
                 existing.getItems().add(item);
             }
@@ -267,52 +294,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         PurchaseOrder savedPo = poRepository.save(existing);
         syncPartyPayment(savedPo);
 
-        // If PO remains in RECEIVED status, adjust stock deltas for modified line items (AUDIT-010)
-        if (oldStatus == PurchaseOrderStatus.RECEIVED && savedPo.getStatus() == PurchaseOrderStatus.RECEIVED) {
-            Map<Long, BigDecimal> newQuantities = new HashMap<>();
-            if (savedPo.getItems() != null) {
-                for (PurchaseOrderItem item : savedPo.getItems()) {
-                    Long pId = resolveOrCreateProduct(item, savedPo, savedPo.getFirmId(), true);
-                    if (pId != null) {
-                        BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
-                        newQuantities.put(pId, newQuantities.getOrDefault(pId, BigDecimal.ZERO).add(qty));
-                        item.setReceivedQuantity(qty);
-                        if (item.getId() != null) {
-                            poItemRepository.save(item);
-                        }
-                    }
-                }
-            }
-
-            Set<Long> allProdIds = new HashSet<>(oldReceivedQuantities.keySet());
-            allProdIds.addAll(newQuantities.keySet());
-            for (Long pId : allProdIds) {
-                BigDecimal oldQty = oldReceivedQuantities.getOrDefault(pId, BigDecimal.ZERO);
-                BigDecimal newQty = newQuantities.getOrDefault(pId, BigDecimal.ZERO);
-                BigDecimal delta = newQty.subtract(oldQty);
-                if (delta.compareTo(BigDecimal.ZERO) > 0) {
-                    productService.recordStockMovement(
-                            pId,
-                            savedPo.getFirmId(),
-                            "PURCHASE_RECEIPT",
-                            delta,
-                            "PURCHASE_ORDER",
-                            savedPo.getPoNumber(),
-                            "PO " + savedPo.getPoNumber() + " line item quantity increased upon edit (+ " + delta + ")");
-                } else if (delta.compareTo(BigDecimal.ZERO) < 0) {
-                    productService.recordStockMovement(
-                            pId,
-                            savedPo.getFirmId(),
-                            "PURCHASE_CANCELLED",
-                            delta,
-                            "PURCHASE_ORDER",
-                            savedPo.getPoNumber(),
-                            "PO " + savedPo.getPoNumber() + " line item quantity decreased upon edit (" + delta + ")");
-                }
-            }
-        } else {
-            handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
-        }
+        // Adjust stock only on macro status transition (e.g. from non-RECEIVED to RECEIVED, or RECEIVED to CANCELLED)
+        handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
 
         publishPoUpdatedEvent(savedPo, oldStatus, savedPo.getStatus());
         return savedPo;

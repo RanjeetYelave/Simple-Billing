@@ -319,7 +319,8 @@ public class BackupService {
         List<AppConfig> filteredConfigs = appConfigRepo.findAll().stream()
                 .filter(c -> c.getConfigKey() != null
                         && !isSensitiveConfigKey(c.getConfigKey())
-                        && !isGameConfigKey(c.getConfigKey()))
+                        && !isGameConfigKey(c.getConfigKey())
+                        && !isGlobalTelegramConfigKey(c.getConfigKey()))
                 .collect(Collectors.toList());
         backup.setAppConfigs(filteredConfigs);
         backup.setSalesReturns(salesReturnRepo.findAllByFirmIdWithItems(firmId));
@@ -420,7 +421,8 @@ public class BackupService {
         List<AppConfig> filteredConfigs = appConfigRepo.findAll().stream()
                 .filter(c -> c.getConfigKey() != null
                         && !isSensitiveConfigKey(c.getConfigKey())
-                        && !isGameConfigKey(c.getConfigKey()))
+                        && !isGameConfigKey(c.getConfigKey())
+                        && !isGlobalTelegramConfigKey(c.getConfigKey()))
                 .collect(Collectors.toList());
         backup.setAppConfigs(filteredConfigs);
         backup.setSalesReturns(salesReturnRepo.findAllWithItems());
@@ -3409,7 +3411,8 @@ public class BackupService {
                     } else {
                         // Normal configuration key: in clone/clean mode or if not present in DB, save
                         if ("TELEGRAM_BOT_TOKEN".equalsIgnoreCase(targetKey)) {
-                            // If backup contains a valid bot token, restore/update it without overwriting with empty
+                            // If backup contains a valid bot token, restore/update it without overwriting
+                            // with empty
                             if (ac.getConfigValue() != null && !ac.getConfigValue().isBlank()) {
                                 AppConfig tokenAc = appConfigRepo.findById(targetKey)
                                         .orElse(new AppConfig(targetKey, ac.getConfigValue().trim()));
@@ -3771,7 +3774,8 @@ public class BackupService {
             if (backup.getCustomerPromises() != null && promiseRepo != null) {
                 for (CustomerPromiseToPay pr : backup.getCustomerPromises()) {
                     Long oldFid = pr.getFirmId() != null ? pr.getFirmId() : -1L;
-                    if (!oldToNewFirmIdMap.containsKey(oldFid)) continue;
+                    if (!oldToNewFirmIdMap.containsKey(oldFid))
+                        continue;
                     Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
 
                     Long mappedCustId = pr.getCustomerId();
@@ -3799,7 +3803,8 @@ public class BackupService {
                     CustomerPromiseToPay savedPr = promiseRepo.save(newPr);
                     if (pr.getId() != null) {
                         oldToNewPromiseMap.put(pr.getId(), savedPr.getId());
-                        recordEntityMapping(backupSourceId, pr.getId(), "CUSTOMER_PROMISE", mappedFirmId, savedPr.getId());
+                        recordEntityMapping(backupSourceId, pr.getId(), "CUSTOMER_PROMISE", mappedFirmId,
+                                savedPr.getId());
                     }
                 }
             }
@@ -3808,11 +3813,15 @@ public class BackupService {
             if (backup.getPromisePaymentAllocations() != null && promiseAllocationRepo != null) {
                 for (PromisePaymentAllocation ppa : backup.getPromisePaymentAllocations()) {
                     Long oldFid = ppa.getFirmId() != null ? ppa.getFirmId() : -1L;
-                    if (!oldToNewFirmIdMap.containsKey(oldFid)) continue;
+                    if (!oldToNewFirmIdMap.containsKey(oldFid))
+                        continue;
                     Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
 
-                    Long mappedPromiseId = ppa.getPromiseId() != null ? oldToNewPromiseMap.get(ppa.getPromiseId()) : null;
-                    Long mappedPaymentId = ppa.getPaymentId() != null ? oldToNewPaymentIdMap.getOrDefault(ppa.getPaymentId(), ppa.getPaymentId()) : null;
+                    Long mappedPromiseId = ppa.getPromiseId() != null ? oldToNewPromiseMap.get(ppa.getPromiseId())
+                            : null;
+                    Long mappedPaymentId = ppa.getPaymentId() != null
+                            ? oldToNewPaymentIdMap.getOrDefault(ppa.getPaymentId(), ppa.getPaymentId())
+                            : null;
 
                     if (mappedPromiseId != null) {
                         PromisePaymentAllocation newPpa = PromisePaymentAllocation.builder()
@@ -3831,7 +3840,8 @@ public class BackupService {
             if (backup.getCustomerPromiseHistories() != null && promiseHistoryRepo != null) {
                 for (CustomerPromiseHistory h : backup.getCustomerPromiseHistories()) {
                     Long oldFid = h.getFirmId() != null ? h.getFirmId() : -1L;
-                    if (!oldToNewFirmIdMap.containsKey(oldFid)) continue;
+                    if (!oldToNewFirmIdMap.containsKey(oldFid))
+                        continue;
                     Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
 
                     Long mappedPromiseId = h.getPromiseId() != null ? oldToNewPromiseMap.get(h.getPromiseId()) : null;
@@ -3847,7 +3857,9 @@ public class BackupService {
                                 .previousStatus(h.getPreviousStatus())
                                 .newStatus(h.getNewStatus())
                                 .allocatedAmount(h.getAllocatedAmount())
-                                .paymentId(h.getPaymentId() != null ? oldToNewPaymentIdMap.getOrDefault(h.getPaymentId(), h.getPaymentId()) : null)
+                                .paymentId(h.getPaymentId() != null
+                                        ? oldToNewPaymentIdMap.getOrDefault(h.getPaymentId(), h.getPaymentId())
+                                        : null)
                                 .notes(h.getNotes())
                                 .performedBy(h.getPerformedBy())
                                 .createdAt(h.getCreatedAt() != null ? h.getCreatedAt() : LocalDateTime.now())
@@ -3859,16 +3871,21 @@ public class BackupService {
 
             // 23. Telegram Authorized Users (AUDIT-005)
             if (backup.getTelegramAuthorizedUsers() != null && telegramUserRepo != null) {
-                for (com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser tau : backup.getTelegramAuthorizedUsers()) {
-                    if (tau == null || tau.getUserId() == null) continue;
-                    com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser existing =
-                            telegramUserRepo.findById(tau.getUserId()).orElse(null);
+                for (com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser tau : backup
+                        .getTelegramAuthorizedUsers()) {
+                    if (tau == null || tau.getUserId() == null)
+                        continue;
+                    com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser existing = telegramUserRepo
+                            .findById(tau.getUserId()).orElse(null);
                     if (existing == null) {
                         telegramUserRepo.save(tau);
                     } else {
                         existing.setDisplayName(tau.getDisplayName());
                         existing.setUsername(tau.getUsername());
-                        existing.setStatus(tau.getStatus());
+                        // Security: If account was explicitly revoked on this system, restoring older backups must NOT reactivate it (AUDIT-005)
+                        if (!"REVOKED".equalsIgnoreCase(existing.getStatus())) {
+                            existing.setStatus(tau.getStatus());
+                        }
                         existing.setAuthorizedBy(tau.getAuthorizedBy());
                         existing.setAuthorizedAt(tau.getAuthorizedAt());
                         existing.setLastActiveAt(tau.getLastActiveAt());
@@ -3881,7 +3898,8 @@ public class BackupService {
             if (backup.getPurchaseOrderReceipts() != null && poReceiptRepo != null) {
                 for (PurchaseOrderReceipt r : backup.getPurchaseOrderReceipts()) {
                     Long oldFid = r.getFirmId() != null ? r.getFirmId() : -1L;
-                    if (!oldToNewFirmIdMap.containsKey(oldFid)) continue;
+                    if (!oldToNewFirmIdMap.containsKey(oldFid))
+                        continue;
                     Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedPoId = r.getPurchaseOrderId();
                     if (r.getPurchaseOrderId() != null && oldToNewPoMap.containsKey(r.getPurchaseOrderId())) {
@@ -3924,7 +3942,8 @@ public class BackupService {
             if (backup.getPurchaseOrderBatchRecords() != null && poBatchRepo != null) {
                 for (PurchaseOrderBatchRecord b : backup.getPurchaseOrderBatchRecords()) {
                     Long oldFid = b.getFirmId() != null ? b.getFirmId() : -1L;
-                    if (!oldToNewFirmIdMap.containsKey(oldFid)) continue;
+                    if (!oldToNewFirmIdMap.containsKey(oldFid))
+                        continue;
                     Long mappedFirmId = oldToNewFirmIdMap.get(oldFid);
                     Long mappedPoId = b.getPurchaseOrderId();
                     if (b.getPurchaseOrderId() != null && oldToNewPoMap.containsKey(b.getPurchaseOrderId())) {
@@ -4114,7 +4133,8 @@ public class BackupService {
             return false;
         String upper = key.trim().toUpperCase();
         if ("TELEGRAM_BOT_TOKEN".equals(upper)) {
-            // Telegram bot token is stored in local DB configuration and included in database backups
+            // Telegram bot token is stored in local DB configuration and included in
+            // database backups
             return false;
         }
         if (upper.startsWith("EMPLOYEE_MODULE_PIN_")) {
@@ -4151,6 +4171,13 @@ public class BackupService {
         String upper = key.trim().toUpperCase();
         return upper.equals("SNAKE_GAME_STATE") || upper.contains("SNAKE") || upper.contains("CIRCUIT_CONNECT")
                 || upper.contains("TAKE_A_BREAK");
+    }
+
+    public static boolean isGlobalTelegramConfigKey(String key) {
+        if (key == null)
+            return false;
+        String upper = key.trim().toUpperCase();
+        return upper.equals("TELEGRAM_BOT_TOKEN") || upper.startsWith("TELEGRAM_");
     }
 
     private boolean isSequenceCounterKey(String key) {

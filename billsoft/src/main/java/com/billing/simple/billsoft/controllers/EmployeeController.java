@@ -99,49 +99,59 @@ public class EmployeeController {
     private final Map<String, Integer> pinFailedAttempts = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Long> pinLockoutUntil = new java.util.concurrent.ConcurrentHashMap<>();
 
-    private boolean isPinLocked(Long firmId) {
-        String key = "firm_" + firmId;
-        Long lockedUntil = pinLockoutUntil.get(key);
+    private String getPinClientKey(Long firmId, jakarta.servlet.http.HttpServletRequest request) {
+        String clientIp = "local";
+        if (request != null) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            clientIp = (forwarded != null && !forwarded.isBlank()) ? forwarded.split(",")[0].trim() : request.getRemoteAddr();
+            if (clientIp == null || clientIp.isBlank()) {
+                clientIp = "client";
+            }
+        }
+        return "pin_" + firmId + "_" + clientIp;
+    }
+
+    private boolean isPinLocked(String clientKey) {
+        Long lockedUntil = pinLockoutUntil.get(clientKey);
         if (lockedUntil != null) {
             if (System.currentTimeMillis() < lockedUntil) {
                 return true;
             } else {
-                pinLockoutUntil.remove(key);
-                pinFailedAttempts.remove(key);
+                pinLockoutUntil.remove(clientKey);
+                pinFailedAttempts.remove(clientKey);
             }
         }
         return false;
     }
 
-    private void recordPinFailure(Long firmId) {
-        String key = "firm_" + firmId;
-        int attempts = pinFailedAttempts.getOrDefault(key, 0) + 1;
-        pinFailedAttempts.put(key, attempts);
+    private void recordPinFailure(String clientKey) {
+        int attempts = pinFailedAttempts.getOrDefault(clientKey, 0) + 1;
+        pinFailedAttempts.put(clientKey, attempts);
         if (attempts >= 5) {
-            pinLockoutUntil.put(key, System.currentTimeMillis() + 5 * 60 * 1000L); // 5 minutes lockout
+            pinLockoutUntil.put(clientKey, System.currentTimeMillis() + 5 * 60 * 1000L); // 5 minutes client-scoped lockout
         }
     }
 
-    private void resetPinFailure(Long firmId) {
-        String key = "firm_" + firmId;
-        pinFailedAttempts.remove(key);
-        pinLockoutUntil.remove(key);
+    private void resetPinFailure(String clientKey) {
+        pinFailedAttempts.remove(clientKey);
+        pinLockoutUntil.remove(clientKey);
     }
 
     @PostMapping("/verify-pin")
-    public ResponseEntity<?> verifyPin(@RequestBody Map<String, String> body) {
+    public ResponseEntity<?> verifyPin(@RequestBody Map<String, String> body, jakarta.servlet.http.HttpServletRequest request) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         Long firmId = (authoritativeFirmId != null && authoritativeFirmId > 0) ? authoritativeFirmId : 1L;
-        if (isPinLocked(firmId)) {
+        String clientKey = getPinClientKey(firmId, request);
+        if (isPinLocked(clientKey)) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of("error", "Too many failed attempts. PIN verification locked for 5 minutes.", "valid", false));
         }
         String pin = body != null ? body.get("pin") : null;
         boolean valid = getPin(firmId).equals(pin);
         if (valid) {
-            resetPinFailure(firmId);
+            resetPinFailure(clientKey);
         } else {
-            recordPinFailure(firmId);
+            recordPinFailure(clientKey);
         }
         Map<String, Boolean> res = new HashMap<>();
         res.put("valid", valid);
@@ -149,23 +159,24 @@ public class EmployeeController {
     }
 
     @PostMapping("/change-pin")
-    public ResponseEntity<Map<String, String>> changePin(@RequestBody Map<String, String> body) {
+    public ResponseEntity<Map<String, String>> changePin(@RequestBody Map<String, String> body, jakarta.servlet.http.HttpServletRequest request) {
         Long authoritativeFirmId = com.billing.simple.billsoft.security.TenantContext.getCurrentFirmId();
         Long firmId = (authoritativeFirmId != null && authoritativeFirmId > 0) ? authoritativeFirmId : 1L;
-        if (isPinLocked(firmId)) {
+        String clientKey = getPinClientKey(firmId, request);
+        if (isPinLocked(clientKey)) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of("error", "Too many failed attempts. PIN modification locked for 5 minutes."));
         }
         String oldPin = body != null ? body.get("oldPin") : null;
         String newPin = body != null ? body.get("newPin") : null;
         if (!getPin(firmId).equals(oldPin)) {
-            recordPinFailure(firmId);
+            recordPinFailure(clientKey);
             return ResponseEntity.badRequest().body(Map.of("error", "Incorrect old PIN"));
         }
         if (newPin == null || !newPin.trim().matches("^\\d{4}$")) {
             return ResponseEntity.badRequest().body(Map.of("error", "New PIN must be exactly 4 numeric digits"));
         }
-        resetPinFailure(firmId);
+        resetPinFailure(clientKey);
         String configKey = "EMPLOYEE_MODULE_PIN_" + firmId;
         AppConfig config = appConfigRepo.findById(configKey).orElseGet(() -> {
             AppConfig newConfig = new AppConfig();

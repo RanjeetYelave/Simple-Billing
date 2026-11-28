@@ -1,4 +1,11 @@
 {
+  "1.0.410": [
+    "Purchase Order Line-Item Stock Integrity: Fully eliminated phantom stock movements on PO edits; line item quantity modifications preserve actual received quantities and disallow reducing ordered quantity below received quantity.",
+    "Strictly Monotonic Document Sequences: Completely removed document sequence rollback and counter decrementing; numbers remain strictly gapless or monotonic upon creation failure with zero number reuse.",
+    "Telegram Backup Security & Single-Firm Isolation: Revoked Telegram accounts can never be reactivated by restoring older backups; global Telegram bot credentials are strictly filtered out of single-firm tenant exports.",
+    "Application-Wide Calendar Date Correction: Completed transition to canonical local calendar date formatters (YYYY-MM-DD), eliminating UTC/IST midnight boundary date slippage across expenses, payments, letters, and payroll.",
+    "Hardened Employee PIN Lockout: Scoped brute-force PIN lockout per client session/IP to protect administrative security while preventing firm-wide denial-of-service across legitimate employees."
+  ],
   "1.0.409": [
     "Quick Invoice Continuous Product Search: Instant auto-focus with cursor positioning upon opening Quick Add Items modal, enabling typing immediately without an extra click.",
     "Dual-State Search Architecture: Disengaged visible input text from active product query filtering, automatically clearing search input on product selection while preserving displayed product results.",

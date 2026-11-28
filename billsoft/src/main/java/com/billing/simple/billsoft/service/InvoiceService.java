@@ -92,6 +92,15 @@ public class InvoiceService {
     private com.billing.simple.billsoft.repo.InvoiceMigrationRecordRepository migrationRecordRepo;
 
     @Autowired(required = false)
+    private com.billing.simple.billsoft.repo.CustomerPromiseToPayRepository customerPromiseRepo;
+
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.repo.PromisePaymentAllocationRepository promiseAllocationRepo;
+
+    @Autowired(required = false)
+    private com.billing.simple.billsoft.repo.CustomerPromiseHistoryRepository customerPromiseHistoryRepo;
+
+    @Autowired(required = false)
     @Lazy
     private com.billing.simple.billsoft.forecast.service.ForecastIngestionService forecastIngestionService;
 
@@ -901,7 +910,8 @@ public class InvoiceService {
         invoice.setFirmId(effectiveFirmId);
         invoice.setPaid(status == InvoiceStatus.PAID);
 
-        // Populate customer snapshot fields for finalized documents (DRAFT & ESTIMATE remain mutable without snapshots)
+        // Populate customer snapshot fields for finalized documents (DRAFT & ESTIMATE
+        // remain mutable without snapshots)
         if (customer != null) {
             invoice.setCustomer(customer);
             if (status != InvoiceStatus.DRAFT && status != InvoiceStatus.ESTIMATE) {
@@ -913,11 +923,23 @@ public class InvoiceService {
         } else if (request.getCustomerName() != null && !request.getCustomerName().isBlank()) {
             if (status != InvoiceStatus.DRAFT && status != InvoiceStatus.ESTIMATE) {
                 invoice.setCustomerNameSnapshot(request.getCustomerName().trim());
-                invoice.setCustomerPhoneSnapshot(request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank() ? request.getCustomerPhone().trim() : null);
-                invoice.setCustomerAddressSnapshot(request.getCustomerAddress() != null && !request.getCustomerAddress().isBlank() ? request.getCustomerAddress().trim() : null);
-                invoice.setCustomerGstinSnapshot(request.getCustomerGstin() != null && !request.getCustomerGstin().isBlank() ? request.getCustomerGstin().trim().toUpperCase() : null);
+                invoice.setCustomerPhoneSnapshot(
+                        request.getCustomerPhone() != null && !request.getCustomerPhone().isBlank()
+                                ? request.getCustomerPhone().trim()
+                                : null);
+                invoice.setCustomerAddressSnapshot(
+                        request.getCustomerAddress() != null && !request.getCustomerAddress().isBlank()
+                                ? request.getCustomerAddress().trim()
+                                : null);
+                invoice.setCustomerGstinSnapshot(
+                        request.getCustomerGstin() != null && !request.getCustomerGstin().isBlank()
+                                ? request.getCustomerGstin().trim().toUpperCase()
+                                : null);
             }
         }
+
+        boolean allocatedInvoiceSeq = false;
+        boolean allocatedEstimateSeq = false;
 
         // identifiers (Option B behaviour)
         if (status == InvoiceStatus.ESTIMATE) {
@@ -928,14 +950,17 @@ public class InvoiceService {
                     if (Boolean.FALSE.equals(request.getManualEstimateNumber())) {
                         // Provisional number collided: safely allocate next sequence
                         estNo = generateEstimateNumber(effectiveFirmId);
+                        allocatedEstimateSeq = true;
                         request.setEstimateNumber(estNo);
                     } else {
-                        throw new IllegalArgumentException("Estimate number '" + estNo + "' already exists for this firm.");
+                        throw new IllegalArgumentException(
+                                "Estimate number '" + estNo + "' already exists for this firm.");
                     }
                 }
                 invoice.setEstimateNumber(estNo);
             } else {
                 invoice.setEstimateNumber(generateEstimateNumber(effectiveFirmId));
+                allocatedEstimateSeq = true;
                 request.setEstimateNumber(invoice.getEstimateNumber()); // keep dto consistent
             }
             invoice.setInvoiceNumber(null);
@@ -944,6 +969,7 @@ public class InvoiceService {
             String invNo = request.getInvoiceNumber();
             if (invNo == null || invNo.isBlank()) {
                 invNo = generateInvoiceNumber(effectiveFirmId);
+                allocatedInvoiceSeq = true;
                 request.setInvoiceNumber(invNo);
             } else {
                 invNo = invNo.trim();
@@ -951,15 +977,18 @@ public class InvoiceService {
                     if (Boolean.FALSE.equals(request.getManualInvoiceNumber())) {
                         // Provisional number collided: safely allocate next sequence
                         invNo = generateInvoiceNumber(effectiveFirmId);
+                        allocatedInvoiceSeq = true;
                         request.setInvoiceNumber(invNo);
                     } else {
-                        throw new IllegalArgumentException("Invoice number '" + invNo + "' already exists for this firm.");
+                        throw new IllegalArgumentException(
+                                "Invoice number '" + invNo + "' already exists for this firm.");
                     }
                 }
             }
             invoice.setInvoiceNumber(invNo);
 
-            // if caller accidentally sent estimateNumber also, keep it but it's not required
+            // if caller accidentally sent estimateNumber also, keep it but it's not
+            // required
             if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
                 invoice.setEstimateNumber(request.getEstimateNumber().trim());
             } else {
@@ -967,72 +996,86 @@ public class InvoiceService {
             }
         }
 
-        // Resolve or create canonical products for unlinked invoice items
-        resolveOrCreateProductsForItems(request.getItems(), effectiveFirmId);
+        try {
+            // Resolve or create canonical products for unlinked invoice items
+            resolveOrCreateProductsForItems(request.getItems(), effectiveFirmId);
 
-        // fetch product data once (lock if stock-affecting)
-        boolean lockStock = isStockAffecting(status);
-        List<Product> products = fetchProductsReferencedBy(request, null, lockStock, effectiveFirmId);
-        for (Product p : products) {
-            if (p.getFirmId() != null && !p.getFirmId().equals(effectiveFirmId)) {
-                throw new com.billing.simple.billsoft.security.TenantSecurityException(
-                        "Product " + p.getName() + " (ID " + p.getId() + ") belongs to a different firm.");
-            }
-        }
-
-        // delegate calculations to engine (isUpdateMode=false)
-        Invoice calculated = engine.calculate(invoice, customer, products, request, false,
-                resolveFirm(effectiveFirmId));
-        if (status == InvoiceStatus.PAID) {
-            calculated.setPaid(true);
-            calculated.setStatus(InvoiceStatus.PAID);
-        } else if (status == InvoiceStatus.UNPAID) {
-            calculated.setPaid(false);
-            calculated.setStatus(InvoiceStatus.UNPAID);
-        }
-        Invoice saved = invoiceRepo.save(calculated);
-        syncForecastForInvoice(saved);
-
-        if (saved.getInvoiceNumber() != null) {
-            syncSequenceIfApplicable(saved.getFirmId(), saved.getInvoiceNumber(), "INV-", "LAST_INVOICE_SEQ_");
-        }
-        if (saved.getEstimateNumber() != null) {
-            syncSequenceIfApplicable(saved.getFirmId(), saved.getEstimateNumber(), "EST-", "LAST_ESTIMATE_SEQ_");
-        }
-
-        // If this invoice is converted from a quotation/estimate, link the quotation
-        if (request.getConvertedInvoiceId() != null) {
-            Invoice linkedEstimate = (effectiveFirmId != null
-                    ? invoiceRepo.findByIdAndFirmIdForUpdate(request.getConvertedInvoiceId(), effectiveFirmId)
-                    : invoiceRepo.findByIdForUpdate(request.getConvertedInvoiceId()))
-                    .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
-                            "Converted quotation not found for firm: " + request.getConvertedInvoiceId()));
-            if (linkedEstimate.getConvertedInvoiceId() != null
-                    && !linkedEstimate.getConvertedInvoiceId().equals(saved.getId())) {
-                boolean activeInvoiceExists = (effectiveFirmId != null)
-                        ? invoiceRepo.existsByIdAndFirmId(linkedEstimate.getConvertedInvoiceId(), effectiveFirmId)
-                        : invoiceRepo.existsById(linkedEstimate.getConvertedInvoiceId());
-                if (activeInvoiceExists) {
-                    throw new RuntimeException("This quotation has already been converted to invoice #"
-                            + linkedEstimate.getConvertedInvoiceId());
+            // fetch product data once (lock if stock-affecting)
+            boolean lockStock = isStockAffecting(status);
+            List<Product> products = fetchProductsReferencedBy(request, null, lockStock, effectiveFirmId);
+            for (Product p : products) {
+                if (p.getFirmId() != null && !p.getFirmId().equals(effectiveFirmId)) {
+                    throw new com.billing.simple.billsoft.security.TenantSecurityException(
+                            "Product " + p.getName() + " (ID " + p.getId() + ") belongs to a different firm.");
                 }
             }
-            linkedEstimate.setConvertedInvoiceId(saved.getId());
-            linkedEstimate.setConversionStatus("CONVERTED");
-            invoiceRepo.save(linkedEstimate);
-        }
 
-        // Deduct inventory stock for finalized sales invoices (skip for DRAFT,
-        // ESTIMATE, CANCELLED)
-        if (isStockAffecting(saved.getStatus())) {
-            deductInventoryStockForInvoice(saved, Boolean.TRUE.equals(request.getAllowOutOfStock()));
-        }
+            // delegate calculations to engine (isUpdateMode=false)
+            Invoice calculated = engine.calculate(invoice, customer, products, request, false,
+                    resolveFirm(effectiveFirmId));
+            if (status == InvoiceStatus.PAID) {
+                calculated.setPaid(true);
+                calculated.setStatus(InvoiceStatus.PAID);
+            } else if (status == InvoiceStatus.UNPAID) {
+                calculated.setPaid(false);
+                calculated.setStatus(InvoiceStatus.UNPAID);
+            }
+            Invoice saved = invoiceRepo.save(calculated);
+            syncForecastForInvoice(saved);
 
-        if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
-            idempotencyCache.put(effectiveFirmId + ":" + request.getIdempotencyKey().trim(), saved);
-        }
+            if (saved.getInvoiceNumber() != null) {
+                syncSequenceIfApplicable(saved.getFirmId(), saved.getInvoiceNumber(), "INV-", "LAST_INVOICE_SEQ_");
+            }
+            if (saved.getEstimateNumber() != null) {
+                syncSequenceIfApplicable(saved.getFirmId(), saved.getEstimateNumber(), "EST-", "LAST_ESTIMATE_SEQ_");
+            }
 
-        return saved;
+            // If this invoice is converted from a quotation/estimate, link the quotation
+            if (request.getConvertedInvoiceId() != null) {
+                Invoice linkedEstimate = (effectiveFirmId != null
+                        ? invoiceRepo.findByIdAndFirmIdForUpdate(request.getConvertedInvoiceId(), effectiveFirmId)
+                        : invoiceRepo.findByIdForUpdate(request.getConvertedInvoiceId()))
+                        .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
+                                "Converted quotation not found for firm: " + request.getConvertedInvoiceId()));
+                if (linkedEstimate.getConvertedInvoiceId() != null
+                        && !linkedEstimate.getConvertedInvoiceId().equals(saved.getId())) {
+                    boolean activeInvoiceExists = (effectiveFirmId != null)
+                            ? invoiceRepo.existsByIdAndFirmId(linkedEstimate.getConvertedInvoiceId(), effectiveFirmId)
+                            : invoiceRepo.existsById(linkedEstimate.getConvertedInvoiceId());
+                    if (activeInvoiceExists) {
+                        throw new RuntimeException("This quotation has already been converted to invoice #"
+                                + linkedEstimate.getConvertedInvoiceId());
+                    }
+                }
+                linkedEstimate.setConvertedInvoiceId(saved.getId());
+                linkedEstimate.setConversionStatus("CONVERTED");
+                invoiceRepo.save(linkedEstimate);
+            }
+
+            // Deduct inventory stock for finalized sales invoices (skip for DRAFT,
+            // ESTIMATE, CANCELLED)
+            if (isStockAffecting(saved.getStatus())) {
+                deductInventoryStockForInvoice(saved, Boolean.TRUE.equals(request.getAllowOutOfStock()));
+            }
+
+            if (request.getIdempotencyKey() != null && !request.getIdempotencyKey().isBlank()) {
+                idempotencyCache.put(effectiveFirmId + ":" + request.getIdempotencyKey().trim(), saved);
+            }
+
+            return saved;
+        } catch (Exception e) {
+            if (allocatedInvoiceSeq && sequenceService != null && invoice.getInvoiceNumber() != null) {
+                try {
+                    sequenceService.releaseCandidate(DocumentType.INVOICE, effectiveFirmId, invoice.getInvoiceNumber());
+                } catch (Exception ignored) {}
+            }
+            if (allocatedEstimateSeq && sequenceService != null && invoice.getEstimateNumber() != null) {
+                try {
+                    sequenceService.releaseCandidate(DocumentType.ESTIMATE, effectiveFirmId, invoice.getEstimateNumber());
+                } catch (Exception ignored) {}
+            }
+            throw e;
+        }
     }
 
     // convenience: create estimate
@@ -1303,7 +1346,7 @@ public class InvoiceService {
                 ? invoiceRepo.findByIdAndFirmId(id, currentFirmId)
                 : invoiceRepo.findById(id))
                 .orElseThrow(() -> new com.billing.simple.billsoft.security.TenantSecurityException(
-                    "Invoice not found in firm: " + id));
+                        "Invoice not found in firm: " + id));
 
         if (req != null && req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
             String ikey = existing.getFirmId() + ":" + req.getIdempotencyKey().trim();
@@ -2387,6 +2430,66 @@ public class InvoiceService {
 
         Long invoiceId = payment.getInvoiceId();
         Long effectiveFirmId = payment.getFirmId();
+
+        // If payment had promise allocations, reverse them cleanly
+        if (promiseAllocationRepo != null && customerPromiseRepo != null) {
+            List<com.billing.simple.billsoft.entities.PromisePaymentAllocation> allocations = (effectiveFirmId != null)
+                    ? promiseAllocationRepo.findByFirmIdAndPaymentId(effectiveFirmId, paymentId)
+                    : promiseAllocationRepo.findByPaymentId(paymentId);
+            for (com.billing.simple.billsoft.entities.PromisePaymentAllocation ppa : allocations) {
+                Long fid = ppa.getFirmId();
+                Optional<com.billing.simple.billsoft.entities.CustomerPromiseToPay> prOpt = (fid != null)
+                        ? customerPromiseRepo.findByIdAndFirmId(ppa.getPromiseId(), fid)
+                        : customerPromiseRepo.findById(ppa.getPromiseId());
+                if (prOpt.isPresent()) {
+                    com.billing.simple.billsoft.entities.CustomerPromiseToPay pr = prOpt.get();
+                    BigDecimal prevFulfilled = pr.getFulfilledAmount() != null ? pr.getFulfilledAmount() : BigDecimal.ZERO;
+                    BigDecimal newFulfilled = prevFulfilled.subtract(ppa.getAllocatedAmount());
+                    if (newFulfilled.compareTo(BigDecimal.ZERO) < 0) newFulfilled = BigDecimal.ZERO;
+                    pr.setFulfilledAmount(newFulfilled);
+                    BigDecimal newRemaining = pr.getPromisedAmount().subtract(newFulfilled);
+                    pr.setRemainingAmount(newRemaining);
+
+                    com.billing.simple.billsoft.entities.PromiseStatus prevStatus = pr.getStatus();
+                    com.billing.simple.billsoft.entities.PromiseStatus newStatus;
+                    if (newFulfilled.compareTo(BigDecimal.ZERO) == 0) {
+                        newStatus = com.billing.simple.billsoft.entities.PromiseStatus.PROMISED;
+                    } else if (newRemaining.compareTo(BigDecimal.ZERO) > 0) {
+                        newStatus = com.billing.simple.billsoft.entities.PromiseStatus.PARTIALLY_FULFILLED;
+                    } else {
+                        newStatus = com.billing.simple.billsoft.entities.PromiseStatus.FULFILLED;
+                    }
+                    pr.setStatus(newStatus);
+                    pr.setUpdatedAt(LocalDateTime.now());
+                    customerPromiseRepo.save(pr);
+
+                    if (customerPromiseHistoryRepo != null) {
+                        customerPromiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                                .firmId(fid != null ? fid : 0L)
+                                .promiseId(pr.getId())
+                                .actionType("ALLOCATION_REVERSED")
+                                .previousAmount(pr.getPromisedAmount())
+                                .newAmount(pr.getPromisedAmount())
+                                .previousDate(pr.getPromisedDate())
+                                .newDate(pr.getPromisedDate())
+                                .previousStatus(prevStatus != null ? prevStatus.name() : null)
+                                .newStatus(newStatus.name())
+                                .allocatedAmount(ppa.getAllocatedAmount().negate())
+                                .paymentId(paymentId)
+                                .notes("Payment #" + paymentId + " reversed/deleted; allocation ₹" + ppa.getAllocatedAmount() + " revoked")
+                                .performedBy("User")
+                                .createdAt(LocalDateTime.now())
+                                .build());
+                    }
+                }
+            }
+            if (effectiveFirmId != null) {
+                promiseAllocationRepo.deleteByFirmIdAndPaymentId(effectiveFirmId, paymentId);
+            } else {
+                promiseAllocationRepo.deleteByPaymentId(paymentId);
+            }
+        }
+
         invoicePaymentRepo.delete(payment);
 
         if (invoiceId != null) {

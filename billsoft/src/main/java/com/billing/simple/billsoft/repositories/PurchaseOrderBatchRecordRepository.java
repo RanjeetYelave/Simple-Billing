@@ -12,6 +12,8 @@ public interface PurchaseOrderBatchRecordRepository extends JpaRepository<Purcha
 
     Optional<PurchaseOrderBatchRecord> findByFirmIdAndSupplierOpId(Long firmId, String supplierOpId);
 
+    List<PurchaseOrderBatchRecord> findByFirmId(Long firmId);
+
     List<PurchaseOrderBatchRecord> findAllByFirmIdAndClientRequestId(Long firmId, String clientRequestId);
 
     boolean existsByFirmIdAndClientRequestIdAndStatus(Long firmId, String clientRequestId, String status);

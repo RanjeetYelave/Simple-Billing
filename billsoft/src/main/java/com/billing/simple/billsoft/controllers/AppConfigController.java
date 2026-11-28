@@ -34,7 +34,8 @@ public class AppConfigController {
             "backup_cloud_credentials",
             "backup_cloud_secret",
             "backup_cloud_access_key",
-            "license_key"
+            "license_key",
+            "telegram_bot_token"
     );
 
     private static final Pattern FIRM_KEY_PATTERN = Pattern.compile(".*_(\\d+)$");

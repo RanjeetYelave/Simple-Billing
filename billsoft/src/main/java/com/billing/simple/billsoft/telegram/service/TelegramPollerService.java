@@ -1,5 +1,7 @@
 package com.billing.simple.billsoft.telegram.service;
 
+import com.billing.simple.billsoft.entities.AppConfig;
+import com.billing.simple.billsoft.repo.AppConfigRepository;
 import com.billing.simple.billsoft.telegram.client.TelegramApiClient;
 import com.billing.simple.billsoft.telegram.entities.TelegramConfig;
 import com.billing.simple.billsoft.telegram.entities.TelegramUpdateInbox;
@@ -9,6 +11,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
@@ -18,6 +23,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -26,6 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class TelegramPollerService {
 
     private static final Logger log = LoggerFactory.getLogger(TelegramPollerService.class);
+    public static final String TELEGRAM_BOT_TOKEN_KEY = "TELEGRAM_BOT_TOKEN";
 
     private final TelegramConfigRepository configRepo;
     private final TelegramUpdateInboxRepository inboxRepo;
@@ -34,8 +41,9 @@ public class TelegramPollerService {
     private final TelegramDeliveryService deliveryService;
     private final PlatformTransactionManager transactionManager;
     private final ObjectMapper objectMapper;
+    private final AppConfigRepository appConfigRepo;
 
-    // Transient in-memory bot token received via loopback bridge
+    // Transient in-memory bot token backed by local H2 database (AppConfig)
     private volatile String inMemoryBotToken = null;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
@@ -49,6 +57,18 @@ public class TelegramPollerService {
                                  TelegramDeliveryService deliveryService,
                                  PlatformTransactionManager transactionManager,
                                  ObjectMapper objectMapper) {
+        this(configRepo, inboxRepo, apiClient, dispatcher, deliveryService, transactionManager, objectMapper, null);
+    }
+
+    @Autowired
+    public TelegramPollerService(TelegramConfigRepository configRepo,
+                                 TelegramUpdateInboxRepository inboxRepo,
+                                 TelegramApiClient apiClient,
+                                 TelegramUpdateDispatcher dispatcher,
+                                 TelegramDeliveryService deliveryService,
+                                 PlatformTransactionManager transactionManager,
+                                 ObjectMapper objectMapper,
+                                 @Autowired(required = false) AppConfigRepository appConfigRepo) {
         this.configRepo = configRepo;
         this.inboxRepo = inboxRepo;
         this.apiClient = apiClient;
@@ -56,10 +76,53 @@ public class TelegramPollerService {
         this.deliveryService = deliveryService;
         this.transactionManager = transactionManager;
         this.objectMapper = objectMapper;
+        this.appConfigRepo = appConfigRepo;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public synchronized void initFromDatabase() {
+        if (appConfigRepo == null) return;
+        try {
+            Optional<AppConfig> tokenOpt = appConfigRepo.findById(TELEGRAM_BOT_TOKEN_KEY);
+            if (tokenOpt.isPresent() && tokenOpt.get().getConfigValue() != null) {
+                String token = tokenOpt.get().getConfigValue().trim();
+                if (token.matches("^[0-9]+:[a-zA-Z0-9_-]+$")) {
+                    this.inMemoryBotToken = token;
+                    log.info("Telegram bot token successfully loaded from local database configuration (masked: {}).", maskToken(token));
+                    TelegramConfig config = getOrCreateConfig();
+                    if (Boolean.TRUE.equals(config.getIsEnabled()) && !Boolean.TRUE.equals(config.getCircuitBreakerTripped())) {
+                        startPoller();
+                    }
+                } else {
+                    log.warn("Telegram bot token in local database configuration is malformed. Poller will not auto-start.");
+                }
+            } else {
+                log.info("No Telegram bot token found in local database configuration.");
+            }
+        } catch (Exception e) {
+            log.error("Error loading Telegram bot token from database on startup: {}", sanitizeErrorMessage(e.getMessage()));
+        }
     }
 
     public synchronized void setBotTokenAndStart(String token) {
-        this.inMemoryBotToken = token;
+        setBotTokenAndPersist(token);
+    }
+
+    public synchronized void setBotTokenAndPersist(String token) {
+        if (token == null || token.isBlank()) {
+            throw new IllegalArgumentException("Telegram bot token cannot be empty or blank.");
+        }
+        String trimmed = token.trim();
+        this.inMemoryBotToken = trimmed;
+
+        if (appConfigRepo != null) {
+            AppConfig cfg = appConfigRepo.findById(TELEGRAM_BOT_TOKEN_KEY)
+                    .orElse(new AppConfig(TELEGRAM_BOT_TOKEN_KEY, trimmed));
+            cfg.setConfigValue(trimmed);
+            appConfigRepo.save(cfg);
+            log.info("Telegram bot token persisted to local H2 database (key: {}, masked: {}).", TELEGRAM_BOT_TOKEN_KEY, maskToken(trimmed));
+        }
+
         TelegramConfig config = getOrCreateConfig();
         config.setIsEnabled(true);
         config.setCircuitBreakerTripped(false);
@@ -67,6 +130,70 @@ public class TelegramPollerService {
         configRepo.save(config);
 
         startPoller();
+    }
+
+    public synchronized void disconnectBot() {
+        stopPoller();
+        this.inMemoryBotToken = null;
+
+        if (appConfigRepo != null && appConfigRepo.existsById(TELEGRAM_BOT_TOKEN_KEY)) {
+            appConfigRepo.deleteById(TELEGRAM_BOT_TOKEN_KEY);
+            log.info("Telegram bot token deleted from local database configuration.");
+        }
+
+        TelegramConfig config = getOrCreateConfig();
+        config.setIsEnabled(false);
+        config.setBotUsername(null);
+        config.setCircuitBreakerTripped(false);
+        config.setConflictCount(0);
+        config.setLastError(null);
+        configRepo.save(config);
+    }
+
+    public boolean hasStoredToken() {
+        if (inMemoryBotToken != null && !inMemoryBotToken.isBlank()) {
+            return true;
+        }
+        if (appConfigRepo != null) {
+            return appConfigRepo.findById(TELEGRAM_BOT_TOKEN_KEY)
+                    .map(AppConfig::getConfigValue)
+                    .filter(v -> v != null && !v.isBlank())
+                    .isPresent();
+        }
+        return false;
+    }
+
+    public String getMaskedToken() {
+        String token = inMemoryBotToken;
+        if ((token == null || token.isBlank()) && appConfigRepo != null) {
+            token = appConfigRepo.findById(TELEGRAM_BOT_TOKEN_KEY)
+                    .map(AppConfig::getConfigValue)
+                    .orElse(null);
+        }
+        return maskToken(token);
+    }
+
+    public static String maskToken(String token) {
+        if (token == null || token.isBlank()) return "";
+        int colon = token.indexOf(':');
+        if (colon > 0 && colon < token.length() - 1) {
+            String botId = token.substring(0, colon);
+            String secret = token.substring(colon + 1);
+            if (secret.length() > 6) {
+                return botId + ":" + secret.substring(0, 3) + "••••••••" + secret.substring(secret.length() - 3);
+            } else {
+                return botId + ":••••••••";
+            }
+        }
+        if (token.length() > 8) {
+            return token.substring(0, 4) + "••••••••" + token.substring(token.length() - 4);
+        }
+        return "••••••••";
+    }
+
+    public static String sanitizeErrorMessage(String msg) {
+        if (msg == null) return null;
+        return msg.replaceAll("(?i)(bot)?[0-9]{8,12}:[a-zA-Z0-9_-]{20,}", "[PROTECTED_BOT_TOKEN]");
     }
 
     public synchronized void stopPoller() {
@@ -215,9 +342,9 @@ public class TelegramPollerService {
                 if (!running.get() || Thread.currentThread().isInterrupted()) {
                     break;
                 }
-                log.warn("Telegram poll encountered network or IO exception: {}. Backing off {}s.", e.getMessage(), backoffSeconds);
+                log.warn("Telegram poll encountered network or IO exception: {}. Backing off {}s.", sanitizeErrorMessage(e.getMessage()), backoffSeconds);
                 TelegramConfig cfg = getOrCreateConfig();
-                cfg.setLastError(e.getMessage());
+                cfg.setLastError(sanitizeErrorMessage(e.getMessage()));
                 configRepo.save(cfg);
 
                 try {

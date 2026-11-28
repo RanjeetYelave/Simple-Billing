@@ -17,6 +17,7 @@ public class CustomerSettlementRequest {
     private String referenceNumber;
     private String notes;
     private List<InvoiceAllocationItem> allocations;
+    private List<PromiseAllocationItem> promiseAllocations;
     private Long unallocatedPaymentId; // If allocating existing advance credit
 
     public BigDecimal getAmount() { return amount; }
@@ -36,6 +37,9 @@ public class CustomerSettlementRequest {
 
     public List<InvoiceAllocationItem> getAllocations() { return allocations; }
     public void setAllocations(List<InvoiceAllocationItem> allocations) { this.allocations = allocations; }
+
+    public List<PromiseAllocationItem> getPromiseAllocations() { return promiseAllocations; }
+    public void setPromiseAllocations(List<PromiseAllocationItem> promiseAllocations) { this.promiseAllocations = promiseAllocations; }
 
     public Long getUnallocatedPaymentId() { return unallocatedPaymentId; }
     public void setUnallocatedPaymentId(Long unallocatedPaymentId) { this.unallocatedPaymentId = unallocatedPaymentId; }

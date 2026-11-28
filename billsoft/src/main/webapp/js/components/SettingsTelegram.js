@@ -68,14 +68,15 @@
     useEffect(() => {
       mountedRef.current = true;
       refreshData();
+      const pollMs = challengeExpiry && (challengeExpiry > Date.now()) ? 2500 : 10000;
       const interval = setInterval(() => {
         if (mountedRef.current) refreshData();
-      }, 10000);
+      }, pollMs);
       return () => {
         mountedRef.current = false;
         clearInterval(interval);
       };
-    }, [isDesktop]);
+    }, [isDesktop, challengeExpiry]);
 
     // Challenge countdown timer
     useEffect(() => {
@@ -218,7 +219,7 @@
         React.createElement('div', { style: { fontSize: '2rem', marginBottom: 12 } }, '📱'),
         React.createElement('h3', { style: { margin: '0 0 8px 0', fontWeight: 700 } }, 'Telegram Assistant'),
         React.createElement('p', { style: { color: 'var(--text-muted, #64748b)', maxWidth: 500, margin: '0 auto' } },
-          'The Telegram Remote Assistant uses local OS Keychain / DPAPI hardware-level credential protection and operates exclusively inside the RupeeCRM desktop application.'
+          'The Telegram Remote Assistant operates inside the RupeeCRM desktop application with bot configuration persisted in your local database.'
         )
       );
     }
@@ -227,7 +228,7 @@
       return React.createElement('div', { style: { padding: 40, textAlign: 'center', color: 'var(--text-muted)' } },
         React.createElement('div', { style: { fontSize: '1.8rem', marginBottom: 12 } }, '⏳'),
         React.createElement('div', { style: { fontWeight: 600, fontSize: '1rem', marginBottom: 6 } }, 'Connecting to Telegram Assistant...'),
-        React.createElement('p', { style: { margin: 0, fontSize: '0.85rem' } }, 'Querying local poller state and secure credential store...')
+        React.createElement('p', { style: { margin: 0, fontSize: '0.85rem' } }, 'Querying local poller state and database configuration...')
       );
     }
 
@@ -305,12 +306,25 @@
         ),
 
         // Connected Bot Info OR Token Input Form
-        isConfigured ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 6, background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border-color, #e2e8f0)' } },
+        isConfigured ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 6, background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border-color, #e2e8f0)' } },
           React.createElement('span', { style: { fontSize: '1.3rem' } }, '🤖'),
           React.createElement('div', { style: { flex: 1 } },
-            React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, 'Connected Bot: @' + status.botUsername),
-            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-muted)' } },
-              'Credentials securely protected in OS Keychain / DPAPI storage. Outbound long-polling active.'
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+              React.createElement('div', { style: { fontWeight: 600, fontSize: '0.9rem' } }, 'Connected Bot: @' + status.botUsername),
+              status.maskedToken && React.createElement('span', {
+                style: {
+                  fontSize: '0.72rem',
+                  fontFamily: 'monospace',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569'
+                }
+              }, 'Token: ' + status.maskedToken)
+            ),
+            React.createElement('div', { style: { fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 } },
+              'Bot token stored in local database configuration (included in database backups). Outbound long-polling active.'
             )
           )
         ) : React.createElement('form', { onSubmit: handleConnectBot, style: { display: 'flex', flexDirection: 'column', gap: 10 } },
@@ -333,7 +347,7 @@
               }, submittingToken ? 'Connecting...' : 'Connect & Verify Bot')
             ),
             React.createElement('p', { style: { margin: '4px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' } },
-              'Create a bot via @BotFather on Telegram, copy the API token, and paste it here.'
+              'Create a bot via @BotFather on Telegram, copy the API token, and paste it here. Token will be securely persisted in your local database configuration and included in database backups.'
             )
           ),
           tokenError && React.createElement('div', { style: { color: '#dc2626', fontSize: '0.8rem' } }, tokenError)

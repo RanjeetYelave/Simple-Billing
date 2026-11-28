@@ -23,4 +23,10 @@ public interface CustomerPromiseToPayRepository extends JpaRepository<CustomerPr
     Optional<CustomerPromiseToPay> findByIdAndFirmId(Long id, Long firmId);
 
     List<CustomerPromiseToPay> findByFirmIdAndCustomerId(Long firmId, Long customerId);
+
+    List<CustomerPromiseToPay> findByFirmIdAndInvoiceId(Long firmId, Long invoiceId);
+
+    List<CustomerPromiseToPay> findByFirmIdAndInvoiceIdAndStatusNotIn(Long firmId, Long invoiceId, Collection<PromiseStatus> statuses);
+
+    List<CustomerPromiseToPay> findByFirmIdOrderByPromisedDateDesc(Long firmId);
 }

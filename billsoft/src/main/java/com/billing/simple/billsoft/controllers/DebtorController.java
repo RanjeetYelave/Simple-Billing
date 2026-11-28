@@ -119,6 +119,27 @@ public class DebtorController {
         return ResponseEntity.ok(debtorService.getFollowUps(effFirmId, status));
     }
 
+    @GetMapping("/promises")
+    public ResponseEntity<com.billing.simple.billsoft.dtos.debtor.PromiseWorkspaceDto> getPromisesWorkspace(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @RequestParam(name = "status", required = false, defaultValue = "ALL") String status,
+            @RequestParam(name = "search", required = false) String search
+    ) {
+        Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        return ResponseEntity.ok(debtorService.getPromisesWorkspace(effFirmId, status, search));
+    }
+
+    @GetMapping("/promises/invoice/{invoiceId}")
+    public ResponseEntity<List<com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto>> getInvoicePromises(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("invoiceId") Long invoiceId
+    ) {
+        Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        return ResponseEntity.ok(debtorService.getInvoicePromises(effFirmId, invoiceId));
+    }
+
     @PostMapping("/promises")
     public ResponseEntity<CustomerPromiseToPay> createPromise(
             @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
@@ -129,6 +150,42 @@ public class DebtorController {
         Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
         String username = principal != null ? principal.getName() : "User";
         return ResponseEntity.ok(debtorService.createPromise(effFirmId, request, username));
+    }
+
+    @PutMapping("/promises/{id}")
+    public ResponseEntity<CustomerPromiseToPay> editPromise(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("id") Long promiseId,
+            @RequestBody com.billing.simple.billsoft.dtos.debtor.EditPromiseRequest request,
+            Principal principal
+    ) {
+        Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        String username = principal != null ? principal.getName() : "User";
+        return ResponseEntity.ok(debtorService.editPromise(effFirmId, promiseId, request, username));
+    }
+
+    @DeleteMapping("/promises/{id}")
+    public ResponseEntity<CustomerPromiseToPay> cancelPromise(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("id") Long promiseId,
+            @RequestParam(name = "reason", required = false) String reason,
+            Principal principal
+    ) {
+        Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        String username = principal != null ? principal.getName() : "User";
+        return ResponseEntity.ok(debtorService.cancelPromise(effFirmId, promiseId, reason, username));
+    }
+
+    @GetMapping("/promises/{id}/history")
+    public ResponseEntity<List<com.billing.simple.billsoft.entities.CustomerPromiseHistory>> getPromiseHistory(
+            @RequestHeader(value = "X-Firm-Id", required = false) Long firmIdHeader,
+            @RequestParam(name = "firmId", required = false) Long firmIdParam,
+            @PathVariable("id") Long promiseId
+    ) {
+        Long effFirmId = resolveFirmId(firmIdHeader != null ? firmIdHeader : firmIdParam);
+        return ResponseEntity.ok(debtorService.getPromiseHistory(effFirmId, promiseId));
     }
 
     @PutMapping("/promises/{id}/status")

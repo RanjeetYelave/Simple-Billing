@@ -33,9 +33,9 @@ public class TelegramInternalBridgeController {
     private final TelegramConfigRepository configRepo;
 
     public TelegramInternalBridgeController(TelegramPollerService pollerService,
-                                            TelegramSecurityManager securityManager,
-                                            TelegramApiClient apiClient,
-                                            TelegramConfigRepository configRepo) {
+            TelegramSecurityManager securityManager,
+            TelegramApiClient apiClient,
+            TelegramConfigRepository configRepo) {
         this.pollerService = pollerService;
         this.securityManager = securityManager;
         this.apiClient = apiClient;
@@ -61,8 +61,7 @@ public class TelegramInternalBridgeController {
 
         return MessageDigest.isEqual(
                 providedHeader.getBytes(StandardCharsets.UTF_8),
-                expectedSecret.getBytes(StandardCharsets.UTF_8)
-        );
+                expectedSecret.getBytes(StandardCharsets.UTF_8));
     }
 
     @PostMapping("/configure")
@@ -82,7 +81,8 @@ public class TelegramInternalBridgeController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Failed to validate token with Telegram API."));
             }
 
-            // Clean up any lingering webhooks to ensure getUpdates long-polling operates unimpeded
+            // Clean up any lingering webhooks to ensure getUpdates long-polling operates
+            // unimpeded
             try {
                 apiClient.deleteWebhook(botToken.trim());
                 log.info("Cleared existing webhook before starting poller.");
@@ -114,24 +114,26 @@ public class TelegramInternalBridgeController {
                         Map.of("command", "stock", "description", "Inventory stock lookup"),
                         Map.of("command", "customers", "description", "Customer directory"),
                         Map.of("command", "debtors", "description", "Debtors & collections summary"),
-                        Map.of("command", "cancel", "description", "Cancel active workflow")
-                ));
+                        Map.of("command", "cancel", "description", "Cancel active workflow")));
             } catch (Exception cmdEx) {
                 log.warn("Could not set bot commands: {}", cmdEx.getMessage());
             }
 
-            // Start poller with token in memory
-            pollerService.setBotTokenAndStart(botToken.trim());
+            // Persist token to local H2 database and start poller
+            pollerService.setBotTokenAndPersist(botToken.trim());
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "botUsername", username,
-                    "isEnabled", true
-            ));
+            Map<String, Object> resp = new java.util.LinkedHashMap<>();
+            resp.put("success", true);
+            resp.put("botUsername", username);
+            resp.put("isEnabled", true);
+            resp.put("hasStoredToken", true);
+            resp.put("maskedToken", pollerService.getMaskedToken());
+            return ResponseEntity.ok(resp);
 
         } catch (Exception e) {
             log.error("Failed configuring bot: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", "Telegram error: " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(Map.of("error", "Telegram error: " + e.getMessage()));
         }
     }
 
@@ -146,8 +148,11 @@ public class TelegramInternalBridgeController {
         res.put("isEnabled", config.getIsEnabled());
         res.put("isRunning", pollerService.isRunning());
         res.put("botUsername", config.getBotUsername() != null ? config.getBotUsername() : "");
+        res.put("hasStoredToken", pollerService.hasStoredToken());
+        res.put("maskedToken", pollerService.getMaskedToken());
         res.put("circuitBreakerTripped", config.getCircuitBreakerTripped());
-        res.put("circuitBreakerReason", config.getCircuitBreakerReason() != null ? config.getCircuitBreakerReason() : "");
+        res.put("circuitBreakerReason",
+                config.getCircuitBreakerReason() != null ? config.getCircuitBreakerReason() : "");
         res.put("lastActiveAt", config.getLastActiveAt() != null ? config.getLastActiveAt().toString() : "");
         res.put("lastPollAt", config.getLastPollAt() != null ? config.getLastPollAt().toString() : "");
         res.put("lastUpdateId", config.getLastUpdateId() != null ? config.getLastUpdateId() : 0L);
@@ -178,7 +183,8 @@ public class TelegramInternalBridgeController {
     }
 
     @PostMapping("/generate-challenge")
-    public ResponseEntity<?> generateChallenge(@RequestBody(required = false) Map<String, Object> payload, HttpServletRequest request) {
+    public ResponseEntity<?> generateChallenge(@RequestBody(required = false) Map<String, Object> payload,
+            HttpServletRequest request) {
         if (!validateBridgeAccess(request)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Access denied"));
         }
@@ -190,15 +196,15 @@ public class TelegramInternalBridgeController {
                 if (!val.isBlank()) {
                     targetUserId = Long.valueOf(val);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
 
         String code = securityManager.generateLinkChallenge(targetUserId);
         return ResponseEntity.ok(Map.of(
                 "challengeCode", code,
                 "expiresInSeconds", 600,
-                "targetUserId", targetUserId != null ? targetUserId.toString() : ""
-        ));
+                "targetUserId", targetUserId != null ? targetUserId.toString() : ""));
     }
 
     @GetMapping("/users")
@@ -250,9 +256,11 @@ public class TelegramInternalBridgeController {
             JsonNode res = apiClient.sendMessage(token, chatId, text, "Markdown", null);
             pollerService.recordSentDiagnostic();
             if (res.path("ok").asBoolean()) {
-                return ResponseEntity.ok(Map.of("success", true, "messageId", res.path("result").path("message_id").asLong()));
+                return ResponseEntity
+                        .ok(Map.of("success", true, "messageId", res.path("result").path("message_id").asLong()));
             } else {
-                return ResponseEntity.badRequest().body(Map.of("error", res.path("description").asText("Telegram send failed")));
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", res.path("description").asText("Telegram send failed")));
             }
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("error", e.getMessage()));
@@ -289,14 +297,7 @@ public class TelegramInternalBridgeController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "Access denied"));
         }
 
-        pollerService.stopPoller();
-        TelegramConfig config = pollerService.getConfig();
-        config.setIsEnabled(false);
-        config.setBotUsername(null);
-        config.setCircuitBreakerTripped(false);
-        config.setConflictCount(0);
-        configRepo.save(config);
-
+        pollerService.disconnectBot();
         return ResponseEntity.ok(Map.of("success", true, "disconnected", true));
     }
 }

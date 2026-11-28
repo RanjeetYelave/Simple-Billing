@@ -48,7 +48,42 @@ public class DebtorServiceImpl implements DebtorService {
     private final BusinessPartyLinkService businessPartyLinkService;
     private final FirmDetailsRepository firmRepo;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repo.PromisePaymentAllocationRepository promiseAllocationRepo;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repo.CustomerPromiseHistoryRepository promiseHistoryRepo;
+
     private static final int SCALE = 2;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public DebtorServiceImpl(
+            CustomerRepository customerRepo,
+            InvoiceRepository invoiceRepo,
+            InvoicePaymentRepository invoicePaymentRepo,
+            SalesReturnRepository salesReturnRepo,
+            CustomerPromiseToPayRepository promiseRepo,
+            CustomerCollectionActivityRepository activityRepo,
+            ReminderRepository reminderRepo,
+            CustomerBalanceService balanceService,
+            BusinessPartyLinkService businessPartyLinkService,
+            FirmDetailsRepository firmRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.PromisePaymentAllocationRepository promiseAllocationRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.CustomerPromiseHistoryRepository promiseHistoryRepo
+    ) {
+        this.customerRepo = customerRepo;
+        this.invoiceRepo = invoiceRepo;
+        this.invoicePaymentRepo = invoicePaymentRepo;
+        this.salesReturnRepo = salesReturnRepo;
+        this.promiseRepo = promiseRepo;
+        this.activityRepo = activityRepo;
+        this.reminderRepo = reminderRepo;
+        this.balanceService = balanceService;
+        this.businessPartyLinkService = businessPartyLinkService;
+        this.firmRepo = firmRepo;
+        this.promiseAllocationRepo = promiseAllocationRepo;
+        this.promiseHistoryRepo = promiseHistoryRepo;
+    }
 
     public DebtorServiceImpl(
             CustomerRepository customerRepo,
@@ -62,16 +97,7 @@ public class DebtorServiceImpl implements DebtorService {
             BusinessPartyLinkService businessPartyLinkService,
             FirmDetailsRepository firmRepo
     ) {
-        this.customerRepo = customerRepo;
-        this.invoiceRepo = invoiceRepo;
-        this.invoicePaymentRepo = invoicePaymentRepo;
-        this.salesReturnRepo = salesReturnRepo;
-        this.promiseRepo = promiseRepo;
-        this.activityRepo = activityRepo;
-        this.reminderRepo = reminderRepo;
-        this.balanceService = balanceService;
-        this.businessPartyLinkService = businessPartyLinkService;
-        this.firmRepo = firmRepo;
+        this(customerRepo, invoiceRepo, invoicePaymentRepo, salesReturnRepo, promiseRepo, activityRepo, reminderRepo, balanceService, businessPartyLinkService, firmRepo, null, null);
     }
 
     private BigDecimal nz(BigDecimal val) {
@@ -918,6 +944,188 @@ public class DebtorServiceImpl implements DebtorService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public com.billing.simple.billsoft.dtos.debtor.PromiseWorkspaceDto getPromisesWorkspace(Long firmId, String statusFilter, String search) {
+        LocalDate today = LocalDate.now();
+        List<Customer> customers = customerRepo.findByFirmId(firmId);
+        Map<Long, Customer> customerMap = customers.stream()
+                .collect(Collectors.toMap(Customer::getId, c -> c, (a, b) -> a));
+
+        List<Invoice> invoices = invoiceRepo.findByFirmId(firmId);
+        Map<Long, Invoice> invoiceMap = invoices.stream()
+                .collect(Collectors.toMap(Invoice::getId, inv -> inv, (a, b) -> a));
+
+        List<InvoicePayment> allPayments = invoicePaymentRepo.findByFirmId(firmId);
+        Map<Long, BigDecimal> paymentsByInvoice = new HashMap<>();
+        for (InvoicePayment p : allPayments) {
+            if (p.getInvoiceId() != null && p.getAmount() != null) {
+                paymentsByInvoice.merge(p.getInvoiceId(), p.getAmount(), BigDecimal::add);
+            }
+        }
+
+        List<SalesReturn> allReturns = salesReturnRepo.findByFirmId(firmId);
+        Map<Long, BigDecimal> returnsByInvoice = new HashMap<>();
+        for (SalesReturn r : allReturns) {
+            if (r.getInvoice() != null && r.getInvoice().getId() != null && r.getTotalRefundAmount() != null) {
+                returnsByInvoice.merge(r.getInvoice().getId(), r.getTotalRefundAmount(), BigDecimal::add);
+            }
+        }
+
+        Map<Long, BigDecimal> invoiceOutstandingMap = new HashMap<>();
+        for (Invoice inv : invoices) {
+            BigDecimal rawTotal = nz(inv.getTotalAmount());
+            BigDecimal ret = returnsByInvoice.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            BigDecimal eff = rawTotal.subtract(ret);
+            if (eff.compareTo(BigDecimal.ZERO) < 0) eff = BigDecimal.ZERO;
+            BigDecimal paid = paymentsByInvoice.getOrDefault(inv.getId(), BigDecimal.ZERO);
+            if (paid.compareTo(BigDecimal.ZERO) == 0 && Boolean.TRUE.equals(inv.getPaid())) {
+                paid = eff;
+            }
+            BigDecimal out = eff.subtract(paid);
+            if (out.compareTo(BigDecimal.ZERO) < 0) out = BigDecimal.ZERO;
+            invoiceOutstandingMap.put(inv.getId(), out);
+        }
+
+        List<CustomerPromiseToPay> allPromises = promiseRepo.findByFirmIdOrderByPromisedDateDesc(firmId);
+
+        Map<Long, BigDecimal> activePromisesTotalByInvoice = new HashMap<>();
+        for (CustomerPromiseToPay pr : allPromises) {
+            if (pr.getInvoiceId() != null && pr.getStatus() != PromiseStatus.CANCELLED && pr.getStatus() != PromiseStatus.FULFILLED && pr.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0) {
+                activePromisesTotalByInvoice.merge(pr.getInvoiceId(), pr.getRemainingAmount(), BigDecimal::add);
+            }
+        }
+
+        int activeCount = 0;
+        int dueTodayCount = 0;
+        int overdueCount = 0;
+        int fulfilledCount = 0;
+
+        List<com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto> dtoList = new ArrayList<>();
+
+        for (CustomerPromiseToPay pr : allPromises) {
+            Customer c = customerMap.get(pr.getCustomerId());
+            String cName = c != null ? c.getName() : "Customer #" + pr.getCustomerId();
+            String cPhone = c != null ? c.getPhone() : "";
+
+            Invoice inv = pr.getInvoiceId() != null ? invoiceMap.get(pr.getInvoiceId()) : null;
+            String invNum = inv != null ? (inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : "#" + inv.getId()) : "—";
+            BigDecimal invOut = pr.getInvoiceId() != null ? invoiceOutstandingMap.getOrDefault(pr.getInvoiceId(), BigDecimal.ZERO) : BigDecimal.ZERO;
+
+            BigDecimal invRemainingPromises = pr.getInvoiceId() != null ? activePromisesTotalByInvoice.getOrDefault(pr.getInvoiceId(), BigDecimal.ZERO) : BigDecimal.ZERO;
+            boolean reconciliationRequired = pr.getInvoiceId() != null && invRemainingPromises.compareTo(invOut) > 0;
+            BigDecimal excessAmt = reconciliationRequired ? invRemainingPromises.subtract(invOut) : BigDecimal.ZERO;
+
+            boolean isActive = pr.getStatus() != PromiseStatus.CANCELLED && pr.getStatus() != PromiseStatus.FULFILLED && pr.getRemainingAmount().compareTo(BigDecimal.ZERO) > 0;
+            boolean isOverdue = isActive && pr.getPromisedDate().isBefore(today);
+            boolean isDueToday = isActive && pr.getPromisedDate().isEqual(today);
+            boolean isFulfilled = pr.getStatus() == PromiseStatus.FULFILLED || (pr.getStatus() != PromiseStatus.CANCELLED && pr.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0);
+
+            if (isActive) activeCount++;
+            if (isDueToday) dueTodayCount++;
+            if (isOverdue) overdueCount++;
+            if (isFulfilled) fulfilledCount++;
+
+            String displayStatus;
+            if (pr.getStatus() == PromiseStatus.CANCELLED) {
+                displayStatus = "CANCELLED";
+            } else if (isFulfilled) {
+                displayStatus = "FULFILLED";
+            } else if (pr.getStatus() == PromiseStatus.PARTIALLY_FULFILLED || (pr.getFulfilledAmount() != null && pr.getFulfilledAmount().compareTo(BigDecimal.ZERO) > 0)) {
+                displayStatus = "PARTIALLY_FULFILLED";
+            } else if (isOverdue) {
+                displayStatus = "OVERDUE";
+            } else if (isDueToday) {
+                displayStatus = "DUE_TODAY";
+            } else {
+                displayStatus = "UPCOMING";
+            }
+
+            com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto dto = com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto.builder()
+                    .id(pr.getId())
+                    .firmId(pr.getFirmId())
+                    .customerId(pr.getCustomerId())
+                    .customerName(cName)
+                    .customerPhone(cPhone)
+                    .invoiceId(pr.getInvoiceId())
+                    .invoiceNumber(invNum)
+                    .invoiceOutstanding(invOut)
+                    .promisedAmount(pr.getPromisedAmount())
+                    .promisedDate(pr.getPromisedDate())
+                    .fulfilledAmount(pr.getFulfilledAmount())
+                    .remainingAmount(pr.getRemainingAmount())
+                    .status(pr.getStatus())
+                    .displayStatus(displayStatus)
+                    .isOverdue(isOverdue)
+                    .notes(pr.getNotes())
+                    .createdBy(pr.getCreatedBy())
+                    .createdAt(pr.getCreatedAt())
+                    .updatedAt(pr.getUpdatedAt())
+                    .invoiceRemainingPromisesTotal(invRemainingPromises)
+                    .reconciliationRequired(reconciliationRequired)
+                    .excessPromisedAmount(excessAmt)
+                    .build();
+
+            boolean matchesStatus = true;
+            if (statusFilter != null && !statusFilter.isBlank() && !"ALL".equalsIgnoreCase(statusFilter.trim())) {
+                String filter = statusFilter.trim().toUpperCase();
+                switch (filter) {
+                    case "UPCOMING":
+                        matchesStatus = isActive && pr.getPromisedDate().isAfter(today);
+                        break;
+                    case "DUE_TODAY":
+                        matchesStatus = isDueToday;
+                        break;
+                    case "OVERDUE":
+                        matchesStatus = isOverdue;
+                        break;
+                    case "PARTIALLY_FULFILLED":
+                        matchesStatus = "PARTIALLY_FULFILLED".equalsIgnoreCase(displayStatus);
+                        break;
+                    case "FULFILLED":
+                        matchesStatus = isFulfilled;
+                        break;
+                    case "CANCELLED":
+                        matchesStatus = pr.getStatus() == PromiseStatus.CANCELLED;
+                        break;
+                    default:
+                        matchesStatus = displayStatus.equalsIgnoreCase(filter) || pr.getStatus().name().equalsIgnoreCase(filter);
+                        break;
+                }
+            }
+
+            boolean matchesSearch = true;
+            if (search != null && !search.isBlank()) {
+                String q = search.trim().toLowerCase();
+                matchesSearch = cName.toLowerCase().contains(q)
+                        || (cPhone != null && cPhone.contains(q))
+                        || (invNum != null && invNum.toLowerCase().contains(q))
+                        || (pr.getNotes() != null && pr.getNotes().toLowerCase().contains(q));
+            }
+
+            if (matchesStatus && matchesSearch) {
+                dtoList.add(dto);
+            }
+        }
+
+        return com.billing.simple.billsoft.dtos.debtor.PromiseWorkspaceDto.builder()
+                .activeCount(activeCount)
+                .dueTodayCount(dueTodayCount)
+                .overdueCount(overdueCount)
+                .fulfilledCount(fulfilledCount)
+                .promises(dtoList)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto> getInvoicePromises(Long firmId, Long invoiceId) {
+        com.billing.simple.billsoft.dtos.debtor.PromiseWorkspaceDto ws = getPromisesWorkspace(firmId, "ALL", null);
+        return ws.getPromises().stream()
+                .filter(p -> Objects.equals(p.getInvoiceId(), invoiceId))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     @Transactional
     public CustomerPromiseToPay createPromise(Long firmId, CreatePromiseRequest request, String createdBy) {
         if (request == null || request.getCustomerId() == null) {
@@ -932,6 +1140,52 @@ public class DebtorServiceImpl implements DebtorService {
 
         Customer customer = customerRepo.findByIdAndFirmId(request.getCustomerId(), firmId)
                 .orElseThrow(() -> new TenantSecurityException("Customer #" + request.getCustomerId() + " not found in firm"));
+
+        if (request.getInvoiceId() != null) {
+            Invoice inv = invoiceRepo.findByIdAndFirmId(request.getInvoiceId(), firmId)
+                    .orElseThrow(() -> new TenantSecurityException("Invoice #" + request.getInvoiceId() + " not found in firm"));
+
+            if (inv.getCustomer() == null || !Objects.equals(inv.getCustomer().getId(), request.getCustomerId())) {
+                throw new IllegalArgumentException("Invoice #" + (inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : inv.getId()) + " does not belong to Customer #" + request.getCustomerId());
+            }
+
+            if (inv.getStatus() == InvoiceStatus.CANCELLED || inv.getStatus() == InvoiceStatus.DRAFT || inv.getStatus() == InvoiceStatus.ESTIMATE) {
+                throw new IllegalStateException("Cannot create a promise against a " + inv.getStatus() + " document");
+            }
+
+            List<InvoicePayment> existingPayments = invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(inv.getId(), firmId);
+            BigDecimal paidSum = existingPayments.stream().map(InvoicePayment::getAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            List<SalesReturn> returns = salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(inv.getId(), firmId);
+            BigDecimal returnSum = returns.stream().map(SalesReturn::getTotalRefundAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal rawTotal = nz(inv.getTotalAmount());
+            BigDecimal eff = rawTotal.subtract(returnSum);
+            if (eff.compareTo(BigDecimal.ZERO) < 0) eff = BigDecimal.ZERO;
+            BigDecimal invoiceOutstanding = eff.subtract(paidSum);
+            if (invoiceOutstanding.compareTo(BigDecimal.ZERO) < 0) invoiceOutstanding = BigDecimal.ZERO;
+
+            if (invoiceOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Invoice #" + (inv.getInvoiceNumber() != null ? inv.getInvoiceNumber() : inv.getId()) + " is already fully paid or settled");
+            }
+
+            List<CustomerPromiseToPay> existingPromises = promiseRepo.findByFirmIdAndInvoiceIdAndStatusNotIn(
+                    firmId, inv.getId(), List.of(PromiseStatus.CANCELLED, PromiseStatus.FULFILLED)
+            );
+            BigDecimal existingCommitted = existingPromises.stream()
+                    .map(CustomerPromiseToPay::getRemainingAmount)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal availableBalance = invoiceOutstanding.subtract(existingCommitted);
+            if (availableBalance.compareTo(BigDecimal.ZERO) < 0) availableBalance = BigDecimal.ZERO;
+
+            BigDecimal requested = request.getPromisedAmount().setScale(SCALE, RoundingMode.HALF_UP);
+            if (requested.compareTo(availableBalance) > 0) {
+                throw new IllegalArgumentException("Promised amount ₹" + requested + " exceeds available invoice balance ₹" + availableBalance +
+                        " (Invoice Outstanding: ₹" + invoiceOutstanding + ", Existing Active Promises: ₹" + existingCommitted + ")");
+            }
+        }
 
         CustomerPromiseToPay promise = CustomerPromiseToPay.builder()
                 .firmId(firmId)
@@ -950,7 +1204,20 @@ public class DebtorServiceImpl implements DebtorService {
 
         CustomerPromiseToPay saved = promiseRepo.save(promise);
 
-        // Log collection activity
+        if (promiseHistoryRepo != null) {
+            promiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                    .firmId(firmId)
+                    .promiseId(saved.getId())
+                    .actionType("CREATED")
+                    .newAmount(saved.getPromisedAmount())
+                    .newDate(saved.getPromisedDate())
+                    .newStatus(saved.getStatus().name())
+                    .notes(saved.getNotes())
+                    .performedBy(createdBy != null ? createdBy : "User")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
         activityRepo.save(CustomerCollectionActivity.builder()
                 .firmId(firmId)
                 .customerId(request.getCustomerId())
@@ -964,6 +1231,159 @@ public class DebtorServiceImpl implements DebtorService {
                 .build());
 
         return saved;
+    }
+
+    @Override
+    @Transactional
+    public CustomerPromiseToPay editPromise(Long firmId, Long promiseId, com.billing.simple.billsoft.dtos.debtor.EditPromiseRequest request, String performedBy) {
+        CustomerPromiseToPay promise = promiseRepo.findByIdAndFirmId(promiseId, firmId)
+                .orElseThrow(() -> new TenantSecurityException("Promise #" + promiseId + " not found in firm"));
+
+        if (promise.getStatus() == PromiseStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot edit CANCELLED promise #" + promiseId);
+        }
+
+        BigDecimal prevAmount = promise.getPromisedAmount();
+        LocalDate prevDate = promise.getPromisedDate();
+        PromiseStatus prevStatus = promise.getStatus();
+
+        if (request.getPromisedAmount() != null) {
+            BigDecimal newAmt = request.getPromisedAmount().setScale(SCALE, RoundingMode.HALF_UP);
+            if (newAmt.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("Promised amount must be greater than 0");
+            }
+            BigDecimal fulfilled = promise.getFulfilledAmount() != null ? promise.getFulfilledAmount() : BigDecimal.ZERO;
+            if (newAmt.compareTo(fulfilled) < 0) {
+                throw new IllegalArgumentException("Promised amount ₹" + newAmt + " cannot be less than already fulfilled amount ₹" + fulfilled);
+            }
+
+            if (promise.getInvoiceId() != null) {
+                Invoice inv = invoiceRepo.findByIdAndFirmId(promise.getInvoiceId(), firmId).orElse(null);
+                if (inv != null) {
+                    List<InvoicePayment> existingPayments = invoicePaymentRepo.findByInvoiceIdAndFirmIdOrderByPaymentDateAscIdAsc(inv.getId(), firmId);
+                    BigDecimal paidSum = existingPayments.stream().map(InvoicePayment::getAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    List<SalesReturn> returns = salesReturnRepo.findByInvoiceIdAndFirmIdOrderByCreatedAtDesc(inv.getId(), firmId);
+                    BigDecimal returnSum = returns.stream().map(SalesReturn::getTotalRefundAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal eff = nz(inv.getTotalAmount()).subtract(returnSum);
+                    if (eff.compareTo(BigDecimal.ZERO) < 0) eff = BigDecimal.ZERO;
+                    BigDecimal invoiceOutstanding = eff.subtract(paidSum);
+                    if (invoiceOutstanding.compareTo(BigDecimal.ZERO) < 0) invoiceOutstanding = BigDecimal.ZERO;
+
+                    List<CustomerPromiseToPay> otherPromises = promiseRepo.findByFirmIdAndInvoiceIdAndStatusNotIn(
+                            firmId, inv.getId(), List.of(PromiseStatus.CANCELLED, PromiseStatus.FULFILLED)
+                    ).stream().filter(p -> !p.getId().equals(promiseId)).collect(Collectors.toList());
+
+                    BigDecimal otherCommitted = otherPromises.stream().map(CustomerPromiseToPay::getRemainingAmount).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+                    BigDecimal maxAllowed = invoiceOutstanding.subtract(otherCommitted).add(fulfilled);
+                    if (newAmt.compareTo(maxAllowed) > 0) {
+                        throw new IllegalArgumentException("Revised amount ₹" + newAmt + " exceeds available balance ₹" + maxAllowed +
+                                " (Invoice Outstanding: ₹" + invoiceOutstanding + ", Other Active Promises: ₹" + otherCommitted + ")");
+                    }
+                }
+            }
+
+            promise.setPromisedAmount(newAmt);
+            BigDecimal newRemaining = newAmt.subtract(fulfilled);
+            if (newRemaining.compareTo(BigDecimal.ZERO) < 0) newRemaining = BigDecimal.ZERO;
+            promise.setRemainingAmount(newRemaining);
+            if (newRemaining.compareTo(BigDecimal.ZERO) == 0) {
+                promise.setStatus(PromiseStatus.FULFILLED);
+            } else if (fulfilled.compareTo(BigDecimal.ZERO) > 0) {
+                promise.setStatus(PromiseStatus.PARTIALLY_FULFILLED);
+            } else {
+                promise.setStatus(PromiseStatus.PROMISED);
+            }
+        }
+
+        if (request.getPromisedDate() != null) {
+            promise.setPromisedDate(request.getPromisedDate());
+        }
+
+        if (request.getNotes() != null) {
+            promise.setNotes(request.getNotes());
+        }
+
+        promise.setUpdatedAt(LocalDateTime.now());
+        CustomerPromiseToPay saved = promiseRepo.save(promise);
+
+        if (promiseHistoryRepo != null) {
+            promiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                    .firmId(firmId)
+                    .promiseId(saved.getId())
+                    .actionType("EDITED")
+                    .previousAmount(prevAmount)
+                    .newAmount(saved.getPromisedAmount())
+                    .previousDate(prevDate)
+                    .newDate(saved.getPromisedDate())
+                    .previousStatus(prevStatus != null ? prevStatus.name() : null)
+                    .newStatus(saved.getStatus().name())
+                    .notes(request.getNotes())
+                    .performedBy(performedBy != null ? performedBy : "User")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        activityRepo.save(CustomerCollectionActivity.builder()
+                .firmId(firmId)
+                .customerId(saved.getCustomerId())
+                .invoiceId(saved.getInvoiceId())
+                .promiseId(saved.getId())
+                .activityType(CollectionActivityType.PROMISE_RESCHEDULED)
+                .description("Promise #" + saved.getId() + " edited (Amount: ₹" + saved.getPromisedAmount() + ", Date: " + saved.getPromisedDate() + ")")
+                .performedBy(performedBy != null ? performedBy : "User")
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public CustomerPromiseToPay cancelPromise(Long firmId, Long promiseId, String reason, String performedBy) {
+        CustomerPromiseToPay promise = promiseRepo.findByIdAndFirmId(promiseId, firmId)
+                .orElseThrow(() -> new TenantSecurityException("Promise #" + promiseId + " not found in firm"));
+
+        PromiseStatus prevStatus = promise.getStatus();
+        promise.setStatus(PromiseStatus.CANCELLED);
+        promise.setUpdatedAt(LocalDateTime.now());
+        CustomerPromiseToPay saved = promiseRepo.save(promise);
+
+        if (promiseHistoryRepo != null) {
+            promiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                    .firmId(firmId)
+                    .promiseId(saved.getId())
+                    .actionType("CANCELLED")
+                    .previousAmount(saved.getPromisedAmount())
+                    .newAmount(saved.getPromisedAmount())
+                    .previousDate(saved.getPromisedDate())
+                    .newDate(saved.getPromisedDate())
+                    .previousStatus(prevStatus != null ? prevStatus.name() : null)
+                    .newStatus("CANCELLED")
+                    .notes(reason != null ? reason : "Cancelled by user")
+                    .performedBy(performedBy != null ? performedBy : "User")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
+
+        activityRepo.save(CustomerCollectionActivity.builder()
+                .firmId(firmId)
+                .customerId(saved.getCustomerId())
+                .invoiceId(saved.getInvoiceId())
+                .promiseId(saved.getId())
+                .activityType(CollectionActivityType.FOLLOW_UP_COMPLETED)
+                .description("Promise #" + saved.getId() + " cancelled" + (reason != null ? ": " + reason : ""))
+                .performedBy(performedBy != null ? performedBy : "User")
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        return saved;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<com.billing.simple.billsoft.entities.CustomerPromiseHistory> getPromiseHistory(Long firmId, Long promiseId) {
+        if (promiseHistoryRepo == null) return Collections.emptyList();
+        return promiseHistoryRepo.findByFirmIdAndPromiseIdOrderByCreatedAtDesc(firmId, promiseId);
     }
 
     @Override

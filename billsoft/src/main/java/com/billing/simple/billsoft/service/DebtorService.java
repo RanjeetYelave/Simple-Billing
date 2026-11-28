@@ -25,7 +25,17 @@ public interface DebtorService {
 
     List<DebtorFollowUpDto> getFollowUps(Long firmId, String status);
 
+    com.billing.simple.billsoft.dtos.debtor.PromiseWorkspaceDto getPromisesWorkspace(Long firmId, String statusFilter, String search);
+
+    List<com.billing.simple.billsoft.dtos.debtor.DebtorPromiseDetailDto> getInvoicePromises(Long firmId, Long invoiceId);
+
     CustomerPromiseToPay createPromise(Long firmId, CreatePromiseRequest request, String createdBy);
+
+    CustomerPromiseToPay editPromise(Long firmId, Long promiseId, com.billing.simple.billsoft.dtos.debtor.EditPromiseRequest request, String performedBy);
+
+    CustomerPromiseToPay cancelPromise(Long firmId, Long promiseId, String reason, String performedBy);
+
+    List<com.billing.simple.billsoft.entities.CustomerPromiseHistory> getPromiseHistory(Long firmId, Long promiseId);
 
     CustomerPromiseToPay updatePromiseStatus(Long firmId, Long promiseId, UpdatePromiseStatusRequest request);
 

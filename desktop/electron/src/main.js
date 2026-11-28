@@ -632,7 +632,7 @@ async function waitForBackend(maxSeconds = 60, onProgress = null, enforceVersion
       backendHealthy = true;
       activeBackendIdentity = identity;
       updateTrayMenu();
-      syncSavedTelegramCredentials();
+      migrateOldTelegramCredentialIfNeeded();
       return true;
     }
 
@@ -1700,20 +1700,10 @@ function registerIpcHandlers() {
         throw new Error('Invalid Telegram Bot Token format. Expected format: 123456789:ABCdef...');
       }
 
-      // Encrypt and persist token via OS safeStorage
-      const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
-      let encBuffer;
-      if (safeStorage.isEncryptionAvailable()) {
-        encBuffer = safeStorage.encryptString(token);
-      } else {
-        encBuffer = Buffer.from(token, 'utf8');
-      }
-      await fs.promises.writeFile(credFile, encBuffer.toString('base64'), 'utf8');
-
-      // Bridge decrypted token in memory to Spring Boot backend
+      // Configure bot in Spring Boot backend (persisted directly to local H2 database)
       const result = await callInternalTelegramBridge('configure', 'POST', { botToken: token });
-      logMessage(`[Telegram] Bot configured successfully: @${result.botUsername}`);
-      return { success: true, botUsername: result.botUsername, isEnabled: result.isEnabled };
+      logMessage(`[Telegram] Bot configured and persisted to local database: @${result.botUsername}`);
+      return { success: true, botUsername: result.botUsername, isEnabled: result.isEnabled, maskedToken: result.maskedToken };
     } catch (err) {
       logMessage(`[Telegram] Configuration failed: ${err.message}`);
       return { success: false, error: err.message };
@@ -1794,12 +1784,17 @@ function registerIpcHandlers() {
 
   ipcMain.handle('telegram:disconnect', async () => {
     try {
+      // Retire any legacy credential file if present
       const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
       if (fs.existsSync(credFile)) {
-        await fs.promises.unlink(credFile);
+        try {
+          await fs.promises.unlink(credFile);
+        } catch (e) {
+          logMessage(`[Telegram] Notice unlinking legacy file: ${e.message}`);
+        }
       }
       const res = await callInternalTelegramBridge('disconnect', 'POST');
-      logMessage('[Telegram] Bot disconnected and credentials purged.');
+      logMessage('[Telegram] Bot disconnected and token removed from database.');
       return { success: true, ...res };
     } catch (err) {
       return { success: false, error: err.message };
@@ -1850,26 +1845,78 @@ function callInternalTelegramBridge(endpoint, method = 'GET', body = null) {
   });
 }
 
-async function syncSavedTelegramCredentials() {
+async function migrateOldTelegramCredentialIfNeeded() {
   try {
     const credFile = path.join(dirs.dataDir, 'telegram-credential.enc');
     if (!fs.existsSync(credFile)) return;
-    const base64Str = await fs.promises.readFile(credFile, 'utf8');
-    if (!base64Str || !base64Str.trim()) return;
-    const buf = Buffer.from(base64Str.trim(), 'base64');
-    let token;
-    if (safeStorage.isEncryptionAvailable()) {
-      token = safeStorage.decryptString(buf);
-    } else {
-      token = buf.toString('utf8');
+
+    // 1. Check whether database already contains a valid token
+    let status = null;
+    try {
+      status = await callInternalTelegramBridge('status', 'GET');
+    } catch (statusErr) {
+      logMessage(`[Telegram] Warning querying status during credential migration: ${statusErr.message}`);
     }
-    if (token && token.trim().match(/^[0-9]+:[a-zA-Z0-9_-]+$/)) {
-      logMessage('[Telegram] Restoring saved bot credentials to backend...');
-      await callInternalTelegramBridge('configure', 'POST', { botToken: token.trim() });
-      logMessage('[Telegram] Restored and resumed bot successfully.');
+
+    if (status && status.hasStoredToken) {
+      logMessage('[Telegram] Database already contains bot token. Retiring legacy encrypted credential file.');
+      try {
+        await fs.promises.unlink(credFile);
+        logMessage('[Telegram] Legacy credential file retired successfully.');
+      } catch (unlinkErr) {
+        logMessage(`[Telegram] Warning removing legacy credential file: ${unlinkErr.message}`);
+      }
+      return;
+    }
+
+    // 2. If not, retrieve existing token via safeStorage
+    const base64Str = await fs.promises.readFile(credFile, 'utf8');
+    if (!base64Str || !base64Str.trim()) {
+      try { await fs.promises.unlink(credFile); } catch (e) {}
+      return;
+    }
+
+    const buf = Buffer.from(base64Str.trim(), 'base64');
+    let token = null;
+    try {
+      if (safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()) {
+        token = safeStorage.decryptString(buf);
+      } else if (safeStorage && typeof safeStorage.decryptString === 'function') {
+        token = safeStorage.decryptString(buf);
+      } else {
+        token = buf.toString('utf8');
+      }
+    } catch (decryptErr) {
+      logMessage(`[Telegram] Could not decrypt legacy credential with OS safeStorage: ${decryptErr.message}. Preserving file.`);
+      return;
+    }
+
+    if (!token || !token.trim().match(/^[0-9]+:[a-zA-Z0-9_-]+$/)) {
+      logMessage('[Telegram] Legacy credential is not a valid token format. Preserving file.');
+      return;
+    }
+
+    // 3. Save it to the database
+    logMessage('[Telegram] Migrating legacy safeStorage credential to local H2 database...');
+    const configureRes = await callInternalTelegramBridge('configure', 'POST', { botToken: token.trim() });
+
+    // 4. Verify that saved token can be retrieved and used
+    const verifyStatus = await callInternalTelegramBridge('status', 'GET');
+    if (verifyStatus && verifyStatus.hasStoredToken && configureRes && configureRes.success) {
+      logMessage(`[Telegram] Migration verified! Bot @${configureRes.botUsername} active in database.`);
+      // 5. Only after successful verification, retire old credential
+      try {
+        await fs.promises.unlink(credFile);
+        logMessage('[Telegram] Legacy encrypted credential file successfully retired.');
+      } catch (unlinkErr) {
+        logMessage(`[Telegram] Warning removing legacy credential file: ${unlinkErr.message}`);
+      }
+    } else {
+      logMessage('[Telegram] Migration verification failed. Preserving legacy credential file.');
     }
   } catch (err) {
-    logMessage(`[Telegram] Auto-restore of credentials failed: ${err.message}`);
+    // 6. If migration fails, preserve old credential
+    logMessage(`[Telegram] Legacy credential migration failed: ${err.message}. Preserving old credential.`);
   }
 }
 

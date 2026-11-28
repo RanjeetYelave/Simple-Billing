@@ -48,6 +48,12 @@ public class BackupDTO {
     private List<BusinessPartyLinkEvent> businessPartyLinkEvents;
     private List<ItemDuplicateDismissal> itemDuplicateDismissals;
     private List<ItemMergeAudit> itemMergeAudits;
+    private List<CustomerPromiseToPay> customerPromises;
+    private List<PromisePaymentAllocation> promisePaymentAllocations;
+    private List<CustomerPromiseHistory> customerPromiseHistories;
+    private List<com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser> telegramAuthorizedUsers;
+    private List<PurchaseOrderReceipt> purchaseOrderReceipts;
+    private List<PurchaseOrderBatchRecord> purchaseOrderBatchRecords;
 
     public Long getSourceFirmId() {
         if (metadata != null && metadata.get("sourceFirmId") != null) {
@@ -380,5 +386,78 @@ public class BackupDTO {
 
     public void setItemMergeAudits(List<ItemMergeAudit> itemMergeAudits) {
         this.itemMergeAudits = itemMergeAudits;
+    }
+
+    public List<CustomerPromiseToPay> getCustomerPromises() {
+        return customerPromises;
+    }
+
+    public void setCustomerPromises(List<CustomerPromiseToPay> customerPromises) {
+        this.customerPromises = customerPromises;
+    }
+
+    public List<PromisePaymentAllocation> getPromisePaymentAllocations() {
+        return promisePaymentAllocations;
+    }
+
+    public void setPromisePaymentAllocations(List<PromisePaymentAllocation> promisePaymentAllocations) {
+        this.promisePaymentAllocations = promisePaymentAllocations;
+    }
+
+    public List<CustomerPromiseHistory> getCustomerPromiseHistories() {
+        return customerPromiseHistories;
+    }
+
+    public void setCustomerPromiseHistories(List<CustomerPromiseHistory> customerPromiseHistories) {
+        this.customerPromiseHistories = customerPromiseHistories;
+    }
+
+    public List<com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser> getTelegramAuthorizedUsers() {
+        return telegramAuthorizedUsers;
+    }
+
+    public void setTelegramAuthorizedUsers(List<com.billing.simple.billsoft.telegram.entities.TelegramAuthorizedUser> telegramAuthorizedUsers) {
+        this.telegramAuthorizedUsers = telegramAuthorizedUsers;
+    }
+
+    public List<PurchaseOrderReceipt> getPurchaseOrderReceipts() {
+        return purchaseOrderReceipts;
+    }
+
+    public void setPurchaseOrderReceipts(List<PurchaseOrderReceipt> purchaseOrderReceipts) {
+        this.purchaseOrderReceipts = purchaseOrderReceipts;
+    }
+
+    public List<PurchaseOrderBatchRecord> getPurchaseOrderBatchRecords() {
+        return purchaseOrderBatchRecords;
+    }
+
+    public void setPurchaseOrderBatchRecords(List<PurchaseOrderBatchRecord> purchaseOrderBatchRecords) {
+        this.purchaseOrderBatchRecords = purchaseOrderBatchRecords;
+    }
+
+    // Convenience alias methods for backup/restore routines
+    public List<PromisePaymentAllocation> getPromiseAllocations() {
+        return promisePaymentAllocations;
+    }
+
+    public void setPromiseAllocations(List<PromisePaymentAllocation> promiseAllocations) {
+        this.promisePaymentAllocations = promiseAllocations;
+    }
+
+    public List<PurchaseOrderReceipt> getPoReceipts() {
+        return purchaseOrderReceipts;
+    }
+
+    public void setPoReceipts(List<PurchaseOrderReceipt> poReceipts) {
+        this.purchaseOrderReceipts = poReceipts;
+    }
+
+    public List<PurchaseOrderBatchRecord> getPoBatches() {
+        return purchaseOrderBatchRecords;
+    }
+
+    public void setPoBatches(List<PurchaseOrderBatchRecord> poBatches) {
+        this.purchaseOrderBatchRecords = poBatches;
     }
 }

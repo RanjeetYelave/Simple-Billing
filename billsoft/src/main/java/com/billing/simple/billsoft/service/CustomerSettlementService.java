@@ -33,9 +33,39 @@ public class CustomerSettlementService {
     private com.billing.simple.billsoft.repo.CustomerPromiseToPayRepository promiseRepo;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repo.PromisePaymentAllocationRepository promiseAllocationRepo;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.billing.simple.billsoft.repo.CustomerPromiseHistoryRepository promiseHistoryRepo;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.billing.simple.billsoft.repo.CustomerCollectionActivityRepository activityRepo;
 
     private static final int SCALE = 2;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public CustomerSettlementService(
+            CustomerRepository customerRepo,
+            InvoiceRepository invoiceRepo,
+            InvoicePaymentRepository invoicePaymentRepo,
+            SalesReturnRepository salesReturnRepo,
+            CustomerBalanceService balanceService,
+            javax.sql.DataSource dataSource,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.CustomerPromiseToPayRepository promiseRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.PromisePaymentAllocationRepository promiseAllocationRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.CustomerPromiseHistoryRepository promiseHistoryRepo,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.billing.simple.billsoft.repo.CustomerCollectionActivityRepository activityRepo) {
+        this.customerRepo = customerRepo;
+        this.invoiceRepo = invoiceRepo;
+        this.invoicePaymentRepo = invoicePaymentRepo;
+        this.salesReturnRepo = salesReturnRepo;
+        this.balanceService = balanceService;
+        this.dataSource = dataSource;
+        this.promiseRepo = promiseRepo;
+        this.promiseAllocationRepo = promiseAllocationRepo;
+        this.promiseHistoryRepo = promiseHistoryRepo;
+        this.activityRepo = activityRepo;
+    }
 
     public CustomerSettlementService(
             CustomerRepository customerRepo,
@@ -44,12 +74,7 @@ public class CustomerSettlementService {
             SalesReturnRepository salesReturnRepo,
             CustomerBalanceService balanceService,
             javax.sql.DataSource dataSource) {
-        this.customerRepo = customerRepo;
-        this.invoiceRepo = invoiceRepo;
-        this.invoicePaymentRepo = invoicePaymentRepo;
-        this.salesReturnRepo = salesReturnRepo;
-        this.balanceService = balanceService;
-        this.dataSource = dataSource;
+        this(customerRepo, invoiceRepo, invoicePaymentRepo, salesReturnRepo, balanceService, dataSource, null, null, null, null);
     }
 
     @jakarta.annotation.PostConstruct
@@ -452,8 +477,23 @@ public class CustomerSettlementService {
             unallocAmt = BigDecimal.ZERO;
         }
 
-        if (!paymentsCreated.isEmpty() && request.getUnallocatedPaymentId() == null) {
-            reconcilePromisesAndLogPayment(firmId, customerId, totalPaymentAmt, paymentsCreated.get(0).getId());
+        if (request.getPromiseAllocations() != null && !request.getPromiseAllocations().isEmpty() && !paymentsCreated.isEmpty()) {
+            processManualPromiseAllocations(firmId, customerId, request.getPromiseAllocations(), paymentsCreated, updatedInvoices);
+        } else if (!paymentsCreated.isEmpty()) {
+            if (activityRepo != null) {
+                try {
+                    activityRepo.save(CustomerCollectionActivity.builder()
+                            .firmId(firmId)
+                            .customerId(customerId)
+                            .paymentId(paymentsCreated.get(0).getId())
+                            .activityType(CollectionActivityType.PAYMENT_RECEIVED)
+                            .description("Payment of ₹" + totalPaymentAmt + " received (" + (request.getPaymentMode() != null ? request.getPaymentMode() : "Cash") + ")")
+                            .performedBy("User")
+                            .createdAt(LocalDateTime.now())
+                            .build());
+                } catch (Exception ignored) {
+                }
+            }
         }
 
         return CustomerSettlementResponse.builder()
@@ -466,63 +506,100 @@ public class CustomerSettlementService {
                 .build();
     }
 
-    private void reconcilePromisesAndLogPayment(Long firmId, Long customerId, BigDecimal paymentAmount, Long paymentId) {
-        if (promiseRepo == null && activityRepo == null) return;
-        try {
-            if (promiseRepo != null) {
-                List<CustomerPromiseToPay> activePromises = new ArrayList<>(promiseRepo.findByFirmIdAndCustomerIdAndStatusIn(
-                        firmId,
-                        customerId,
-                        List.of(PromiseStatus.PROMISED, PromiseStatus.PARTIALLY_FULFILLED)
-                ));
-                activePromises.sort(Comparator.comparing(CustomerPromiseToPay::getPromisedDate));
-                BigDecimal avail = paymentAmount;
-                for (CustomerPromiseToPay pr : activePromises) {
-                    if (avail.compareTo(BigDecimal.ZERO) <= 0) break;
-                    BigDecimal rem = pr.getRemainingAmount();
-                    if (avail.compareTo(rem) >= 0) {
-                        pr.setFulfilledAmount(pr.getPromisedAmount());
-                        pr.setRemainingAmount(BigDecimal.ZERO);
-                        pr.setStatus(PromiseStatus.FULFILLED);
-                        pr.setUpdatedAt(LocalDateTime.now());
-                        promiseRepo.save(pr);
-                        if (activityRepo != null) {
-                            activityRepo.save(CustomerCollectionActivity.builder()
-                                    .firmId(firmId)
-                                    .customerId(customerId)
-                                    .paymentId(paymentId)
-                                    .promiseId(pr.getId())
-                                    .activityType(CollectionActivityType.PROMISE_FULFILLED)
-                                    .description("Promise of ₹" + pr.getPromisedAmount() + " fulfilled by payment")
-                                    .performedBy("System")
-                                    .createdAt(LocalDateTime.now())
-                                    .build());
-                        }
-                        avail = avail.subtract(rem);
-                    } else {
-                        BigDecimal newFulfilled = pr.getFulfilledAmount().add(avail);
-                        pr.setFulfilledAmount(newFulfilled);
-                        pr.setRemainingAmount(pr.getPromisedAmount().subtract(newFulfilled));
-                        pr.setStatus(PromiseStatus.PARTIALLY_FULFILLED);
-                        pr.setUpdatedAt(LocalDateTime.now());
-                        promiseRepo.save(pr);
-                        avail = BigDecimal.ZERO;
-                    }
-                }
+    private void processManualPromiseAllocations(Long firmId, Long customerId, List<com.billing.simple.billsoft.dtos.PromiseAllocationItem> promiseAllocations,
+                                                List<InvoicePayment> paymentsCreated, List<CustomerOutstandingInvoiceDto> updatedInvoices) {
+        if (promiseRepo == null) return;
+        Map<Long, InvoicePayment> paymentsByInvoice = new HashMap<>();
+        for (InvoicePayment p : paymentsCreated) {
+            if (p.getInvoiceId() != null) {
+                paymentsByInvoice.put(p.getInvoiceId(), p);
             }
+        }
+
+        for (com.billing.simple.billsoft.dtos.PromiseAllocationItem item : promiseAllocations) {
+            if (item == null || item.getPromiseId() == null || item.getAmount() == null || item.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            CustomerPromiseToPay pr = promiseRepo.findByIdAndFirmId(item.getPromiseId(), firmId)
+                    .orElseThrow(() -> new TenantSecurityException("Promise #" + item.getPromiseId() + " not found in firm"));
+
+            if (!Objects.equals(pr.getCustomerId(), customerId)) {
+                throw new IllegalArgumentException("Promise #" + pr.getId() + " does not belong to Customer #" + customerId);
+            }
+            if (pr.getStatus() == PromiseStatus.CANCELLED) {
+                throw new IllegalStateException("Cannot allocate payment to CANCELLED promise #" + pr.getId());
+            }
+            if (pr.getStatus() == PromiseStatus.FULFILLED || pr.getRemainingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException("Promise #" + pr.getId() + " is already fully fulfilled");
+            }
+
+            BigDecimal allocAmt = item.getAmount().setScale(SCALE, RoundingMode.HALF_UP);
+            if (allocAmt.compareTo(pr.getRemainingAmount()) > 0) {
+                throw new IllegalArgumentException("Allocation ₹" + allocAmt + " exceeds remaining balance ₹" + pr.getRemainingAmount() + " on Promise #" + pr.getId());
+            }
+
+            InvoicePayment targetPmt = (pr.getInvoiceId() != null ? paymentsByInvoice.get(pr.getInvoiceId()) : null);
+            if (targetPmt == null && !paymentsCreated.isEmpty()) {
+                targetPmt = paymentsCreated.get(0);
+            }
+            Long pmtId = targetPmt != null ? targetPmt.getId() : null;
+
+            if (promiseAllocationRepo != null && pmtId != null) {
+                promiseAllocationRepo.save(com.billing.simple.billsoft.entities.PromisePaymentAllocation.builder()
+                        .firmId(firmId)
+                        .promiseId(pr.getId())
+                        .paymentId(pmtId)
+                        .allocatedAmount(allocAmt)
+                        .allocatedAt(LocalDateTime.now())
+                        .allocatedBy("User")
+                        .build());
+            }
+
+            BigDecimal prevFulfilled = pr.getFulfilledAmount() != null ? pr.getFulfilledAmount() : BigDecimal.ZERO;
+            BigDecimal newFulfilled = prevFulfilled.add(allocAmt);
+            pr.setFulfilledAmount(newFulfilled);
+            BigDecimal newRemaining = pr.getPromisedAmount().subtract(newFulfilled);
+            if (newRemaining.compareTo(BigDecimal.ZERO) <= 0) newRemaining = BigDecimal.ZERO;
+            pr.setRemainingAmount(newRemaining);
+
+            PromiseStatus prevStatus = pr.getStatus();
+            PromiseStatus newStatus = newRemaining.compareTo(BigDecimal.ZERO) == 0 ? PromiseStatus.FULFILLED : PromiseStatus.PARTIALLY_FULFILLED;
+            pr.setStatus(newStatus);
+            pr.setUpdatedAt(LocalDateTime.now());
+            promiseRepo.save(pr);
+
+            if (promiseHistoryRepo != null) {
+                promiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                        .firmId(firmId)
+                        .promiseId(pr.getId())
+                        .actionType("ALLOCATED")
+                        .previousAmount(pr.getPromisedAmount())
+                        .newAmount(pr.getPromisedAmount())
+                        .previousDate(pr.getPromisedDate())
+                        .newDate(pr.getPromisedDate())
+                        .previousStatus(prevStatus != null ? prevStatus.name() : null)
+                        .newStatus(newStatus.name())
+                        .allocatedAmount(allocAmt)
+                        .paymentId(pmtId)
+                        .notes("Manually allocated payment " + (pmtId != null ? "#" + pmtId : "") + " of ₹" + allocAmt)
+                        .performedBy("User")
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            }
+
             if (activityRepo != null) {
                 activityRepo.save(CustomerCollectionActivity.builder()
                         .firmId(firmId)
                         .customerId(customerId)
-                        .paymentId(paymentId)
-                        .activityType(CollectionActivityType.PAYMENT_RECEIVED)
-                        .description("Payment of ₹" + paymentAmount + " received")
-                        .performedBy("System")
+                        .invoiceId(pr.getInvoiceId())
+                        .paymentId(pmtId)
+                        .promiseId(pr.getId())
+                        .activityType(newStatus == PromiseStatus.FULFILLED ? CollectionActivityType.PROMISE_FULFILLED : CollectionActivityType.PAYMENT_RECEIVED)
+                        .description("Promise #" + pr.getId() + " allocated ₹" + allocAmt + " (" + newStatus + ")")
+                        .performedBy("User")
                         .createdAt(LocalDateTime.now())
                         .build());
             }
-        } catch (Exception e) {
-            System.err.println("Note on promise reconciliation: " + e.getMessage());
         }
     }
 
@@ -574,6 +651,58 @@ public class CustomerSettlementService {
         }
 
         Long invoiceId = p.getInvoiceId();
+
+        // If payment had promise allocations, reverse them cleanly
+        if (promiseAllocationRepo != null && promiseRepo != null) {
+            List<com.billing.simple.billsoft.entities.PromisePaymentAllocation> allocations = promiseAllocationRepo.findByFirmIdAndPaymentId(firmId, paymentId);
+            for (com.billing.simple.billsoft.entities.PromisePaymentAllocation ppa : allocations) {
+                Optional<CustomerPromiseToPay> prOpt = promiseRepo.findByIdAndFirmId(ppa.getPromiseId(), firmId);
+                if (prOpt.isPresent()) {
+                    CustomerPromiseToPay pr = prOpt.get();
+                    BigDecimal prevFulfilled = pr.getFulfilledAmount() != null ? pr.getFulfilledAmount() : BigDecimal.ZERO;
+                    BigDecimal newFulfilled = prevFulfilled.subtract(ppa.getAllocatedAmount());
+                    if (newFulfilled.compareTo(BigDecimal.ZERO) <= 0) newFulfilled = BigDecimal.ZERO;
+                    pr.setFulfilledAmount(newFulfilled);
+                    BigDecimal newRemaining = pr.getPromisedAmount().subtract(newFulfilled);
+                    if (newRemaining.compareTo(BigDecimal.ZERO) <= 0) newRemaining = BigDecimal.ZERO;
+                    pr.setRemainingAmount(newRemaining);
+
+                    PromiseStatus prevStatus = pr.getStatus();
+                    PromiseStatus newStatus;
+                    if (newFulfilled.compareTo(BigDecimal.ZERO) == 0) {
+                        newStatus = PromiseStatus.PROMISED;
+                    } else if (newRemaining.compareTo(BigDecimal.ZERO) > 0) {
+                        newStatus = PromiseStatus.PARTIALLY_FULFILLED;
+                    } else {
+                        newStatus = PromiseStatus.FULFILLED;
+                    }
+                    pr.setStatus(newStatus);
+                    pr.setUpdatedAt(LocalDateTime.now());
+                    promiseRepo.save(pr);
+
+                    if (promiseHistoryRepo != null) {
+                        promiseHistoryRepo.save(com.billing.simple.billsoft.entities.CustomerPromiseHistory.builder()
+                                .firmId(firmId)
+                                .promiseId(pr.getId())
+                                .actionType("ALLOCATION_REVERSED")
+                                .previousAmount(pr.getPromisedAmount())
+                                .newAmount(pr.getPromisedAmount())
+                                .previousDate(pr.getPromisedDate())
+                                .newDate(pr.getPromisedDate())
+                                .previousStatus(prevStatus != null ? prevStatus.name() : null)
+                                .newStatus(newStatus.name())
+                                .allocatedAmount(ppa.getAllocatedAmount().negate())
+                                .paymentId(paymentId)
+                                .notes("Payment #" + paymentId + " reversed/deleted; allocation ₹" + ppa.getAllocatedAmount() + " revoked")
+                                .performedBy("User")
+                                .createdAt(LocalDateTime.now())
+                                .build());
+                    }
+                }
+            }
+            promiseAllocationRepo.deleteByFirmIdAndPaymentId(firmId, paymentId);
+        }
+
         invoicePaymentRepo.delete(p);
 
         // If payment was linked to an invoice, recompute invoice status

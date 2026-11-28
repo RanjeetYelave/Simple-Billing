@@ -19,8 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.billing.simple.billsoft.repo.ProductRepository;
@@ -220,6 +224,20 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         existing.setNotes(updated.getNotes());
         existing.setTermsAndConditions(updated.getTermsAndConditions());
 
+        // Capture previous received quantities for already-received POs (AUDIT-010)
+        Map<Long, BigDecimal> oldReceivedQuantities = new HashMap<>();
+        if (oldStatus == PurchaseOrderStatus.RECEIVED && existing.getItems() != null) {
+            for (PurchaseOrderItem item : existing.getItems()) {
+                Long pId = item.getProductId();
+                if (pId != null) {
+                    BigDecimal qty = item.getReceivedQuantity() != null && item.getReceivedQuantity().compareTo(BigDecimal.ZERO) > 0
+                            ? item.getReceivedQuantity()
+                            : (item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO);
+                    oldReceivedQuantities.put(pId, oldReceivedQuantities.getOrDefault(pId, BigDecimal.ZERO).add(qty));
+                }
+            }
+        }
+
         // Update line items
         if (existing.getItems() == null) {
             existing.setItems(new ArrayList<>());
@@ -248,7 +266,54 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
 
         PurchaseOrder savedPo = poRepository.save(existing);
         syncPartyPayment(savedPo);
-        handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
+
+        // If PO remains in RECEIVED status, adjust stock deltas for modified line items (AUDIT-010)
+        if (oldStatus == PurchaseOrderStatus.RECEIVED && savedPo.getStatus() == PurchaseOrderStatus.RECEIVED) {
+            Map<Long, BigDecimal> newQuantities = new HashMap<>();
+            if (savedPo.getItems() != null) {
+                for (PurchaseOrderItem item : savedPo.getItems()) {
+                    Long pId = resolveOrCreateProduct(item, savedPo, savedPo.getFirmId(), true);
+                    if (pId != null) {
+                        BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                        newQuantities.put(pId, newQuantities.getOrDefault(pId, BigDecimal.ZERO).add(qty));
+                        item.setReceivedQuantity(qty);
+                        if (item.getId() != null) {
+                            poItemRepository.save(item);
+                        }
+                    }
+                }
+            }
+
+            Set<Long> allProdIds = new HashSet<>(oldReceivedQuantities.keySet());
+            allProdIds.addAll(newQuantities.keySet());
+            for (Long pId : allProdIds) {
+                BigDecimal oldQty = oldReceivedQuantities.getOrDefault(pId, BigDecimal.ZERO);
+                BigDecimal newQty = newQuantities.getOrDefault(pId, BigDecimal.ZERO);
+                BigDecimal delta = newQty.subtract(oldQty);
+                if (delta.compareTo(BigDecimal.ZERO) > 0) {
+                    productService.recordStockMovement(
+                            pId,
+                            savedPo.getFirmId(),
+                            "PURCHASE_RECEIPT",
+                            delta,
+                            "PURCHASE_ORDER",
+                            savedPo.getPoNumber(),
+                            "PO " + savedPo.getPoNumber() + " line item quantity increased upon edit (+ " + delta + ")");
+                } else if (delta.compareTo(BigDecimal.ZERO) < 0) {
+                    productService.recordStockMovement(
+                            pId,
+                            savedPo.getFirmId(),
+                            "PURCHASE_CANCELLED",
+                            delta,
+                            "PURCHASE_ORDER",
+                            savedPo.getPoNumber(),
+                            "PO " + savedPo.getPoNumber() + " line item quantity decreased upon edit (" + delta + ")");
+                }
+            }
+        } else {
+            handleStockAdjustment(savedPo, oldStatus, savedPo.getStatus());
+        }
+
         publishPoUpdatedEvent(savedPo, oldStatus, savedPo.getStatus());
         return savedPo;
     }

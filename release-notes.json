@@ -1,4 +1,11 @@
 {
+  "1.0.409": [
+    "Quick Invoice Continuous Product Search: Instant auto-focus with cursor positioning upon opening Quick Add Items modal, enabling typing immediately without an extra click.",
+    "Dual-State Search Architecture: Disengaged visible input text from active product query filtering, automatically clearing search input on product selection while preserving displayed product results.",
+    "Consecutive Multi-Item Additions: Users can rapidly add multiple products and variants from the same search result set without having to retype the query.",
+    "Instant Search Renewal: Starting to type a new query immediately replaces previous search results and activates new filtering.",
+    "Seamless Mouse & Keyboard Interchangeability: Keyboard navigation and mouse card clicks work interchangeably, with automatic focus restoration back to the search input and zero focus stealing during quantity edits."
+  ],
   "1.0.408": [
     "Telegram Estimate-to-Invoice Conversion: Direct conversion of customer quotations into official tax invoices via Telegram Assistant, reusing the authoritative desktop conversion engine, financial calculations, stock deduction, and accounting entries.",
     "Conversational Document Selection & Ineligibility Guards: Customer search-first flow with 5-record pagination, human-readable previews, and automated blocking of already-converted or cancelled estimates with one-click existing invoice downloads.",
